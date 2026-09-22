@@ -273,19 +273,21 @@ def git_output(runner: CommandRunner, repo: Path, *args: str) -> str:
 
 
 def write_fixture(fixture: Path, build_script: bytes, profiles: str, toolchain: bytes) -> None:
-    for path in ("src", "dependency/src", "proc-macro/src"):
+    # Keep dependencies physically outside the app workspace. Excluding paths
+    # beneath a `members = ["."]` root did not prevent auto-membership on 1.98.
+    for path in ("src", "../dependency/src", "../proc-macro/src"):
         (fixture / path).mkdir(parents=True)
     (fixture / "build.rs").write_bytes(build_script)
     (fixture / "rust-toolchain.toml").write_bytes(toolchain)
     (fixture / "README.md").write_text("initial diagnostic fixture\n", encoding="utf-8")
     manifest = "\n".join(
         [
-            "[workspace]", 'members = ["."]', 'exclude = ["dependency", "proc-macro"]',
+            "[workspace]", 'members = ["."]',
             'resolver = "3"', "", "[package]", 'name = "fixture-app"',
             'version = "0.1.0"', 'edition = "2024"', 'rust-version = "1.98"',
             'build = "build.rs"', "", "[lib]", 'path = "src/lib.rs"', "",
-            "[dependencies]", 'fixture-dependency = { path = "dependency" }',
-            'fixture-macro = { path = "proc-macro" }', "",
+            "[dependencies]", 'fixture-dependency = { path = "../dependency" }',
+            'fixture-macro = { path = "../proc-macro" }', "",
         ]
     ) + profiles
     (fixture / "Cargo.toml").write_text(manifest, encoding="utf-8")
@@ -295,18 +297,18 @@ def write_fixture(fixture: Path, build_script: bytes, profiles: str, toolchain: 
         'pub fn embedded_revision() -> &\'static str { env!("GIT_HASH") }\n',
         encoding="utf-8",
     )
-    (fixture / "dependency/Cargo.toml").write_text(
+    (fixture / "../dependency/Cargo.toml").write_text(
         "[package]\nname = \"fixture-dependency\"\nversion = \"0.1.0\"\n"
         "edition = \"2024\"\n\n[lib]\npath = \"src/lib.rs\"\n",
         encoding="utf-8",
     )
-    (fixture / "dependency/src/lib.rs").write_text("pub fn value() -> u32 { 7 }\n", encoding="utf-8")
-    (fixture / "proc-macro/Cargo.toml").write_text(
+    (fixture / "../dependency/src/lib.rs").write_text("pub fn value() -> u32 { 7 }\n", encoding="utf-8")
+    (fixture / "../proc-macro/Cargo.toml").write_text(
         "[package]\nname = \"fixture-macro\"\nversion = \"0.1.0\"\n"
         "edition = \"2024\"\n\n[lib]\nproc-macro = true\npath = \"src/lib.rs\"\n",
         encoding="utf-8",
     )
-    (fixture / "proc-macro/src/lib.rs").write_text(
+    (fixture / "../proc-macro/src/lib.rs").write_text(
         "extern crate proc_macro;\n\n"
         "#[proc_macro]\npub fn fixture_marker(_input: proc_macro::TokenStream) "
         "-> proc_macro::TokenStream { proc_macro::TokenStream::new() }\n",
@@ -318,6 +320,14 @@ def prepare_fixture(
     fixture: Path, runner: CommandRunner, source_packed_refs: bool, channel: str
 ) -> dict[str, Any]:
     runner.require(["cargo", f"+{channel}", "generate-lockfile", "--offline"], fixture)
+    _, raw_metadata = runner.require([
+        "cargo", f"+{channel}", "metadata", "--locked", "--offline", "--format-version", "1",
+    ], fixture)
+    metadata = json.loads(raw_metadata)
+    members = sorted(package["name"] for package in metadata["packages"]
+                     if package["id"] in metadata["workspace_members"])
+    if members != ["fixture-app"]:
+        raise DiagnosticError(f"fixture dependencies are not external: {members}")
     for command in (
         ["git", "init", "-q"],
         ["git", "config", "user.email", "build-inputs@example.invalid"],
@@ -336,6 +346,7 @@ def prepare_fixture(
         "initial_sha": git_output(runner, fixture, "rev-parse", "HEAD"),
         "packed_refs_present": (common / "packed-refs").is_file(),
         "packed_refs_setup": "git pack-refs --all --no-prune" if source_packed_refs else "not applied",
+        "workspace_members": members,
     }
 
 
@@ -370,6 +381,7 @@ def revision_scenario(
         },
         "packed_refs": setup["packed_refs_present"],
         "packed_refs_setup": setup["packed_refs_setup"],
+        "workspace_members": setup["workspace_members"],
     }
 
 
@@ -488,8 +500,8 @@ def run_diagnostic(output: Path | None, timeout: int) -> int:
             if not common.is_absolute():
                 common = (ROOT / common).resolve()
             packed = (common / "packed-refs").is_file()
-            effective = temp_root / "effective"
-            controlled = temp_root / "build-override-only"
+            effective = temp_root / "effective/app"
+            controlled = temp_root / "build-override-only/app"
             for home in (temp_root / "cargo-home-effective", temp_root / "cargo-home-controlled"):
                 home.mkdir(mode=0o700)
             write_fixture(effective, build_bytes, profile_sections(manifest_text), TOOLCHAIN.read_bytes())

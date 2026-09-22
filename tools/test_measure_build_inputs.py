@@ -87,9 +87,18 @@ class MeasureBuildInputsTests(unittest.TestCase):
             tool.write_fixture(fixture, b"fn main() {}\n", "[profile.dev]\n", b"[toolchain]\nchannel='1.98.0'\n")
             manifest = (fixture / "Cargo.toml").read_text(encoding="utf-8")
         self.assertIn('members = ["."]', manifest)
-        self.assertIn('exclude = ["dependency", "proc-macro"]', manifest)
-        self.assertIn("fixture-dependency = { path = \"dependency\" }", manifest)
-        self.assertIn("fixture-macro = { path = \"proc-macro\" }", manifest)
+        self.assertIn("fixture-dependency = { path = \"../dependency\" }", manifest)
+        self.assertIn("fixture-macro = { path = \"../proc-macro\" }", manifest)
+
+    def test_rejects_auto_workspace_members_before_compilation(self) -> None:
+        runner = Mock()
+        metadata = {"packages": [{"id": "root", "name": "fixture-app"},
+                                 {"id": "dep", "name": "fixture-dependency"}],
+                    "workspace_members": ["root", "dep"]}
+        runner.require.side_effect = [({}, b""), ({}, json.dumps(metadata).encode())]
+        with self.assertRaisesRegex(tool.DiagnosticError, "dependencies are not external"):
+            tool.prepare_fixture(Path("/fixture"), runner, True, "1.98.0")
+        self.assertEqual(runner.require.call_count, 2)
 
     def test_artifact_parser_and_embedded_revision(self) -> None:
         revision = "a" * 40
