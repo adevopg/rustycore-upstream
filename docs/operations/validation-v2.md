@@ -461,3 +461,59 @@ the pre-existing global hotspot debt. No architecture ceiling, trust boundary,
 compiler profile, gameplay or runtime service changed. The documentation-only
 evidence delta after this candidate uses the reuse rule above; it must not be
 reported as a rerun of this manifest at a later SHA.
+
+### Follow-up: fail-fast, Cargo configuration and measured inputs
+
+Code candidate `5dd4a0ffbe5656027646adcd3221b65929258023`, same integration base
+`9daa13f6`, clean tree, aarch64 host, Rust 1.98.0. Final used the same command
+above, with the checkout's absolute `CARGO_TARGET_DIR` and actionlint on PATH.
+It passed **8/8 steps in 9.748 seconds**, including eight diagnostic unit tests.
+Manifest: `target/validation-v2/manifests/20260922T120941.503363Z-1295226-final.json`.
+The additional command was:
+
+```bash
+python3 tools/measure_build_inputs.py --timeout 30 \
+  --output target/validation-v2/build-inputs-5dd4a0ff.json
+```
+
+The diagnostic passed in **2.132 seconds**. All four Cargo builds used private
+temporary targets, offline, one job; no production crate or active cache was built
+or cleared. The build-script source hash was
+`7fdfdfcedf30ad300bc365dd0951db58cc19ef51127ae72f0173d00e0db4dd29` and the profile
+manifest hash was `a1ebfa5a00c9d4086f2aa8e360736da141469ac4c81e971fb8a5566e73cb1a45`.
+
+- Audit regression fixtures now prove that a red initial policy stops after two
+  steps, before Cargo/persistence scanning, while a green plan executes all 13.
+  Final's bounded syntax-ownership pairing and explicit keep-going remain intact.
+- Both Cargo configuration spellings select workspace compilation and all library
+  suites, plus the standalone tool routes; mixed changes/deletions and duplicate
+  routing are covered. This closes a false-green gap, not a claim that global
+  configuration acceptance is cheap.
+- The unchanged tiny library was fresh (0.025 s build); a README-only commit made
+  it non-fresh (0.070 s), with the new commit actually found in the artifact.
+  This demonstrates revision invalidation, not its cost in `world-server` with
+  normal incremental codegen.
+- The external library/proc macro both used opt-level **2** with the current
+  wildcard; without that wildcard they used **0/1**, respectively. Thus the
+  build-override comment in root Cargo.toml is not a guarantee of opt-level 1
+  for external proc macros or a net build-time saving. This matches Cargo's
+  [override precedence](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides).
+  No profile or revision-provenance behavior was changed; representative timing
+  is still required before adopting such an optimization.
+
+Code acceptance window: **12:05:37–12:10:16 UTC (279 seconds)**, including the
+first final run, one inconclusive experiment, diagnosis/repair, corrected final,
+corrected experiment and manifest/provenance readback. The first final at
+`94353726` passed; its diagnostic returned **2/inconclusive** in 2.752 seconds,
+retained as `target/validation-v2/build-inputs-94353726.json`. A metadata-only
+probe showed the initial fixture dependencies had become workspace members despite
+their exclusion entries. Repair/diagnosis occupied approximately 12:06:22–12:09:41
+(199 seconds), separately from command execution. The corrected fixture puts them
+outside the app workspace and checks actual metadata membership before compiling;
+the unchanged inconclusive experiment was not repeated.
+
+Implementation/review before that window was not timed. The documentation-only
+evidence commit and its quick validation occur after this code window and reuse
+the green code evidence; they do not relabel either manifest. The complete
+closeout timing, including that additional check, is reported in the handoff.
+No full-server speedup, exhaustive audit, live acceptance, push or merge is claimed.
