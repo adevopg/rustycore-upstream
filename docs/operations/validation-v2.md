@@ -540,3 +540,36 @@ evidence commit and its quick validation occur after this code window and reuse
 the green code evidence; they do not relabel either manifest. The complete
 closeout timing, including that additional check, is reported in the handoff.
 No full-server speedup, exhaustive audit, live acceptance, push or merge is claimed.
+
+### Follow-up: explicit local development levels
+
+Code candidate `46751735e3da1063fa3caba6c160f6f2129386d1`, integration base
+`9daa13f663bd1e863a3efed06721c3fcb3b6cd66`, clean tree, aarch64 host, Rust
+1.98.0. The final command was:
+
+```bash
+PATH=/tmp/rustycore-1232-actionlint.Ow7AT6:$PATH \
+PROTOC=/home/ubuntu/.local/protoc/bin/protoc \
+VALIDATION_V2_CARGO_JOBS=1 CARGO_TARGET_DIR=/home/server/rustycore/target \
+  ./tools/validation-v2 final --base origin/3.4.3 --require-changes --timings --logs
+./tools/validation-v2 verify \
+  --manifest target/validation-v2/manifests/20260922T211123.183692Z-1797163-final.json \
+  --require-profile final
+```
+
+The retained `actionlint` 1.7.12 ARM64 archive matched SHA-256
+`325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6` before
+the campaign. The runner took **10.051 seconds** and passed **8/8 checks**, with
+no optional skips; the complete campaign including manifest verification and
+provenance readback took **45 seconds (21:11:23–21:12:08 UTC)**. The manifest
+above was verified with `--require-profile final`.
+
+The checks covered the physical policy (2,246 files), changed-file hygiene and
+Python syntax, the runner's contract suite, both workflows with `actionlint`,
+workflow contract tests and all eight build-input diagnostic tests. The runner
+contract fixtures deliberately exercise command failures, signals and timeouts;
+one recorded child `SIGABRT` belongs to that passing fixture suite and did not
+fail the campaign. The plan had no workspace or Cargo metadata selection and
+ran no Cargo commands; no production Rust was compiled. This accepts the new
+default/quick/final contracts and verification-level guard, not a full Rust build
+speedup, hosted workflow, exhaustive audit or live acceptance.
