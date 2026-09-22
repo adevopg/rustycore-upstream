@@ -35,7 +35,14 @@ commit. `quick` validates repository hygiene and small syntax surfaces, formats 
 compiles test targets for directly changed workspace packages. `final` instead compiles the
 workspace reverse-dependent closure and runs library tests for the directly changed library
 packages. A root Cargo, toolchain, protobuf, or build-script change explicitly expands compilation
-to `--workspace --all-targets`; it does not implicitly run every library suite.
+to `--workspace --all-targets`; final retains directly changed library suites, or tests every
+workspace library when no library source was directly changed. Root `.cargo/config.toml`
+and legacy `.cargo/config` changes (including deletions) always select every workspace library
+in final, even alongside a narrower source diff: their flags/targets affect every package.
+They also select the standalone checker and QA-bot routes, because Cargo reads the root
+configuration for their `--manifest-path` calls from this checkout. Quick retains compilation
+without test execution. These global changes can exceed an ordinary narrow-change budget;
+record that cost rather than silently omitting affected consumers.
 
 These profiles are alternative budgets, not mandatory successive stages. At completed-delivery
 acceptance, plan the missing issue-specific evidence and the committed-candidate `final` once.
@@ -119,9 +126,11 @@ override is therefore excluded for that package, and the real launcher is compil
 with `cargo check -p world-modules`. Every
 step has an owner name in the manifest. Architecture policy and fixtures use one
 `check_architecture.py check --self-test` invocation, preserving their union and
-dependency checks without scanning the same policy twice. A red combined policy
-step retains the declared continuation through the independent session/persistence
-ratchet, then returns the first failure; other failures stop immediately. It never starts
+dependency checks without scanning the same policy twice. Audit stops at the first
+failed step, including this combined policy step: it does not spend the exhaustive
+persistence budget after an already-red policy check. A green audit still requires
+all 13 declared steps. This is separate from final's explicitly paired, bounded
+syntax-ownership continuation described above. It never starts
 services, connects to a database, records a fresh capture, regenerates a baseline, invokes Codex,
 or calls either legacy wrapper. Those mutating or live operations require their own explicit QA
 procedure.
@@ -284,6 +293,31 @@ Keep the runner's total time and the duration of required extra checks; individu
 reports do not measure the complete acceptance campaign. Benchmark changes in job count,
 profiles or linking on representative unchanged inputs before adopting them, with exclusive
 validation ownership and measured memory headroom. Avoid an extra warmup merely for timing.
+
+For the narrower question of Git-revision invalidation and dev-profile precedence,
+there is an opt-in isolated diagnostic:
+
+```bash
+python3 tools/measure_build_inputs.py --timeout 30 \
+  --output target/validation-v2/build-inputs.json
+```
+
+Use a new report path for each run. It copies the current `world-server/build.rs`
+and dev-profile tables into tiny local fixtures, pins the repository toolchain,
+and uses private temporary Cargo homes/targets, offline and one job. Its Git commits
+affect only the fixtures. Incremental codegen is disabled only in these controlled
+fixtures; the report records that difference from the normal dev environment.
+It records cold, unchanged warm and documentation-only
+commit artifacts/revisions, plus an external dependency/proc-macro comparison with
+the wildcard override removed. It does not alter the checkout's profiles, build
+script, active cache, runtime or database. Fixture unit tests are routed by final;
+the real Cargo diagnostic remains opt-in and sequential with other validation.
+
+This proves input invalidation and effective options, not a representative server
+speedup. Its isolated cold costs and wall times are diagnostic context, not the
+ordinary warm-workspace benchmark. Keep the actual report, source SHA/hashes and
+limitations; an incomplete observation is not a green result. Do not replace the
+embedded server revision with a stale value to make a build appear reusable.
 
 The runner uses `<checkout>/target` by default, matching ordinary Cargo commands in that
 workspace. An explicit nonempty `CARGO_TARGET_DIR` is respected; relative values are resolved

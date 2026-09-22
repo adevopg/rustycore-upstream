@@ -326,6 +326,22 @@ def test_runner_contract(repo: Path, tools: Path, base_env: dict[str, str], dire
     assert exit_code == 19
     assert [outcome["section"] for outcome in outcomes] == ["pass", "fail"]
 
+    # The combined audit policy check must stop before expensive Cargo and
+    # persistence scans on failure, without dropping any green-path coverage.
+    audit = runner.audit_steps("base", 1)
+    for red_section, expected_sections in (
+        ("architecture-policy-check", ["diff-hygiene", "architecture-policy-check"]),
+        (None, [step["section"] for step in audit]),
+    ):
+        simulated = [
+            {**step, "argv": [sys.executable, "-c",
+                "raise SystemExit(19)" if step["section"] == red_section else "pass"]}
+            for step in audit
+        ]
+        outcomes, exit_code = runner.run_steps(repo, simulated, base_env, 30)
+        assert exit_code == (19 if red_section else 0)
+        assert [outcome["section"] for outcome in outcomes] == expected_sections
+
     # An independent acceptance named by a red step still runs, the run keeps
     # the first failure's exit code, and steps after the named one do not run.
     paired = [
@@ -617,6 +633,41 @@ def test_planner_contract(repo: Path) -> None:
     assert root_workspace["direct_packages"] == ["a", "b", "c"]
     assert root_workspace["direct_library_packages"] == ["a", "b", "c"]
 
+    # Both root config spellings affect every package and standalone manifest,
+    # including deletion and mixed config/source diffs. No on-disk existence
+    # check may turn a deleted configuration into text-only acceptance.
+    for config_path in sorted(runner.CARGO_CONFIG_PATHS):
+        for source_paths in ([], one_crate_paths):
+            paths = [config_path, *source_paths]
+            groups = runner.grouped_paths(paths)
+            assert groups["workspace-root"] == [config_path]
+            config_workspace = runner.affected_workspace(repo, paths, groups, metadata)
+            assert config_workspace == {**root_workspace, "direct_library_packages": ["a", "b", "c"]}
+            for mode in ("quick", "final"):
+                planned, _ = runner.validation_commands(repo, mode, 1, "base", groups, config_workspace)
+                assert ["cargo", "check", "--locked", "--workspace", "--all-targets", "--jobs", "1"] in planned
+                suites = [command for command in planned if command[:2] == ["cargo", "test"]]
+                if mode == "final":
+                    workspace_suite = next(command for command in suites if "--manifest-path" not in command)
+                    assert workspace_suite == ["cargo", "test", "--no-fail-fast", "--locked", "--lib",
+                                               "--jobs", "1", "-p", "a", "-p", "b", "-p", "c"]
+                else:
+                    assert not suites
+                checker_mode = "test" if mode == "final" else "check"
+                assert any(command[:2] == ["cargo", checker_mode] and runner.CHECKER_MANIFEST in command
+                           for command in planned)
+                assert any(command[:2] == ["cargo", "check"] and runner.BOT_MANIFEST in command
+                           for command in planned)
+                assert len({tuple(command) for command in planned}) == len(planned)
+                overlapping = runner.grouped_paths([
+                    *paths, "tools/architecture/handler-contract-check/src/lib.rs",
+                    "tools/wow-test-bot/src/main.rs",
+                ])
+                assert runner.validation_commands(repo, mode, 1, "base", overlapping, config_workspace)[0] == planned
+
+    assert runner.classify_path("docs/config.toml") == "documentation"
+    assert runner.classify_path(".cargo/unrelated-note") == "other"
+
     # With a crate changed alongside it, the root-wide path must not lose the
     # tests that crate would have got on its own.
     lock_and_crate = ["Cargo.lock", "crates/a/src/lib.rs"]
@@ -658,6 +709,10 @@ def test_planner_contract(repo: Path) -> None:
                     [".github/workflows/rust-ci.yml"], [".github/workflows/validation-determinism.yml"]):
         planned, _ = runner.validation_commands(repo, "final", 1, "base", runner.grouped_paths(changed), None)
         assert ["python3", runner.WORKFLOW_CONTRACT_SUITE] in planned
+    for path in (runner.BUILD_INPUT_DIAGNOSTIC, runner.BUILD_INPUT_CONTRACT_SUITE):
+        planned, _ = runner.validation_commands(repo, "final", 1, "base", runner.grouped_paths([path]), None)
+        assert ["python3", runner.BUILD_INPUT_CONTRACT_SUITE] in planned
+        assert not any(command[0] == "cargo" for command in planned)
 
     docs_commands, _ = runner.validation_commands(
         repo, "quick", 2, "base", runner.grouped_paths(["docs/guide.md"]), None
@@ -701,7 +756,7 @@ def test_planner_contract(repo: Path) -> None:
         "capture-creature-spell-contract",
     ]
     policy_step = next(step for step in audit if step["section"] == "architecture-policy-check")
-    assert policy_step["continue_to_section_on_failure"] == "session-persistence-ratchet"
+    assert all("continue_to_section_on_failure" not in step for step in audit)
     assert policy_step["argv"] == ["python3", "tools/architecture/check_architecture.py", "check", "--self-test"]
     assert sum("check_architecture.py" in " ".join(step["argv"]) for step in audit) == 1
     assert all("--no-fail-fast" in step["argv"] for step in audit if step["argv"][:2] == ["cargo", "test"])

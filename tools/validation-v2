@@ -39,6 +39,9 @@ DEFAULT_HEAVY_LOCK = "/tmp/rustycore-validation-v2-heavy.lock"
 RUNNER_PATH = "tools/validation-v2"
 RUNNER_CONTRACT_SUITE = "tools/test_validation_v2.py"
 WORKFLOW_CONTRACT_SUITE = "tools/test_validation_workflows.py"
+BUILD_INPUT_DIAGNOSTIC = "tools/measure_build_inputs.py"
+BUILD_INPUT_CONTRACT_SUITE = "tools/test_measure_build_inputs.py"
+CARGO_CONFIG_PATHS = {".cargo/config", ".cargo/config.toml"}
 CHECKER_MANIFEST = "tools/architecture/handler-contract-check/Cargo.toml"
 BOT_MANIFEST = "tools/wow-test-bot/Cargo.toml"
 INTERRUPT_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
@@ -369,6 +372,7 @@ def classify_path(path: str) -> str:
         return "workspace-rust"
     if (
         path in {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".protoc-version"}
+        or path in CARGO_CONFIG_PATHS
         or path.startswith("proto/")
         or path.endswith("/build.rs")
     ):
@@ -549,7 +553,11 @@ def affected_workspace(
     # path is the only thing that changed, which is exactly when anything can
     # break.
     matched_library_ids = library_ids({package_id for _, package_id in matched})
-    if root_wide:
+    if CARGO_CONFIG_PATHS.intersection(paths):
+        # Flags/linkers/target/profile settings apply to every package, even
+        # when a source edit happens to accompany the configuration change.
+        tested_library_ids = library_ids(set(by_id))
+    elif root_wide:
         tested_library_ids = matched_library_ids or library_ids(set(by_id))
     else:
         tested_library_ids = library_ids(direct_ids)
@@ -573,9 +581,6 @@ def audit_steps(base_commit: str, jobs: int) -> list[dict[str, object]]:
         (
             "architecture-policy-check",
             ["python3", "tools/architecture/check_architecture.py", "check", "--self-test"],
-            # The exhaustive session ownership ratchet is an independent
-            # acceptance; a policy breach must not hide its verdict.
-            "session-persistence-ratchet",
         ),
         ("workspace-format", ["cargo", "fmt", "--all", "--check"]),
         (
@@ -642,12 +647,8 @@ def audit_steps(base_commit: str, jobs: int) -> list[dict[str, object]]:
         ),
     ]
     steps: list[dict[str, object]] = []
-    for command in commands:
-        section, argv = command[0], command[1]
-        step: dict[str, object] = {"section": section, "argv": argv}
-        if len(command) == 3:
-            step["continue_to_section_on_failure"] = command[2]
-        steps.append(step)
+    for section, argv in commands:
+        steps.append({"section": section, "argv": argv})
     argv_values = [tuple(step["argv"]) for step in steps]
     if len(set(argv_values)) != len(argv_values):
         raise ValueError("audit plan contains duplicate commands")
@@ -698,6 +699,7 @@ def validation_commands(
             path
             for path in all_paths
             if Path(path).suffix in text_suffixes or path == "tools/validation-v2"
+            or path in CARGO_CONFIG_PATHS
         )
     )
     if text_files:
@@ -745,6 +747,8 @@ def validation_commands(
         WORKFLOW_CONTRACT_SUITE, RUNNER_PATH,
     } for path in all_paths) and (repo / WORKFLOW_CONTRACT_SUITE).is_file():
         add_command(planned, ["python3", WORKFLOW_CONTRACT_SUITE])
+    if any(path in {BUILD_INPUT_DIAGNOSTIC, BUILD_INPUT_CONTRACT_SUITE} for path in all_paths):
+        add_command(planned, ["python3", BUILD_INPUT_CONTRACT_SUITE])
 
     workspace_changed = workspace is not None
     if workspace_changed:
@@ -783,7 +787,10 @@ def validation_commands(
                 ["cargo", "test", "--no-fail-fast", "--locked", "--lib", "--jobs", str(jobs), *package_args],
             )
 
-    if "architecture-checker" in groups:
+    cargo_config_changed = bool(CARGO_CONFIG_PATHS.intersection(all_paths))
+    # Cargo resolves configuration from cwd, including --manifest-path calls
+    # for these standalone tools; a root config change affects them too.
+    if "architecture-checker" in groups or cargo_config_changed:
         add_command(planned, ["cargo", "fmt", "--manifest-path", CHECKER_MANIFEST, "--", "--check"])
         command = "test" if profile == "final" else "check"
         checker = ["cargo", command, "--locked", "--manifest-path", CHECKER_MANIFEST, "--jobs", str(jobs)]
@@ -794,7 +801,7 @@ def validation_commands(
             # in seconds (#363).
             checker.extend(["--lib", "--no-fail-fast"])
         add_command(planned, checker)
-    if "wow-test-bot" in groups:
+    if "wow-test-bot" in groups or cargo_config_changed:
         add_command(
             planned,
             ["cargo", "fmt", "--manifest-path", BOT_MANIFEST, "--", "--check"],
