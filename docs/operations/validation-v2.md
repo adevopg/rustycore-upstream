@@ -26,7 +26,9 @@ permitted no-op, explicitly reported as **no checks executed**. This is not proo
 that a build or all issue-specific checks passed.
 
 `self-test` executes the separate hermetic contract suite in `tools/test_validation_v2.py`; fixture
-code is not embedded in the production runner.
+code is not embedded in the production runner. This profile does not probe or
+require the host's protoc; its tests supply fake compiler/build tools and never
+compile the server.
 
 The `quick` and `final` profiles collect committed, staged, unstaged, and untracked paths relative to the exact base
 commit. `quick` validates repository hygiene and small syntax surfaces, formats Rust once, and
@@ -389,3 +391,39 @@ profile. Do not restart an already-running equivalent validation merely for an e
 
 Publication validation and merge acceptance are distinct: neither this exception nor a green
 profile waives explicit review, capture/live acceptance, or push/merge/runtime permissions.
+
+## #1232 workflow acceptance — 2026-09-22
+
+Implementation candidate `e1190ff5c4c8b4b848daad95995224599885caba`, base
+`9daa13f663bd1e863a3efed06721c3fcb3b6cd66`, clean tracked/untracked tree, aarch64
+Neoverse-N1 host, Rust 1.98.0. Command:
+
+```bash
+PROTOC=/home/ubuntu/.local/protoc/bin/protoc VALIDATION_V2_CARGO_JOBS=1 \
+  ./tools/validation-v2 final --base origin/3.4.3 --require-changes --timings --logs
+```
+
+The pinned actionlint 1.7.12 ARM64 binary was available on PATH for this run; its
+official archive SHA-256 was checked before the campaign:
+`325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6`.
+Downloading/preparing that tool was setup, not a compilation-speed measurement.
+
+Code-acceptance campaign: **11:18:21–11:18:51 UTC (30 seconds)** including manifest
+verification and provenance readback. The runner itself took **10.321 seconds**,
+11:18:21.942–11:18:32.264, with **7/7 checks passed**, no optional skips, no failed
+attempts or repairs. Manifest:
+`target/validation-v2/manifests/20260922T111821.942954Z-2-final.json`.
+
+Covered: physical source policy (2,244 files), hygiene/Python syntax, runner
+contracts (including logging permissions/no overwrite, interruption, empty scope,
+continued ordinary failures/fatal stops and unchanged batch selection), actionlint
+for both workflows, and hermetic workflow/base ancestry/injection/empty-tree tests.
+The independent collaborator wrote the CI changes without running a separate
+campaign; the parent validated the integrated candidate once.
+
+No production Rust changed or compiled. This evidence does **not** claim a faster
+full Rust build, a hosted workflow run, exhaustive audit/live QA, or resolution of
+the pre-existing global hotspot debt. No architecture ceiling, trust boundary,
+compiler profile, gameplay or runtime service changed. The documentation-only
+evidence delta after this candidate uses the reuse rule above; it must not be
+reported as a rerun of this manifest at a later SHA.
