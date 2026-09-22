@@ -14,6 +14,17 @@ Run it through its single entry point:
 ./tools/validation-v2 audit --base origin/3.4.3
 ```
 
+For a completed nonempty delivery, retain diagnostics in the same campaign:
+
+```bash
+./tools/validation-v2 final --base origin/3.4.3 --require-changes --timings --logs
+```
+
+`--require-changes` rejects an empty changed-path scope in `quick`/`final` rather
+than presenting it as acceptance. Without that flag, an empty scope remains a
+permitted no-op, explicitly reported as **no checks executed**. This is not proof
+that a build or all issue-specific checks passed.
+
 `self-test` executes the separate hermetic contract suite in `tools/test_validation_v2.py`; fixture
 code is not embedded in the production runner.
 
@@ -32,6 +43,22 @@ ownership, capture and live checks whose acceptance is not covered. A changed ca
 failed check needs renewed affected evidence; a new agent, commit message, or handoff does not
 by itself require recompiling unchanged inputs. Do not use repeated compiler runs to discover
 consumers or drive one-field-at-a-time replacements.
+
+Cargo test batches use `--no-fail-fast`: a failing test binary does not hide the
+remaining selected suites. This neither adds packages/features nor suppresses a
+failure. Preserve the batch's package/target/feature selection when investigating
+or rerunning it: dropping a `-p` can alter unified dependency features and rebuild
+already compiled libraries. The failed-command message and manifest retain the
+original argv; the runner never automatically retries or reuses an older verdict.
+
+When a known ordinary gate failure would otherwise force manually reconstructing
+the remaining acceptance, `final --keep-going` collects the planned checks in one
+invocation. It records `failure_policy: collect-independent` and remains **failed**
+if any check fails. Timeout, OOM, signals, interrupted execution and lost command
+logging stop this mode immediately. Default fail-fast behavior and explicit
+ownership continuations remain unchanged without this flag. This option is not a
+waiver, a publication pass, or permission to refresh policy ceilings; do not repeat
+an unchanged red campaign or continue resource failures merely to gather output.
 
 When acceptance requires architecture policy checks, their fixtures and syntax ownership,
 use one measured campaign:
@@ -88,7 +115,11 @@ remain the responsibility of the active issue; the profile does not discover eve
 The generated `world-modules` launcher declares `test = false`: Cargo's explicit `--all-targets`
 override is therefore excluded for that package, and the real launcher is compiled separately
 with `cargo check -p world-modules`. Every
-step has an owner name in the manifest and stops the audit immediately on failure. It never starts
+step has an owner name in the manifest. Architecture policy and fixtures use one
+`check_architecture.py check --self-test` invocation, preserving their union and
+dependency checks without scanning the same policy twice. A red combined policy
+step retains the declared continuation through the independent session/persistence
+ratchet, then returns the first failure; other failures stop immediately. It never starts
 services, connects to a database, records a fresh capture, regenerates a baseline, invokes Codex,
 or calls either legacy wrapper. Those mutating or live operations require their own explicit QA
 procedure.
@@ -141,7 +172,8 @@ provenance, dirty state, kernel, timings, command results, signals, failure kind
 deltas, resource limits, and peak child RSS. It
 also records the resolved base, complete changed-path set, path classes, direct workspace packages,
 reverse-dependent closure, metadata outcome, optional-linter omissions, and exact command plan. It
-does not record the environment or command output. Set `VALIDATION_V2_MANIFEST` to choose a result
+does not record the environment or command output. Optional `--logs` stores command
+output separately, as described below. Set `VALIDATION_V2_MANIFEST` to choose a result
 path. Timestamps, durations, peak RSS, PIDs, and explicitly selected result paths naturally vary;
 the profile, provenance, resource policy, routing, command declarations, statuses, and exit
 semantics are stable for an unchanged checkout.
@@ -178,9 +210,11 @@ test "$(sha256sum "$validation_evidence_dir"/*.norm | awk '{print $1}' | sort -u
 ```
 
 Twenty isolated GitHub runs are the `Validation determinism` workflow: a 20-job matrix on
-independent hosts, each running one profile, verifying its manifest and uploading the normalised
+independent hosts, each running the hermetic `self-test` profile, verifying its manifest and uploading the normalised
 form, followed by a job that fails with a diff unless all twenty hash identically. It is
-`workflow_dispatch` only — evidence, not a gate.
+`workflow_dispatch` only — evidence, not a gate. It does not offer `quick`/`final`,
+which require project-specific offline Cargo and pinned protoc preparation and
+are not hermetic twenty-run orchestration fixtures.
 
 ## Fresh clone
 
@@ -284,7 +318,23 @@ pause new builds and report the concrete storage need while continuing safe insp
 
 Invoke the runner directly so its progress and real exit status remain visible. Never pipe
 validation into `tail`, `head`, or `grep` and treat the consumer's status as success. To retain
-output, redirect to a log, preserve the runner's exit code, then inspect that log separately.
+output, prefer `--logs` or redirect to a log, preserve the runner's exit code, then
+inspect that log separately.
+
+`--logs` creates `<manifest-stem>-logs/` beside the manifest, with mode 0700, and
+one mode-0600 file per executed command. Each starts with the exact argv and start
+time followed by combined stdout/stderr; numbered filenames identify the planned
+section. Output still streams normally. No environment is dumped. Existing log
+directories/files, including symlinks, are rejected rather than overwritten.
+Use a fresh `VALIDATION_V2_MANIFEST` path for each logged invocation. A log I/O
+failure cannot yield a green run (`failure_kind: output-log`). Logs survive test
+failure and interruption; absence/truncation of a manifest remains a failed run.
+
+Logs are opt-in because command output can contain sensitive data: keep private
+logs local, inspect before sharing, and never stage them. Hosted Rust CI enables
+logs/timings for its non-live checks and uploads only the explicit manifest/log
+directory and Cargo timing HTMLs, never the whole target or local configuration.
+Do not run a suite again solely because the interactive output was truncated.
 
 The agent tool's foreground wait is independent of the runner's per-command timeout. When
 Claude or another harness returns a background task ID after a wait expires, keep tracking
@@ -311,7 +361,11 @@ and locked Cargo inputs, then invokes this same executable once. External pull r
 bounded `final` profile against the exact pull-request base SHA. First-party pull requests are
 skipped and do not wait for hosted validation. Pushes to `3.4.3`, the weekly schedule, and explicit
 `audit` dispatches run the exhaustive profile on an independent GitHub host. Every hosted run
-uploads the manifest even on failure; signals and timeouts therefore cannot become silent passes.
+uploads the manifest and diagnostic artifacts even on failure; signals and timeouts
+therefore cannot become silent passes. Manually dispatched `final` requires an explicit
+base resolving to a strict ancestor of the checked-out SHA, checked before expensive
+toolchain/dependency setup. It also uses `--require-changes`; a same-tree or empty
+diff cannot masquerade as completed acceptance. PRs retain their exact event base.
 Repository-level Actions concurrency serializes audits, while superseded external-PR final runs
 are cancelled.
 

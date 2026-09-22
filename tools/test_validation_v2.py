@@ -111,6 +111,26 @@ def test_runner_contract(repo: Path, tools: Path, base_env: dict[str, str], dire
     assert success["plan"]["workspace"] is None
     assert len(success["commands"]) == 2
     assert all(command["status"] == "passed" for command in success["commands"])
+    logged_manifest = directory / "logged.json"
+    logged_result = invoke("quick", logged_manifest, flags=["--logs"])
+    assert logged_result.returncode == 0, logged_result.stderr
+    logged = json.loads(logged_manifest.read_text())
+    assert stable_manifest(logged) == stable_manifest(success)
+    log_directory = directory / "logged-logs"
+    assert log_directory.stat().st_mode & 0o777 == 0o700
+    logs = sorted(log_directory.glob("*.log"))
+    assert len(logs) == len(logged["commands"])
+    for log, command in zip(logs, logged["commands"]):
+        assert log.stat().st_mode & 0o777 == 0o600
+        assert json.loads(log.read_text().splitlines()[0])["argv"] == command["argv"]
+    retained = [log.read_bytes() for log in logs]
+    repeated_log = invoke("quick", logged_manifest, flags=["--logs"])
+    assert repeated_log.returncode != 0  # Never overwrite earlier evidence.
+    assert [log.read_bytes() for log in logs] == retained
+    assert "command logs" in logged_result.stdout
+    for mode, flag in (("quick", "--keep-going"), ("audit", "--require-changes"), ("verify", "--logs")):
+        invalid_option = invoke(mode, directory / "invalid-option.json", flags=[flag])
+        assert invalid_option.returncode == runner.USAGE_ERROR
     stable_success = stable_manifest(success)
     for run in range(2, 11):
         repeated_manifest = directory / f"success-{run}.json"
@@ -193,7 +213,10 @@ def test_runner_contract(repo: Path, tools: Path, base_env: dict[str, str], dire
     # heavy lock is free decides how far it gets. Only the recorded budget is
     # this test's business.
     audit_manifest = directory / "audit-timeout.json"
-    invoke("audit", audit_manifest)
+    audit_bin = directory / "audit-bin"
+    audit_bin.mkdir()
+    fake_tool(audit_bin / "cargo", "exit 0\n")
+    invoke("audit", audit_manifest, {"PATH": f"{audit_bin}:{base_env['PATH']}"})
     if audit_manifest.exists():
         recorded = json.loads(audit_manifest.read_text())
         assert recorded["resources"]["command_timeout_seconds"] == runner.AUDIT_TIMEOUT
@@ -435,7 +458,7 @@ def test_interrupt_and_verdict_contract(
     environment["VALIDATION_V2_MANIFEST"] = str(manifest)
     environment["VALIDATION_V2_TIMEOUT_SECONDS"] = "60"
     process = subprocess.Popen(
-        [str(tools / "validation-v2"), "quick", "--base", "HEAD"],
+        [str(tools / "validation-v2"), "quick", "--base", "HEAD", "--logs"],
         cwd=repo,
         env=environment,
         text=True,
@@ -472,6 +495,8 @@ def test_interrupt_and_verdict_contract(
     assert last["failure_kind"] == "interrupted"
     assert last["status"] == "failed"
     assert last["argv"][0] == "actionlint"
+    interrupted_logs = directory / "interrupted-logs"
+    assert any("VALIDATION_V2_CHILD_READY" in log.read_text() for log in interrupted_logs.glob("*.log"))
     workflow.unlink()
     (fake_bin / "actionlint").unlink()
 
@@ -565,6 +590,7 @@ def test_planner_contract(repo: Path) -> None:
     assert all(package in final_check for package in ("a", "b", "c"))
     final_test = next(command for command in final if command[:2] == ["cargo", "test"])
     assert "a" in final_test and "b" not in final_test and "c" not in final_test
+    assert "--no-fail-fast" in final_test  # Same package/feature batch after a test failure.
     ratchet = ["python3", "tools/architecture/check_architecture.py", "hotspot-ratchet"]
     assert ratchet in final and ratchet not in quick
     physical = ["python3", "tools/architecture/check_architecture.py", "physical-files"]
@@ -626,6 +652,12 @@ def test_planner_contract(repo: Path) -> None:
             repo, "final", 2, "base", harness_groups, None
         )
         assert ["python3", "tools/test_validation_v2.py"] in harness_commands, harness_commands
+    workflow_suite = repo / runner.WORKFLOW_CONTRACT_SUITE
+    workflow_suite.write_text("fixture\n")
+    for changed in ([runner.WORKFLOW_CONTRACT_SUITE], [runner.RUNNER_PATH],
+                    [".github/workflows/rust-ci.yml"], [".github/workflows/validation-determinism.yml"]):
+        planned, _ = runner.validation_commands(repo, "final", 1, "base", runner.grouped_paths(changed), None)
+        assert ["python3", runner.WORKFLOW_CONTRACT_SUITE] in planned
 
     docs_commands, _ = runner.validation_commands(
         repo, "quick", 2, "base", runner.grouped_paths(["docs/guide.md"]), None
@@ -655,7 +687,6 @@ def test_planner_contract(repo: Path) -> None:
     assert not any("--skip" in step["argv"] for step in audit), audit
     assert [step["section"] for step in audit] == [
         "diff-hygiene",
-        "architecture-policy-self-test",
         "architecture-policy-check",
         "workspace-format",
         "handler-contract-format",
@@ -671,6 +702,9 @@ def test_planner_contract(repo: Path) -> None:
     ]
     policy_step = next(step for step in audit if step["section"] == "architecture-policy-check")
     assert policy_step["continue_to_section_on_failure"] == "session-persistence-ratchet"
+    assert policy_step["argv"] == ["python3", "tools/architecture/check_architecture.py", "check", "--self-test"]
+    assert sum("check_architecture.py" in " ".join(step["argv"]) for step in audit) == 1
+    assert all("--no-fail-fast" in step["argv"] for step in audit if step["argv"][:2] == ["cargo", "test"])
     assert not any("check_architecture.py" in " ".join(command) for command in quick)
     assert not any("session-ownership-check" in " ".join(command) for command in final)
 
@@ -796,6 +830,11 @@ def test_cargo_target_contract(
     default = effective(None)
     assert default["CARGO_TARGET_DIR"] == str(repository / "target")
     assert default["CARGO_BUILD_JOBS"] == "1"
+    with patch.dict(os.environ, base_env, clear=True), patch.object(
+        runner, "resolve_protoc", side_effect=AssertionError("self-test must not probe host protoc")
+    ):
+        hermetic = runner.command_environment(repo, 1, resolve_protobuf=False)
+    assert "PROTOC" not in hermetic
     probe(None, repository / "target", "default")
 
     for blank_value in ("", "   "):
@@ -893,6 +932,80 @@ def test_timing_plan_contract() -> None:
             assert after == before
 
 
+def test_empty_scope_contract(repo: Path, tools: Path, environment: dict[str, str], directory: Path) -> None:
+    for profile in ("quick", "final"):
+        manifest = directory / f"empty-{profile}.json"
+        result = subprocess.run(
+            [str(tools / "validation-v2"), profile, "--base", "HEAD", "--require-changes"],
+            cwd=repo, env={**environment, "VALIDATION_V2_MANIFEST": str(manifest)},
+            capture_output=True, text=True,
+        )
+        assert result.returncode == runner.USAGE_ERROR, (result.stdout, result.stderr)
+        recorded = json.loads(manifest.read_text())
+        assert "empty validation scope" in recorded["runner_error"]
+        assert recorded["commands"] == []
+        assert recorded["plan"]["require_changes"] is True
+        assert runner.manifest_problems(recorded)
+    result = subprocess.run(
+        [str(tools / "validation-v2"), "quick", "--base", "HEAD"], cwd=repo,
+        env={**environment, "VALIDATION_V2_MANIFEST": str(directory / "empty-allowed.json")},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "NO CHANGED PATHS" in result.stdout
+
+
+def test_evidence_contract(repo: Path, environment: dict[str, str], directory: Path) -> None:
+    logs = runner.create_log_directory(directory / "evidence.json")
+    steps = [
+        {"section": "first", "argv": [sys.executable, "-c", "print('first output'); raise SystemExit(19)"]},
+        {"section": "second", "argv": [sys.executable, "-c", "print('second output'); raise SystemExit(23)"]},
+        {"section": "third", "argv": [sys.executable, "-c", "print('last output')"]},
+    ]
+    results, code = runner.run_steps(repo, steps, environment, 30, log_directory=logs, keep_going=True)
+    assert code == 19
+    assert [r["status"] for r in results] == ["failed", "failed", "passed"]
+    for index, (step, message) in enumerate(zip(steps, ("first output", "second output", "last output")), 1):
+        log = logs / f"{index:02d}-{step['section']}.log"
+        contents = log.read_text()
+        assert message in contents
+        assert json.loads(contents.splitlines()[0])["argv"] == step["argv"]
+    # No caller may turn a diagnostic red run into a green manifest.
+    assert runner.manifest_problems({"schema": runner.MANIFEST_SCHEMA, "runner": "rustycore-validation-v2",
+                                    "status": "passed", "exit_code": 0, "commands": results,
+                                    "plan": {"planned_steps": steps}})
+    for reason in ("oom", "timeout", "signal", "child-signal", "interrupted", "output-log"):
+        def fatal(*args, sink=None, **kwargs):
+            outcome = {"status": "failed", "exit_code": 137, "failure_kind": reason, "duration_seconds": 0}
+            sink.append(outcome)
+            return outcome
+        with patch.object(runner, "run_one", side_effect=fatal):
+            results, code = runner.run_steps(repo, steps, environment, 30, keep_going=True)
+        assert code == 137 and len(results) == 1, reason
+    # Logs reject symlink/stale targets rather than truncating arbitrary files.
+    sentinel = directory / "sentinel.txt"
+    sentinel.write_text("preserve")
+    link = logs / "symlink.log"
+    link.symlink_to(sentinel)
+    try:
+        runner.run_one(repo, [sys.executable, "-c", "pass"], environment, 30, log_path=link)
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("log symlink was accepted")
+    assert sentinel.read_text() == "preserve"
+    # A logging I/O failure is non-green even when the child succeeds.
+    original_tee = runner.tee_output
+    def broken_log(stream, reports, log, errors):
+        original_tee(stream, reports, None, errors)
+        errors.append("fixture log full")
+    with patch.object(runner, "tee_output", side_effect=broken_log):
+        result = runner.run_one(repo, [sys.executable, "-c", "pass"], environment, 30,
+                                log_path=logs / "full.log")
+    assert result["status"] == "failed" and result["failure_kind"] == "output-log"
+    assert runner.failed_exit_code(result) == runner.RUNNER_ERROR
+
+
 def main() -> None:
     test_architecture_plan_contract()
     test_timing_plan_contract()
@@ -920,6 +1033,8 @@ def main() -> None:
         environment.pop("VALIDATION_V2_CARGO_JOBS", None)
         environment.pop("PROTOC", None)
         environment["VALIDATION_V2_LOCK_DIR"] = str(directory / "locks")
+        test_empty_scope_contract(repo, tools, environment, directory)
+        test_evidence_contract(repo, environment, directory)
         test_cargo_target_contract(repo, environment, directory)
         test_runner_contract(repo, tools, environment, directory)
         test_interrupt_and_verdict_contract(repo, tools, environment, directory, fake_bin)

@@ -26,7 +26,7 @@ this document is only the trust policy around it.
 
 ```bash
 ./tools/validation-v2 quick --base origin/3.4.3   # bounded acceptance / documentation delta
-./tools/validation-v2 final --base origin/3.4.3   # before publishing the final commit
+./tools/validation-v2 final --base origin/3.4.3 --require-changes --timings --logs
 ./tools/validation-v2 audit --base origin/3.4.3   # explicit exhaustive budget
 ```
 
@@ -52,7 +52,10 @@ CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 \
 
 Validation commands must expose their real exit status. Do not append `| head`, `| grep`,
 `; echo EXIT=$?`, or another pipeline that can turn a failed checker into a reported success. If
-output must be retained, redirect it to a log and check the validator's own exit code.
+output must be retained, use `--logs` (private command logs beside the manifest) or
+redirect it to a log and check the validator's own exit code. Keep the original
+package/feature selection when investigating a failure; see the canonical runner
+guide for `--no-fail-fast` batches and explicit, still-red `--keep-going` diagnostics.
 
 Choose this focused run when its evidence is missing or a failure needs investigation; do not
 rerun it merely because the same cases ran in `final`'s complete library suite. The runner
