@@ -86,8 +86,10 @@ For protocol, gameplay, database, lifetime, persistence and runtime behavior:
 5. Update the owning checkpoint/acceptance with exact source anchors, code targets, command,
    SHA, result and remaining boundary. Existing inventory gaps may be closed only with real
    implementation evidence; no new #NEXT row or percentage calculation for every helper.
-6. Validate proportionally and commit coherent validated changes on the issue branch.
-   Continue remaining authorized work; publication retains its own gate.
+6. Keep coherent changes and local checkpoints; under level 1 they may be explicitly
+   unvalidated. Validate proportionally during the explicit completed-delivery acceptance
+   and commit coherent validated changes on the issue branch before publication or issue
+   completion. Continue remaining authorized work; publication retains its own gate.
 
 Audit behavior against the relevant versioned C++ paths and appropriate real captures.
 The user approved AzerothCore as a complementary source for missing or suspect gameplay in
@@ -153,11 +155,39 @@ they are not separate frozen architecture snapshots.
 ## Validation
 
 Implement the complete authorized delivery first, including its tests and consumers;
-then run affected acceptance tests, applicable QA and publication validation. During
-implementation use inspection, not CI, builds or test runs per internal change or
-worker handoff. At final acceptance, fix findings and rerun affected evidence as needed.
-An explicit user request for an earlier diagnostic run remains authoritative.
-Do not claim unexecuted evidence as passing.
+then run affected acceptance tests, applicable QA and publication validation when the
+explicit acceptance campaign begins. During implementation use the default level-1
+working mode: continue writing tests and coherent local checkpoints, but do not run
+automatic validation at internal boundaries or at the end of local implementation.
+Report implementation/unvalidated work separately from accepted evidence. At final
+acceptance, fix findings and rerun affected evidence as needed. An explicit user
+request for an earlier diagnostic run remains authoritative. Do not claim unexecuted
+evidence as passing.
+
+### Local development levels
+
+The default working command is `./tools/validation-v2` with no profile. It selects
+canonical profile `none` (numeric alias `1`), prints **NOT VALIDATED**, performs no
+Git, Rust, `protoc`, metadata (including Cargo metadata), lock or check command, writes no acceptance
+manifest, and exits `0` only as an acknowledgement. That exit is not validation.
+
+Level `2` (`quick`) is the bounded hygiene pass: Git diff/whitespace checks, changed
+shell/JSON/Python syntax, optional `actionlint`, and `cargo fmt` for routed workspace
+or standalone tools. Cargo fmt may inspect manifests, but level 2 does not run
+`cargo check`, `cargo test`, `cargo build`, `cargo run`, locked dependency metadata,
+the protobuf probe, or self-test/architecture/contract suites.
+
+Level `3` (`final`) preserves the current final acceptance. Required architecture,
+production-integration, capture and live evidence remains scope-dependent and is not
+silently replaced by the level alias. `audit` and `self-test` remain expert explicit
+commands, not additional daily levels. When a consumer needs final evidence, use
+`./tools/validation-v2 verify --manifest <path> --require-profile final` (or another
+explicit canonical profile) so a level-2 manifest cannot be accepted as final.
+
+The full required acceptance remains necessary before an authorized publication or
+issue completion. Push, merge, runtime and hosted-CI authority are unchanged. No
+validation level permits fabricating parity, ignoring source contracts or closing an
+issue without its required evidence.
 
 The user's ordinary local acceptance budget is ten minutes for the complete campaign,
 including the required additional checks, on this host with the active warm cache.
@@ -197,15 +227,15 @@ Use [validation-v2](docs/operations/validation-v2.md) and
 [local-first development](docs/operations/local-first-development.md) for the actual profiles.
 
 ~~~bash
-export PROTOC=/home/ubuntu/.local/protoc/bin/protoc
-export CARGO_BUILD_JOBS=1
-export CARGO_TARGET_DIR="$PWD/target"
-cargo check -p world-server
-cargo test -p wow-world <focused-test> --lib
-cargo fmt --all -- --check
-git diff --check
-./tools/validation-v2 quick --base origin/3.4.3
+./tools/validation-v2                              # level 1 / none: acknowledgement only
+./tools/validation-v2 2 --base origin/3.4.3       # quick hygiene
+./tools/validation-v2 3 --base origin/3.4.3       # final acceptance
 ~~~
+
+At completed-delivery acceptance, select the real library/binary/integration target
+and set `PROTOC`, `CARGO_BUILD_JOBS=1` and the per-worktree `CARGO_TARGET_DIR` for
+any required direct Cargo checks or tests. Level 2 does not run those Cargo checks;
+level 3/final and the issue-specific acceptance campaign do.
 
 Choose the real library/binary/integration target; do not assume every crate has a library.
 Run affected production-linked integration targets explicitly when required; library tests

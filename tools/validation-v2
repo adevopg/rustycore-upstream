@@ -35,6 +35,7 @@ DEFAULT_TIMEOUT = 900
 # so the ordinary per-command budget cannot be the audit's.
 AUDIT_TIMEOUT = 3600
 DEFAULT_BASE = "origin/3.4.3"
+LEVEL_PROFILES = {"1": "none", "2": "quick", "3": "final"}
 DEFAULT_HEAVY_LOCK = "/tmp/rustycore-validation-v2-heavy.lock"
 RUNNER_PATH = "tools/validation-v2"
 RUNNER_CONTRACT_SUITE = "tools/test_validation_v2.py"
@@ -665,7 +666,7 @@ def validation_commands(
 ) -> tuple[list[list[str]], list[str]]:
     planned: list[list[str]] = []
     optional_skips: list[str] = []
-    if not groups:
+    if profile == "none" or not groups:
         return planned, optional_skips
     add_command(planned, ["git", "diff", "--check", base_commit])
     existing = lambda paths: [path for path in paths if (repo / path).is_file()]
@@ -675,19 +676,19 @@ def validation_commands(
     # invokes Cargo or the exhaustive persistence inventory.
     if profile == "final":
         add_command(planned, ["python3", "tools/architecture/check_architecture.py", "physical-files"])
-    if any(path in {
+    if profile == "final" and any(path in {
         "tools/architecture/physical_files.py",
         "tools/architecture/test_physical_files.py",
         "tools/architecture/physical-file-policy.json",
     } for path in all_paths):
         add_command(planned, ["python3", "-m", "unittest", "discover", "-s", "tools/architecture", "-p", "test_physical_files.py"])
-    if any(path in {
+    if profile == "final" and any(path in {
         "tools/architecture/check_architecture.py",
         "tools/architecture/architecture_common.py",
         "tools/architecture/hotspot_metrics.py",
     } for path in all_paths):
         add_command(planned, ["python3", "tools/architecture/check_architecture.py", "self-test"])
-    if any(path in {
+    if profile == "final" and any(path in {
         "tools/architecture/check_architecture.py",
         "tools/architecture/test_check_architecture.py",
         "tools/architecture/hotspot_metrics.py",
@@ -730,7 +731,7 @@ def validation_commands(
         # Changing the gate must run the gate's own contract suite. A syntax
         # check is what let #364 — a plan that compiled the workspace and tested
         # nothing — be written here in the first place.
-        if any(path in {RUNNER_PATH, RUNNER_CONTRACT_SUITE} for path in python_files) and (
+        if profile == "final" and any(path in {RUNNER_PATH, RUNNER_CONTRACT_SUITE} for path in python_files) and (
             repo / RUNNER_CONTRACT_SUITE
         ).exists():
             add_command(planned, ["python3", RUNNER_CONTRACT_SUITE])
@@ -742,13 +743,24 @@ def validation_commands(
             optional_skips.append("actionlint is unavailable; workflow syntax was not validated")
         else:
             optional_skips.append("all changed workflow files were deleted; no syntax input remains")
-    if any(path in {
+    if profile == "final" and any(path in {
         ".github/workflows/rust-ci.yml", ".github/workflows/validation-determinism.yml",
         WORKFLOW_CONTRACT_SUITE, RUNNER_PATH,
     } for path in all_paths) and (repo / WORKFLOW_CONTRACT_SUITE).is_file():
         add_command(planned, ["python3", WORKFLOW_CONTRACT_SUITE])
-    if any(path in {BUILD_INPUT_DIAGNOSTIC, BUILD_INPUT_CONTRACT_SUITE} for path in all_paths):
+    if profile == "final" and any(path in {BUILD_INPUT_DIAGNOSTIC, BUILD_INPUT_CONTRACT_SUITE} for path in all_paths):
         add_command(planned, ["python3", BUILD_INPUT_CONTRACT_SUITE])
+
+    if profile == "quick":
+        # Iteration feedback only: Cargo fmt may inspect manifests, but never
+        # resolve/build the dependency graph or run project/checker test suites.
+        if "workspace-rust" in groups or "workspace-root" in groups:
+            add_command(planned, ["cargo", "fmt", "--all", "--check"])
+        config_changed = bool(CARGO_CONFIG_PATHS.intersection(all_paths))
+        for group, manifest in (("architecture-checker", CHECKER_MANIFEST), ("wow-test-bot", BOT_MANIFEST)):
+            if group in groups or config_changed:
+                add_command(planned, ["cargo", "fmt", "--manifest-path", manifest, "--", "--check"])
+        return planned, optional_skips
 
     workspace_changed = workspace is not None
     if workspace_changed:
@@ -860,7 +872,7 @@ def build_plan(
         }
     workspace: dict[str, object] | None = None
     metadata_outcome: dict[str, object] | None = None
-    if "workspace-rust" in groups or "workspace-root" in groups:
+    if profile == "final" and ("workspace-rust" in groups or "workspace-root" in groups):
         metadata, metadata_outcome = cargo_metadata(repo, environment, timeout)
         workspace = affected_workspace(repo, paths, groups, metadata)
     planned, optional_skips = validation_commands(
@@ -870,7 +882,8 @@ def build_plan(
         {"section": f"path-{index:02d}", "argv": command}
         for index, command in enumerate(planned, start=1)
     ]
-    require_protoc_for(steps, environment)
+    if profile != "quick":
+        require_protoc_for(steps, environment)
     return {
         "base_input": base,
         "base_commit": base_commit,
@@ -1271,7 +1284,7 @@ def manifest_problems(document: object) -> list[str]:
     return problems
 
 
-def verify_manifest(path: Path) -> int:
+def verify_manifest(path: Path, required_profile: str | None = None) -> int:
     """A missing, unreadable, or non-green manifest is a failed run."""
     try:
         raw = path.read_text(encoding="utf-8")
@@ -1284,11 +1297,15 @@ def verify_manifest(path: Path) -> int:
     except json.JSONDecodeError as error:
         return fail(f"manifest {path} is not valid JSON: {error}", VERDICT_ERROR)
     problems = manifest_problems(document)
+    if isinstance(document, dict) and required_profile is not None and document.get("profile") != required_profile:
+        problems.append(f"profile is {document.get('profile')!r}; required {required_profile!r}")
     if problems:
         for problem in problems:
             print(f"validation-v2: {path}: {problem}", file=sys.stderr)
         return VERDICT_ERROR
-    print(f"validation-v2: manifest {path} verified green")
+    print(f"validation-v2: manifest {path} verified green for profile {document.get('profile')}")
+    if document.get("profile") == "quick":
+        print("validation-v2: LEVEL 2 / ITERATION ONLY: not final acceptance")
     return 0
 
 
@@ -1312,7 +1329,9 @@ def normalise_to_stdout(path: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="tools/validation-v2")
     parser.add_argument(
-        "profile", choices=("self-test", "quick", "final", "audit", "verify", "normalize")
+        "profile", nargs="?", default="none",
+        choices=("1", "2", "3", "none", "self-test", "quick", "final", "audit", "verify", "normalize"),
+        help="1/none (default): no checks; 2/quick: syntax/format only; 3/final: scoped acceptance",
     )
     parser.add_argument("--base", default=DEFAULT_BASE)
     parser.add_argument("--logs", action="store_true",
@@ -1332,7 +1351,19 @@ def main() -> int:
     parser.add_argument(
         "--manifest", help="manifest for the verify and normalize profiles"
     )
+    parser.add_argument("--require-profile", choices=("self-test", "quick", "final", "audit"),
+                        help="verify only: reject evidence from a different profile")
     args = parser.parse_args()
+    args.profile = LEVEL_PROFILES.get(args.profile, args.profile)
+    if args.require_profile and args.profile != "verify":
+        return fail("--require-profile is only valid with verify")
+    if args.profile == "none":
+        if any((args.logs, args.require_changes, args.keep_going, args.architecture, args.timings, args.manifest)):
+            return fail("level 1/none does not run checks or produce evidence; select level 2 or 3 for validation options")
+        # Deliberately before provenance, toolchain/protoc probes, Git, locks or
+        # manifests. Exit 0 acknowledges this choice; it is not a passing gate.
+        print("validation-v2: LEVEL 1 / NOT VALIDATED: no checks executed; no acceptance manifest produced")
+        return 0
     if args.logs and args.profile not in {"self-test", "quick", "final", "audit"}:
         return fail("--logs is only valid with self-test, quick, final or audit")
     if args.require_changes and args.profile not in {"quick", "final"}:
@@ -1347,7 +1378,7 @@ def main() -> int:
         if not args.manifest:
             return fail(f"{args.profile} requires --manifest")
         if args.profile == "verify":
-            return verify_manifest(Path(args.manifest))
+            return verify_manifest(Path(args.manifest), args.require_profile)
         return normalise_to_stdout(Path(args.manifest))
     if args.manifest:
         return fail("--manifest is only valid with the verify and normalize profiles")
@@ -1413,7 +1444,9 @@ def main() -> int:
         log_directory = create_log_directory(path) if args.logs else None
         if log_directory is not None:
             print(f"validation-v2: command logs {log_directory}", flush=True)
-        environment = command_environment(repo, jobs, resolve_protobuf=args.profile != "self-test")
+        environment = command_environment(repo, jobs, resolve_protobuf=args.profile in {"final", "audit"})
+        if args.profile == "quick":
+            print("validation-v2: LEVEL 2 / ITERATION ONLY: syntax/format; no compilation, tests or final acceptance", flush=True)
         print(
             f"validation-v2: cargo target={environment['CARGO_TARGET_DIR']} jobs={jobs}",
             flush=True,

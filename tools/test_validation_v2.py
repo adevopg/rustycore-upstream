@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import io
 import importlib.machinery
 import importlib.util
 import json
@@ -17,6 +18,7 @@ import sys
 import tempfile
 import threading
 import time
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 
@@ -61,6 +63,23 @@ def synthetic_metadata(repo: Path) -> dict[str, object]:
 def stable_manifest(value: object) -> object:
     """The runner owns the comparison form; the fixture must not keep a rival copy."""
     return runner.normalise_manifest(value)
+
+
+def test_no_validation_level() -> None:
+    for arguments in ([], ["none"], ["1"]):
+        captured = io.StringIO()
+        with patch.object(sys, "argv", ["validation-v2", *arguments]), \
+             patch.object(runner, "provenance", side_effect=AssertionError("level 1 must not inspect Git/Rust")), \
+             patch.object(runner, "command_environment", side_effect=AssertionError("level 1 must not probe tools")), \
+             patch.object(runner, "acquire_lock", side_effect=AssertionError("level 1 must not acquire locks")), \
+             patch.object(runner, "write_manifest", side_effect=AssertionError("level 1 must not produce evidence")), \
+             redirect_stdout(captured):
+            assert runner.main() == 0
+        assert "NOT VALIDATED" in captured.getvalue()
+        assert "no acceptance manifest" in captured.getvalue()
+    for option in ("--logs", "--require-changes", "--keep-going", "--architecture", "--timings"):
+        with patch.object(sys, "argv", ["validation-v2", "1", option]):
+            assert runner.main() == runner.USAGE_ERROR
 
 
 def test_runner_contract(repo: Path, tools: Path, base_env: dict[str, str], directory: Path) -> None:
@@ -111,6 +130,11 @@ def test_runner_contract(repo: Path, tools: Path, base_env: dict[str, str], dire
     assert success["plan"]["workspace"] is None
     assert len(success["commands"]) == 2
     assert all(command["status"] == "passed" for command in success["commands"])
+    alias_manifest = directory / "level-two.json"
+    alias_result = invoke("2", alias_manifest, {"PROTOC": "/must-not-be-probed"})
+    assert alias_result.returncode == 0, alias_result.stderr
+    assert "ITERATION ONLY" in alias_result.stdout
+    assert json.loads(alias_manifest.read_text())["profile"] == "quick"
     logged_manifest = directory / "logged.json"
     logged_result = invoke("quick", logged_manifest, flags=["--logs"])
     assert logged_result.returncode == 0, logged_result.stderr
@@ -546,6 +570,14 @@ def test_interrupt_and_verdict_contract(
     assert result.returncode == 0, result.stderr
     accepted = verify(green_manifest)
     assert accepted.returncode == 0, accepted.stderr
+    assert runner.verify_manifest(green_manifest, "quick") == 0
+    assert runner.verify_manifest(green_manifest, "final") == runner.VERDICT_ERROR
+    guarded = subprocess.run(
+        [str(tools / "validation-v2"), "verify", "--manifest", str(green_manifest), "--require-profile", "final"],
+        cwd=repo, env=base_env, text=True, capture_output=True,
+    )
+    assert guarded.returncode == runner.VERDICT_ERROR
+    assert "required 'final'" in guarded.stderr
 
     green = json.loads(green_manifest.read_text())
     unreadable = directory / "unreadable.json"
@@ -600,8 +632,8 @@ def test_planner_contract(repo: Path) -> None:
     }
     quick, _ = runner.validation_commands(repo, "quick", 2, "base", one_crate_groups, workspace)
     final, _ = runner.validation_commands(repo, "final", 2, "base", one_crate_groups, workspace)
-    assert any(command[:5] == ["cargo", "check", "--locked", "--tests", "--jobs"] for command in quick)
-    assert not any(command[:2] == ["cargo", "test"] for command in quick)
+    assert ["cargo", "fmt", "--all", "--check"] in quick
+    assert all(command[0] != "cargo" or command[1] == "fmt" for command in quick)
     final_check = next(command for command in final if command[:2] == ["cargo", "check"])
     assert all(package in final_check for package in ("a", "b", "c"))
     final_test = next(command for command in final if command[:2] == ["cargo", "test"])
@@ -620,8 +652,8 @@ def test_planner_contract(repo: Path) -> None:
         assert physical in only_final, changed
         assert ratchet not in only_final, changed
     physical_groups = runner.grouped_paths(["tools/architecture/physical-file-policy.json"])
-    physical_quick, _ = runner.validation_commands(repo, "quick", 2, "base", physical_groups, None)
-    assert ["python3", "-m", "unittest", "discover", "-s", "tools/architecture", "-p", "test_physical_files.py"] in physical_quick
+    physical_final, _ = runner.validation_commands(repo, "final", 2, "base", physical_groups, None)
+    assert ["python3", "-m", "unittest", "discover", "-s", "tools/architecture", "-p", "test_physical_files.py"] in physical_final
     assert len({tuple(command) for command in final}) == len(final)
 
     # A root-wide path widens the check to the whole workspace. It must not
@@ -645,7 +677,7 @@ def test_planner_contract(repo: Path) -> None:
             assert config_workspace == {**root_workspace, "direct_library_packages": ["a", "b", "c"]}
             for mode in ("quick", "final"):
                 planned, _ = runner.validation_commands(repo, mode, 1, "base", groups, config_workspace)
-                assert ["cargo", "check", "--locked", "--workspace", "--all-targets", "--jobs", "1"] in planned
+                assert (["cargo", "check", "--locked", "--workspace", "--all-targets", "--jobs", "1"] in planned) == (mode == "final")
                 suites = [command for command in planned if command[:2] == ["cargo", "test"]]
                 if mode == "final":
                     workspace_suite = next(command for command in suites if "--manifest-path" not in command)
@@ -653,11 +685,13 @@ def test_planner_contract(repo: Path) -> None:
                                                "--jobs", "1", "-p", "a", "-p", "b", "-p", "c"]
                 else:
                     assert not suites
-                checker_mode = "test" if mode == "final" else "check"
+                checker_mode = "test" if mode == "final" else "fmt"
                 assert any(command[:2] == ["cargo", checker_mode] and runner.CHECKER_MANIFEST in command
                            for command in planned)
-                assert any(command[:2] == ["cargo", "check"] and runner.BOT_MANIFEST in command
+                assert any(command[:2] == ["cargo", "check" if mode == "final" else "fmt"] and runner.BOT_MANIFEST in command
                            for command in planned)
+                if mode == "quick":
+                    assert all(command[0] != "cargo" or command[1] == "fmt" for command in planned)
                 assert len({tuple(command) for command in planned}) == len(planned)
                 overlapping = runner.grouped_paths([
                     *paths, "tools/architecture/handler-contract-check/src/lib.rs",
@@ -719,6 +753,25 @@ def test_planner_contract(repo: Path) -> None:
     )
     assert not any(command and command[0] == "cargo" for command in docs_commands)
     assert runner.validation_commands(repo, "quick", 2, "base", {}, None)[0] == []
+    quick_paths = [
+        "Cargo.toml", "crates/a/src/lib.rs", "tools/validation-v2", runner.RUNNER_CONTRACT_SUITE,
+        runner.WORKFLOW_CONTRACT_SUITE, runner.BUILD_INPUT_DIAGNOSTIC,
+        "tools/architecture/physical-file-policy.json", "tools/architecture/check_architecture.py",
+        "tools/architecture/handler-contract-check/src/lib.rs", "tools/wow-test-bot/src/main.rs",
+    ]
+    with patch.object(runner, "resolve_base", return_value="base"), \
+         patch.object(runner, "changed_paths", return_value=quick_paths), \
+         patch.object(runner, "cargo_metadata", side_effect=AssertionError("quick must not resolve dependencies")), \
+         patch.object(runner, "require_protoc_for", side_effect=AssertionError("quick must not require protobuf")):
+        quick_plan = runner.build_plan(repo, "quick", 1, "base", {}, 30)
+    assert quick_plan["workspace"] is None and quick_plan["metadata"] is None
+    for command in quick_plan["planned_commands"]:
+        assert command[0] != "cargo" or command[1] == "fmt", command
+        assert command[:2] != ["python3", runner.RUNNER_CONTRACT_SUITE], command
+        assert command[:2] != ["python3", runner.WORKFLOW_CONTRACT_SUITE], command
+        assert command[:2] != ["python3", runner.BUILD_INPUT_CONTRACT_SUITE], command
+        assert "unittest" not in command and "self-test" not in command, command
+    assert runner.validation_commands(repo, "none", 1, "base", runner.grouped_paths(quick_paths), workspace)[0] == []
 
     # No profile may silence a checker test by name. A skipped test is a test
     # that rots: #363 was nine stale literals hiding behind `--skip`.
@@ -988,7 +1041,7 @@ def test_timing_plan_contract() -> None:
 
 
 def test_empty_scope_contract(repo: Path, tools: Path, environment: dict[str, str], directory: Path) -> None:
-    for profile in ("quick", "final"):
+    for profile in ("quick", "final", "2", "3"):
         manifest = directory / f"empty-{profile}.json"
         result = subprocess.run(
             [str(tools / "validation-v2"), profile, "--base", "HEAD", "--require-changes"],
@@ -997,6 +1050,7 @@ def test_empty_scope_contract(repo: Path, tools: Path, environment: dict[str, st
         )
         assert result.returncode == runner.USAGE_ERROR, (result.stdout, result.stderr)
         recorded = json.loads(manifest.read_text())
+        assert recorded["profile"] == runner.LEVEL_PROFILES.get(profile, profile)
         assert "empty validation scope" in recorded["runner_error"]
         assert recorded["commands"] == []
         assert recorded["plan"]["require_changes"] is True
@@ -1062,6 +1116,7 @@ def test_evidence_contract(repo: Path, environment: dict[str, str], directory: P
 
 
 def main() -> None:
+    test_no_validation_level()
     test_architecture_plan_contract()
     test_timing_plan_contract()
     with tempfile.TemporaryDirectory(prefix="validation-v2-self-test-") as raw_directory:

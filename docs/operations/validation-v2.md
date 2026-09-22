@@ -8,11 +8,20 @@ their former `full` or `capture` subcommands; code review and live QA have separ
 Run it through its single entry point:
 
 ```bash
-./tools/validation-v2 self-test
-./tools/validation-v2 quick --base origin/3.4.3
-./tools/validation-v2 final --base origin/3.4.3
+./tools/validation-v2                              # level 1 / none (default)
+./tools/validation-v2 2 --base origin/3.4.3       # level 2 / quick
+./tools/validation-v2 3 --base origin/3.4.3       # level 3 / final
 ./tools/validation-v2 audit --base origin/3.4.3
+./tools/validation-v2 self-test
 ```
+
+No profile defaults to canonical profile `none` (numeric alias `1`). The numeric
+aliases `2` and `3` select the canonical `quick` and `final` profiles. `audit` and
+`self-test` are expert explicit commands, not additional daily development levels.
+
+Level 1 prints **NOT VALIDATED**, performs no Git, Rust, `protoc`, metadata (including
+Cargo metadata), lock or check command, produces no acceptance manifest, and exits `0` only as an
+acknowledgement. It is not validation evidence.
 
 For a completed nonempty delivery, retain diagnostics in the same campaign:
 
@@ -20,38 +29,46 @@ For a completed nonempty delivery, retain diagnostics in the same campaign:
 ./tools/validation-v2 final --base origin/3.4.3 --require-changes --timings --logs
 ```
 
-`--require-changes` rejects an empty changed-path scope in `quick`/`final` rather
+`--require-changes` rejects an empty changed-path scope in level 2/3 (`quick`/`final`) rather
 than presenting it as acceptance. Without that flag, an empty scope remains a
 permitted no-op, explicitly reported as **no checks executed**. This is not proof
 that a build or all issue-specific checks passed.
 
 `self-test` executes the separate hermetic contract suite in `tools/test_validation_v2.py`; fixture
-code is not embedded in the production runner. This profile does not probe or
+code is not embedded in the production runner. This command does not probe or
 require the host's protoc; its tests supply fake compiler/build tools and never
 compile the server.
 
-The `quick` and `final` profiles collect committed, staged, unstaged, and untracked paths relative to the exact base
-commit. `quick` validates repository hygiene and small syntax surfaces, formats Rust once, and
-compiles test targets for directly changed workspace packages. `final` instead compiles the
-workspace reverse-dependent closure and runs library tests for the directly changed library
-packages. A root Cargo, toolchain, protobuf, or build-script change explicitly expands compilation
-to `--workspace --all-targets`; final retains directly changed library suites, or tests every
-workspace library when no library source was directly changed. Root `.cargo/config.toml`
-and legacy `.cargo/config` changes (including deletions) always select every workspace library
-in final, even alongside a narrower source diff: their flags/targets affect every package.
-They also select the standalone checker and QA-bot routes, because Cargo reads the root
-configuration for their `--manifest-path` calls from this checkout. Quick retains compilation
-without test execution. These global changes can exceed an ordinary narrow-change budget;
-record that cost rather than silently omitting affected consumers.
+Level 2 (`quick`) collects committed, staged, unstaged, and untracked paths relative to
+the exact base commit and performs only Git diff/whitespace checks, changed
+shell/JSON/Python syntax, optional `actionlint`, and `cargo fmt` for routed workspace
+or standalone tools. Cargo fmt may inspect manifests. Level 2 never runs `cargo
+check`, `cargo test`, `cargo build`, `cargo run`, locked dependency metadata, a
+protobuf probe, or self-test/architecture/contract suites.
 
-These profiles are alternative budgets, not mandatory successive stages. At completed-delivery
-acceptance, plan the missing issue-specific evidence and the committed-candidate `final` once.
-Its downstream check replaces an equivalent manual preflight; its full library suites also
-provide evidence for the focused cases they actually execute. Keep additional integration,
-ownership, capture and live checks whose acceptance is not covered. A changed candidate or a
-failed check needs renewed affected evidence; a new agent, commit message, or handoff does not
-by itself require recompiling unchanged inputs. Do not use repeated compiler runs to discover
-consumers or drive one-field-at-a-time replacements.
+Level 3 (`final`) collects the same path scope and preserves the current final
+acceptance: it compiles the workspace reverse-dependent closure and runs library
+tests for directly changed library packages. A root Cargo, toolchain, protobuf, or
+build-script change explicitly expands compilation to `--workspace --all-targets`;
+final retains directly changed library suites, or tests every workspace library when
+no library source was directly changed. Root `.cargo/config.toml` and legacy
+`.cargo/config` changes (including deletions) always select every workspace library
+in final, even alongside a narrower source diff: their flags/targets affect every
+package. They also select the standalone checker and QA-bot routes, because Cargo
+reads the root configuration for their `--manifest-path` calls from this checkout.
+These global changes can exceed an ordinary narrow-change budget; record that cost
+rather than silently omitting affected consumers.
+
+Levels 2 and 3 are alternative budgets, not mandatory successive stages. Level 2 is
+local hygiene and is not final acceptance. At completed-delivery acceptance, plan the
+missing issue-specific evidence and the committed-candidate `final`/level 3 once.
+Its downstream check replaces an equivalent manual preflight; its full library suites
+also provide evidence for the focused cases they actually execute. Keep additional
+integration, ownership, capture and live checks whose acceptance is not covered. A
+changed candidate or a failed check needs renewed affected evidence; a new agent,
+commit message, or handoff does not by itself require recompiling unchanged inputs.
+Do not use repeated compiler runs to discover consumers or drive one-field-at-a-time
+replacements.
 
 Cargo test batches use `--no-fail-fast`: a failing test binary does not hide the
 remaining selected suites. This neither adds packages/features nor suppresses a
@@ -104,8 +121,8 @@ persistence accesses. Run affected ownership/contract checks explicitly during a
 work and satisfy the active macro's terminal acceptance before claiming completion. Physical
 migration PASS is not closeout: run `physical-files --terminal` to reject unfinished oversized
 legacy entries, independently of the logical totals. Changes to the physical module/policy
-run its unit suite in `quick`; shared checker/scanner changes run architecture self-tests. See
-[module design guidelines](../architecture/module-design-guidelines.md).
+require the relevant final acceptance; shared checker/scanner changes are automatically routed
+through final's architecture/self-test coverage. See [module design guidelines](../architecture/module-design-guidelines.md).
 
 Paths classified as `documentation` run no Cargo command. Classification is directory-first:
 even a README under `crates/`, `tools/wow-test-bot/` or
@@ -114,9 +131,9 @@ checker and QA bot use their own manifests. A final architecture-checker run exe
 library tests, including the now syntax-only `repository_surface_can_be_collected`; it does not
 recompute the exhaustive persistence inventory. Committed capture contracts belong to `audit`,
 and live database/runtime/capture operations to explicit QA procedures. Commands run sequentially and each exact command appears at
-most once. Neither profile calls a legacy wrapper or uses the network; Cargo is forced offline.
+most once. Neither level-2 nor level-3 profile calls a legacy wrapper or uses the network; Cargo is forced offline.
 
-`audit` is the explicit global, read-only budget. It does not use changed-path scope: it runs the
+`audit` is the explicit expert global, read-only budget. It does not use changed-path scope: it runs the
 architecture policy checks, handler contract and exhaustive session/persistence ratchets, all
 workspace test targets, standalone QA-bot tests, and explicit `verify-required` checks for
 `loot-single-item-claim` and `creature-spell-casting`. Other action-specific capture requirements
@@ -162,22 +179,27 @@ consumer rule is explicit: **a missing manifest is a failed run.** Verify one wi
 
 ```bash
 ./tools/validation-v2 verify --manifest <path>
+./tools/validation-v2 verify --manifest <path> --require-profile final
 ```
 
 which exits non-zero for a missing, unreadable, schema-mismatched, signalled, failed, or truncated
 manifest — including a `passed` manifest that executed fewer commands than its plan declared. Rust
-CI runs this step after every profile, before the artifact upload.
+CI runs this step after every manifest-producing profile, before the artifact upload. The optional
+`--require-profile <canonical-profile>` rejects evidence from a weaker or different profile; for
+example, `--require-profile final` rejects a level-2/`quick` manifest as final evidence.
 
 ## protoc
 
-Cargo build scripts need `protoc`, and it is not always on `PATH`. Before planning, the runner
-resolves the version pinned in `.protoc-version`: an explicit `PROTOC`, then `PATH`, then
-`$HOME/.local/protoc/bin/protoc`. A binary that reports a different version is rejected by name
-rather than used, and a plan that compiles Rust without a resolved protoc fails immediately with
-that reason instead of surfacing later as an unreadable prost-build error inside a build log. A
-documentation-only plan needs no protoc.
+Cargo build scripts need `protoc`, and it is not always on `PATH`. Levels 1 and 2 do
+not resolve or probe it. For level 3/final and `audit`, before planning Cargo work,
+the runner resolves the version pinned in `.protoc-version`: an explicit `PROTOC`,
+then `PATH`, then `$HOME/.local/protoc/bin/protoc`. A binary that reports a different
+version is rejected by name rather than used, and a plan that compiles Rust without a
+resolved protoc fails immediately with that reason instead of surfacing later as an
+unreadable prost-build error inside a build log. Documentation-only and level-2 plans
+need no protoc.
 
-Every run acquires a non-blocking, worktree-specific lock and writes a JSON manifest under
+Every manifest-producing level-2/3, `audit` or `self-test` run acquires a non-blocking, worktree-specific lock and writes a JSON manifest under
 `target/validation-v2/manifests/`. The manifest (schema 4) records repository and toolchain
 provenance, dirty state, kernel, timings, command results, signals, failure kinds, OOM-kill
 deltas, resource limits, and peak child RSS. It
@@ -241,13 +263,13 @@ cargo fetch --locked
 cargo fetch --locked --manifest-path tools/architecture/handler-contract-check/Cargo.toml
 cargo fetch --locked --manifest-path tools/wow-test-bot/Cargo.toml
 ./tools/validation-v2 self-test
-./tools/validation-v2 quick --base HEAD~1
+./tools/validation-v2 2 --base HEAD~1
 ```
 
 `--base HEAD~1` is deliberate: at `origin/3.4.3` a fresh clone has no changed paths, so the
-profiles would plan nothing. This checks the latest commit's routed scope, not a clean full-server
-build; a documentation-only last commit may still run no Cargo commands. Use an explicit build
-or the separately budgeted `audit` when that broader evidence is required.
+level-2/3 profiles would plan nothing. This checks the latest commit's routed scope, not a clean
+full-server build; a documentation-only last commit may still run no Cargo commands. Use level 3,
+an explicit build, or the separately budgeted `audit` when that broader evidence is required.
 
 An `audit` also acquires `/tmp/rustycore-validation-v2-heavy.lock`. That lock is deliberately not
 derived from the checkout path, so audits in independent clones and worktrees cannot overlap on
@@ -284,8 +306,9 @@ Collect Cargo's stable timing reports in the campaign that is already required:
 ./tools/validation-v2 final --base origin/3.4.3 --timings
 ```
 
-`--timings` is available for `quick`, `final` and `audit`. It adds Cargo's reporting flag
-to planned check/test/build/run commands, before any program-argument separator, without
+`--timings` is useful for `final` and `audit`; level 2 accepts it for compatibility but
+has no check/test/build/run command to instrument. It adds Cargo's reporting flag to
+planned check/test/build/run commands, before any program-argument separator, without
 changing their package/target selection or running another build. The manifest records
 the instrumented commands; timestamped reports remain in `target/cargo-timings` under the
 selected Cargo target. See [Cargo timing reports](https://doc.rust-lang.org/cargo/reference/timings.html).
