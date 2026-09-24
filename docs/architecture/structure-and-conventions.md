@@ -155,8 +155,21 @@ regeneran a ciegas ni se suben para que pase una fase.
 - [ ] Ledger y política físicas con delta revisado; sin regeneración a ciegas.
 - [ ] Evidencia reportada como tal: compilación ≠ suite ≠ composición ≠ validación final.
 
-## 10. Cómo se cambia este estándar
+## 10. Aplicación mecánica (el estándar no se confía a la memoria)
 
+- `[workspace.lints]` (+ política por crate) aplica clippy/rustc y la política de `unsafe` y de
+  documentación de API pública.
+- `cargo xtask check-layers` verifica las **aristas permitidas entre capas** (sin esto, una
+  inversión puede volver sin que nadie lo note).
+- `cargo xtask structure-audit` mide líneas, fichero mayor, stubs y crates sin consumidor.
+- `cargo-machete` y `cargo-deny` vigilan dependencias no usadas, duplicadas o con avisos.
+- **Features**: el mapa de subsistemas opcionales se decide una vez y se documenta aquí; el build
+  base no puede requerirlos.
+- Código vendido (por ejemplo el port de navmesh) se marca como exento de presupuestos y lints.
+
+Lo que no esté en esos comandos no es estándar, es costumbre.
+
+## 11. Cómo se cambia este estándar
 Con un commit de documentación que explique la razón y el impacto, actualizando también
 [wow-world-distribution-plan.md](wow-world-distribution-plan.md) si cambian fases o presupuestos y
 [workspace-structure-programme.md](workspace-structure-programme.md) si cambia el orden o el estado

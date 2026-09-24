@@ -42,10 +42,30 @@ Orden por **dependencias reales**: primero lo que quita ruido, después lo que q
 lo que cambia contratos, y al final la aceptación. Nada de una fase empieza si su predecesora no
 está verde (ver §4).
 
+### Ola A0 — endurecer el estándar antes de tocar crates
+Contraste con proyectos grandes de Rust (`rustc`, `rust-analyzer`, `bevy`, `polars`, `tokio`,
+`datafusion`): el plan va en la dirección correcta, pero conviene añadir tres piezas antes de
+mover crates, porque son más baratas ahora que después.
+
+| id | objetivo | evidencia de cierre | depende de |
+|---|---|---|---|
+| A0.1 | **Decidir el mapa de *features***: qué crates/subsistemas son opcionales (`world-modules`, scripting, anticheat) y garantizar que el build base no los requiere. Cargo unifica features por crate en todo el workspace, así que la decisión afecta a caché y a compilación | el build base compila sin features opcionales; decisión escrita en el estándar | — |
+| A0.2 | **`xtask` del workspace** que aloja los comandos de estructura: auditoría de crates, chequeo de aristas de capa, regeneración revisada de políticas | `cargo xtask structure-audit` y `cargo xtask check-layers` en verde | — |
+| A0.3 | **`[workspace.lints]`** (clippy/rustc) y política por crate (`unsafe`, `missing_docs` en API pública); los warnings dejan de ser decorativos | lints activos; ningún crate afectado gana warnings nuevos | — |
+| A0.4 | **Higiene de grafo con herramientas estándar**: `cargo-machete` (dependencias no usadas), `cargo-deny` (licencias/avisos/versiones duplicadas), `cargo tree -d` | informe inicial registrado y deuda adjudicada a A1/C/D | — |
+| A0.5 | **ADRs** de la decisión estructural (alternativas y consecuencias) y **marcar el código vendido** (navmesh) como exento de presupuestos y lints | ADR enlazado desde el estándar; crates vendor señalizados | — |
+| A0.6 | **Presupuesto de documentación**: el estándar se mantiene corto (es regla); el histórico va a ADRs, no a un plan que crece | techo de tamaño para documentos de arquitectura | — |
+| A0.7 | **Herramientas opcionales a decidir**: `cargo-nextest` (ejecución de los ~3 900 tests) y `cargo-public-api` (snapshot de la superficie pública de `wow-entities`, `wow-map`, `wow-packet`); `cargo-hakari` **solo** si la medición de build demuestra duplicación de features | decisión escrita; si se adopta, comando en el `xtask` | A0.2 |
+
+**Lo que NO copiamos** (y por qué): el troceo a escala `bevy`/`zed` (cientos de crates) porque
+aquí no hay ecosistema de plugins — 12-14 dominios más directorios es la medida; el
+feature-gating de todo; y `cargo-hakari`/workspace-hack antes de medir, porque añaden complejidad
+que hay que justificar con números.
+
 ### Ola A — saneamiento barato (no cambia contratos ni comportamiento)
 | id | objetivo | evidencia de cierre | depende de |
 |---|---|---|---|
-| A1 | plegar `rustycore-db` en `wow-database`; retirar `wow-pvp`, `wow-achievement`, `wow-scripts` (o consolidar en `wow-script`); renombrar la utilidad `wow-collections`; decidir `wow-session` y `wow-chat` | workspace compila; recuento de crates baja; `inventory::submit!` y nº de tests invariantes | — |
+| A1 | plegar `rustycore-db` en `wow-database`; retirar `wow-pvp`, `wow-achievement`, `wow-scripts` (o consolidar en `wow-script`); renombrar la utilidad `wow-collections`; decidir `wow-session` y `wow-chat` | workspace compila; recuento de crates baja; `inventory::submit!` y nº de tests invariantes | A0 |
 | A2 | invertir `world-modules` para que no dependa de `world-server` | grafo sin esa arista | A1 |
 | A3 | marcar tooling: `capture-diff` fuera de las capas de juego; renombrar el vendor de navmesh | grafo y capas coherentes con el estándar | A1 |
 
@@ -91,6 +111,7 @@ Se actualiza **en el mismo commit** que cierra cada fase. Convención: `[ ]` pen
 curso, `[x]` cerrada con commit.
 
 ```
+A0.1 [ ]  A0.2 [ ]  A0.3 [ ]  A0.4 [ ]  A0.5 [ ]  A0.6 [ ]  A0.7 [ ]
 A1 [ ]  A2 [ ]  A3 [ ]
 B1 [x] e719ac38   B2 [ ]  B3 [ ]  B4 [ ]  B5 [ ]  B6 [ ]  B7 [ ]
 C1 [ ]  C2 [ ]  C3 [ ]  C4 [ ]
