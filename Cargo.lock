@@ -3338,11 +3338,9 @@ dependencies = [
  "smallvec",
  "wow-constants",
  "wow-core",
- "wow-data",
  "wow-entities",
  "wow-loot",
  "wow-math",
- "wow-packet",
 ]
 
 [[package]]

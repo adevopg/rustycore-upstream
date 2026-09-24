@@ -20,6 +20,7 @@ pub mod entity_update_bridge;
 pub mod handlers;
 pub mod loot_persistence;
 pub mod map_manager;
+pub mod phasing;
 mod player;
 mod player_cast;
 #[path = "session/directory.rs"]

@@ -579,7 +579,7 @@ use crate::map_manager::{
     PendingRespawn, RecipientRule, RuntimeEvent, RuntimeOutput, RuntimePlan, RuntimeTickOwner,
     WorldMMapPathfinderWorkerLikeCpp,
 };
-use wow_map::phasing::{init_db_phase_shift_like_cpp, init_db_visible_map_id_like_cpp};
+use crate::phasing::{init_db_phase_shift_like_cpp, init_db_visible_map_id_like_cpp};
 use crate::reputation::{
     ReputationMgrLikeCpp, ReputationMgrMutLikeCpp, ReputationMgrRefLikeCpp,
     reputation_to_rank_like_cpp,

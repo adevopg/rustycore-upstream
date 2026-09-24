@@ -8,7 +8,6 @@ pub mod map;
 pub(crate) mod map_rules;
 pub mod object_grid_loader;
 pub mod personal_phase;
-pub mod phasing;
 pub mod pool;
 pub mod spawn;
 pub mod terrain;
