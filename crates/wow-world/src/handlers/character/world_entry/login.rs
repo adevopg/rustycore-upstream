@@ -36,7 +36,7 @@ impl WorldSession {
     ///
     /// Called when the `instance_link_rx` oneshot delivers the new channels.
     /// Sends ResumeComms and the full login sequence after the instance socket is connected.
-    pub(crate) async fn handle_continue_player_login_with_module_registry_like_cpp(
+    pub async fn handle_continue_player_login_with_module_registry_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
         modules: &wow_module_api::ModuleRegistry,
