@@ -112,7 +112,7 @@ Se actualiza **en el mismo commit** que cierra cada fase. Convención: `[ ]` pen
 curso, `[x]` cerrada con commit.
 
 ```
-A0.1 [ ]  A0.2 [x]  A0.3 [x]  A0.4 [~]  A0.5 [x]  A0.6 [x]  A0.7 [ ]
+A0.1 [x]  A0.2 [x]  A0.3 [x]  A0.4 [~]  A0.5 [x]  A0.6 [x]  A0.7 [x]
 A1 [ ]  A2 [ ]  A3 [ ]
 B1 [x] e719ac38   B2 [ ]  B3 [ ]  B4 [ ]  B5 [ ]  B6 [ ]  B7 [ ]
 C1 [ ]  C2 [ ]  C3 [ ]  C4 [ ]
@@ -227,3 +227,32 @@ encoger).
   pendientes de esas herramientas.
 - El baseline de capas refleja las inversiones que la ola C debe retirar; el de dependencias, lo
   que ADR-003/004 exige retirar de los dominios.
+
+## 8. Decisiones de A0
+
+**A0.1 — Mapa de features (decidido).** Subsistemas **opcionales**, apagados por defecto y nunca
+requeridos por el build base: `modules`/`wasm-runtime` (módulos de operador, ADR-002),
+`scripts` (scripting) y `anticheat`. El build base (`cargo check -p world-server`) no puede
+depender de ellos; la dirección es `world-modules → wow-module-api` y nunca hacia `world-server`.
+Los crates reservados (`wow-spell`, `wow-pvp`, `wow-achievement`, `wow-items`, `wow-quest`,
+`wow-economy`, `wow-progression`, `wow-battlegrounds`, `wow-dungeon-finding`,
+`wow-account-collections`) **no** son features: son dominios a crear/llenar o a retirar en A1.
+
+**Resolver (decidido): se mantiene `resolver = "2"`.** Ya evita la unificación de features entre
+build-dependencies y dependencias específicas de target, que es el riesgo real; el resolver 3 solo
+añade resolución consciente de MSRV y aquí el toolchain está fijado, así que cambiarlo traería
+churn de `Cargo.lock` sin beneficio. Documentado para que nadie lo "actualice" sin argumento.
+
+**A0.4 — Higiene de grafo (parcial).** `cargo-machete`, `cargo-deny`, `cargo-nextest`,
+`cargo-public-api` y `cargo-hakari` **no están instalados** en este host. Cobertura actual:
+`xtask structure-audit` (stubs, sin consumidor, tamaños, capas) y los ratchets de `check-layers` /
+`check-deps`. Pendiente: ejecutar `cargo-deny` con política de **licencias** (el proyecto es GPL v3)
+y `cargo-machete` cuando estén disponibles; no se finge que se han pasado.
+
+**A0.6 — Presupuesto de documentación (decidido).** Los documentos de arquitectura se mantienen
+**≤300 líneas** cada uno; el histórico y las decisiones van a ADRs, no a un plan que crece.
+
+**A0.7 — Herramientas opcionales (decidido).** `cargo-nextest`: adoptar cuando esté disponible, no
+es requisito. `cargo-public-api`: el snapshot de `wow-entities`/`wow-map`/`wow-packet` queda
+pendiente de la herramienta; la regla de ADR-008 se aplica igual. `cargo-hakari`: **no** se adopta;
+solo si una medición de build demuestra duplicación de features.
