@@ -22,8 +22,9 @@ use wow_packet::packets::misc::{
 };
 use wow_packet::packets::spell::SetActionButton;
 
-use super::{RepresentedInstanceResetMethodLikeCpp, item_purchase_contents_from_extended_cost};
+use super::item_purchase_contents_from_extended_cost;
 use crate::entity_update_bridge::player_values_update_to_update_object;
+use crate::handlers::instances::RepresentedInstanceResetMethodLikeCpp;
 
 inventory::submit! {
     PacketHandlerEntry {

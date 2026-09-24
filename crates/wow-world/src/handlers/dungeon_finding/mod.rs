@@ -16,13 +16,15 @@ use wow_packet::packets::misc::{
     LfgUpdateStatus,
 };
 
-use super::{
-    LFG_LOCKSTATUS_INSUFFICIENT_EXPANSION_LIKE_CPP, LFG_LOCKSTATUS_MISSING_ACHIEVEMENT_LIKE_CPP,
-    LFG_LOCKSTATUS_MISSING_ITEM_LIKE_CPP, LFG_LOCKSTATUS_NOT_IN_SEASON_LIKE_CPP,
-    LFG_LOCKSTATUS_QUEST_NOT_COMPLETED_LIKE_CPP, LFG_LOCKSTATUS_RAID_LOCKED_LIKE_CPP,
-    LFG_LOCKSTATUS_TOO_HIGH_LEVEL_LIKE_CPP, LFG_LOCKSTATUS_TOO_LOW_GEAR_SCORE_LIKE_CPP,
-    LFG_LOCKSTATUS_TOO_LOW_LEVEL_LIKE_CPP,
-};
+const LFG_LOCKSTATUS_INSUFFICIENT_EXPANSION_LIKE_CPP: u32 = 1;
+const LFG_LOCKSTATUS_TOO_LOW_LEVEL_LIKE_CPP: u32 = 2;
+const LFG_LOCKSTATUS_TOO_HIGH_LEVEL_LIKE_CPP: u32 = 3;
+const LFG_LOCKSTATUS_TOO_LOW_GEAR_SCORE_LIKE_CPP: u32 = 4;
+const LFG_LOCKSTATUS_RAID_LOCKED_LIKE_CPP: u32 = 6;
+const LFG_LOCKSTATUS_QUEST_NOT_COMPLETED_LIKE_CPP: u32 = 1022;
+const LFG_LOCKSTATUS_MISSING_ITEM_LIKE_CPP: u32 = 1025;
+const LFG_LOCKSTATUS_NOT_IN_SEASON_LIKE_CPP: u32 = 1031;
+const LFG_LOCKSTATUS_MISSING_ACHIEVEMENT_LIKE_CPP: u32 = 1034;
 
 inventory::submit! {
     PacketHandlerEntry {
@@ -190,7 +192,7 @@ impl crate::session::WorldSession {
         false
     }
 
-    pub(super) fn lfg_lock_status_like_cpp(
+    pub(in crate::handlers::dungeon_finding) fn lfg_lock_status_like_cpp(
         &self,
         dungeon: &wow_data::LfgDungeonDataLikeCpp,
         level: u8,
@@ -326,7 +328,7 @@ impl crate::session::WorldSession {
         )
     }
 
-    pub(super) fn populate_lfg_player_dungeon_reward_like_cpp(
+    pub(in crate::handlers::dungeon_finding) fn populate_lfg_player_dungeon_reward_like_cpp(
         &self,
         dungeon_info: &mut LfgPlayerDungeonInfo,
         reward: &wow_data::LfgDungeonRewardLikeCpp,
@@ -472,3 +474,6 @@ impl crate::session::WorldSession {
         self.send_packet_realm(&LfgUpdateStatus::removed_from_queue());
     }
 }
+
+#[cfg(test)]
+mod tests;

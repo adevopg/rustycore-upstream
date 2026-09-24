@@ -5,7 +5,7 @@
 
 use super::*;
 
-use crate::handlers::misc::{
+use crate::handlers::dungeon_finding::{
     LFG_LOCKSTATUS_MISSING_ACHIEVEMENT_LIKE_CPP, LFG_LOCKSTATUS_MISSING_ITEM_LIKE_CPP,
     LFG_LOCKSTATUS_QUEST_NOT_COMPLETED_LIKE_CPP,
 };

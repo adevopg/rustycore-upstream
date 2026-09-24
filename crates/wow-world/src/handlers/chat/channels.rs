@@ -14,7 +14,39 @@ use wow_packet::packets::chat::{
     LeaveChannel, MAX_CHANNEL_NAME_STR_LIKE_CPP, MAX_CHANNEL_PASS_STR_LIKE_CPP,
 };
 
-use super::{JoinChannelPrecheckLikeCpp, join_channel_custom_precheck_like_cpp};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum JoinChannelPrecheckLikeCpp {
+    Continue,
+    InvalidName,
+    PasswordTooLong,
+}
+
+pub(super) fn join_channel_custom_precheck_like_cpp(
+    request: &JoinChannel,
+) -> JoinChannelPrecheckLikeCpp {
+    if request.chat_channel_id != 0 {
+        return JoinChannelPrecheckLikeCpp::Continue;
+    }
+
+    if request
+        .channel_name
+        .chars()
+        .next()
+        .is_none_or(|first| first.is_ascii_digit())
+    {
+        return JoinChannelPrecheckLikeCpp::InvalidName;
+    }
+
+    if request.channel_name.chars().count() > MAX_CHANNEL_NAME_STR_LIKE_CPP {
+        return JoinChannelPrecheckLikeCpp::InvalidName;
+    }
+
+    if request.password.len() > MAX_CHANNEL_PASS_STR_LIKE_CPP {
+        return JoinChannelPrecheckLikeCpp::PasswordTooLong;
+    }
+
+    JoinChannelPrecheckLikeCpp::Continue
+}
 
 inventory::submit! {
     PacketHandlerEntry {

@@ -5,7 +5,7 @@
 
 use super::*;
 
-use crate::handlers::misc::represented_gameobject_icon_allows_interaction_like_cpp;
+use crate::handlers::entities::represented_gameobject_icon_allows_interaction_like_cpp;
 
 fn game_obj_use_test_session_like_cpp(
     template: Option<wow_data::GameObjectQueryTemplateLikeCpp>,

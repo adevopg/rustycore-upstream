@@ -531,3 +531,6 @@ impl crate::session::WorldSession {
         );
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -41,6 +41,7 @@ use crate::session::{
     SPELL_AURA_INTERRUPT_FLAG_ANIM_LIKE_CPP, WorldSession, player_team_for_race_cpp,
 };
 
+mod channels;
 mod ops_1;
 mod ops_2;
 mod state;

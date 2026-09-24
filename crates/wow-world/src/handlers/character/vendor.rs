@@ -292,7 +292,7 @@ impl WorldSession {
             return;
         };
 
-        let contents = crate::handlers::misc::item_purchase_contents_from_extended_cost(
+        let contents = crate::handlers::entities::item_purchase_contents_from_extended_cost(
             &extended_cost,
             refund_item.paid_money(),
         );

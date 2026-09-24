@@ -184,3 +184,6 @@ impl crate::session::WorldSession {
         self.set_watched_faction_index_like_cpp(request.faction_index as i32);
     }
 }
+
+#[cfg(test)]
+mod tests;

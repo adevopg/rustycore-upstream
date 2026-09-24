@@ -456,3 +456,6 @@ impl crate::session::WorldSession {
             .insert(packet.object_guid);
     }
 }
+
+#[cfg(test)]
+mod tests;

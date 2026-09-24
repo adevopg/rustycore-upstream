@@ -3,14 +3,17 @@
 
 //! Calendar packet registrations and the represented CalendarMgr boundary.
 
-use super::{
+use wow_constants::ClientOpcodes;
+use wow_handler::{PacketProcessing, SessionStatus};
+
+use crate::session::registry::PacketHandlerEntry;
+use wow_packet::ClientPacket;
+use wow_packet::packets::misc::{
     CalendarAddEvent, CalendarCommandResult, CalendarCommunityInvite, CalendarComplain,
     CalendarCopyEvent, CalendarEventSignUp, CalendarGetEvent, CalendarInvite,
     CalendarModeratorStatusQuery, CalendarRemoveEvent, CalendarRemoveInvite, CalendarRsvp,
     CalendarSendCalendar, CalendarSendNumPending, CalendarStatus, CalendarUpdateEvent,
-    ClientOpcodes, PacketHandlerEntry, PacketProcessing, SessionStatus,
 };
-use wow_packet::ClientPacket;
 
 inventory::submit! {
     PacketHandlerEntry {
@@ -375,3 +378,6 @@ impl crate::session::WorldSession {
         self.send_packet(&CalendarCommandResult::event_invalid_like_cpp());
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -57,8 +57,9 @@ pub(crate) use wow_social::group::{
 };
 
 // Names the fixture consumers used to reach through `use super::*;` from the
-// production `misc` module. Only the ones the scenarios actually use are kept.
-pub(crate) use crate::handlers::misc::item_purchase_contents_from_extended_cost;
+// former production `misc` module. Only the ones the scenarios actually use are
+// kept; `item_purchase_contents_from_extended_cost` now reaches the entity
+// scenarios directly through `handlers::entities::tests::*`.
 pub(crate) use crate::session::registry::PacketHandlerEntry;
 pub(crate) use wow_constants::ItemExtendedCostFlags;
 pub(crate) use wow_handler::{PacketProcessing, SessionStatus};

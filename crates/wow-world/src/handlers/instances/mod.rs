@@ -19,7 +19,11 @@ use wow_packet::packets::misc::{
     CalendarRaidLockoutAdded, CalendarRaidLockoutUpdated, SetSavedInstanceExtend,
 };
 
-use super::RepresentedInstanceResetMethodLikeCpp;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RepresentedInstanceResetMethodLikeCpp {
+    Manual,
+    OnChangeDifficulty,
+}
 
 inventory::submit! {
     PacketHandlerEntry {
@@ -156,7 +160,7 @@ impl crate::session::WorldSession {
             .await;
     }
 
-    pub(super) async fn reset_represented_instances_like_cpp(
+    pub(crate) async fn reset_represented_instances_like_cpp(
         &mut self,
         reset_owner_guid: ObjectGuid,
         method: RepresentedInstanceResetMethodLikeCpp,
@@ -496,3 +500,6 @@ impl crate::session::WorldSession {
         ));
     }
 }
+
+#[cfg(test)]
+mod tests;

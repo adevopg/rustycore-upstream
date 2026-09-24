@@ -462,3 +462,6 @@ impl crate::session::WorldSession {
         self.send_packet(&response);
     }
 }
+
+#[cfg(test)]
+mod tests;

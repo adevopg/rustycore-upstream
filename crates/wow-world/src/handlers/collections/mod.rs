@@ -555,3 +555,6 @@ impl crate::session::WorldSession {
         .await;
     }
 }
+
+#[cfg(test)]
+mod tests;
