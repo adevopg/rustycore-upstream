@@ -8,7 +8,7 @@ use wow_data::{
     Condition, ConditionEntriesByTypeStore, DifficultyEntry, GraveyardStore, MapEntry, SpellInfo,
 };
 
-pub(super) fn currency_entry(id: u32) -> wow_data::CurrencyTypesEntry {
+pub(crate) fn currency_entry(id: u32) -> wow_data::CurrencyTypesEntry {
     wow_data::CurrencyTypesEntry {
         id,
         category_id: 0,
@@ -25,7 +25,7 @@ pub(super) fn currency_entry(id: u32) -> wow_data::CurrencyTypesEntry {
     }
 }
 
-pub(super) fn difficulty_entry(
+pub(crate) fn difficulty_entry(
     id: u32,
     instance_type: u8,
     flags: DifficultyFlags,
@@ -33,7 +33,7 @@ pub(super) fn difficulty_entry(
     difficulty_entry_with_toggle(id, instance_type, flags, 0)
 }
 
-pub(super) fn difficulty_entry_with_toggle(
+pub(crate) fn difficulty_entry_with_toggle(
     id: u32,
     instance_type: u8,
     flags: DifficultyFlags,
@@ -48,7 +48,7 @@ pub(super) fn difficulty_entry_with_toggle(
     }
 }
 
-pub(super) fn map_entry(id: u32, instance_type: i8) -> MapEntry {
+pub(crate) fn map_entry(id: u32, instance_type: i8) -> MapEntry {
     MapEntry {
         id,
         instance_type,
@@ -60,7 +60,7 @@ pub(super) fn map_entry(id: u32, instance_type: i8) -> MapEntry {
     }
 }
 
-pub(super) fn area_entry(id: u32, parent_area_id: u16, flags: u32) -> wow_data::AreaTableEntry {
+pub(crate) fn area_entry(id: u32, parent_area_id: u16, flags: u32) -> wow_data::AreaTableEntry {
     wow_data::AreaTableEntry {
         id,
         continent_id: 571,
@@ -72,7 +72,7 @@ pub(super) fn area_entry(id: u32, parent_area_id: u16, flags: u32) -> wow_data::
     }
 }
 
-pub(super) fn graveyard_store_with_links(
+pub(crate) fn graveyard_store_with_links(
     zone_id: u32,
     safe_loc_ids: impl IntoIterator<Item = u32>,
     conditions: impl IntoIterator<Item = Condition>,
@@ -88,7 +88,7 @@ pub(super) fn graveyard_store_with_links(
     (Arc::new(graveyard_store), condition_store)
 }
 
-pub(super) fn graveyard_team_condition(zone_id: u32, safe_loc_id: u32, team: u32) -> Condition {
+pub(crate) fn graveyard_team_condition(zone_id: u32, safe_loc_id: u32, team: u32) -> Condition {
     Condition {
         source_type: ConditionSourceType::Graveyard,
         source_group: zone_id,
@@ -99,7 +99,7 @@ pub(super) fn graveyard_team_condition(zone_id: u32, safe_loc_id: u32, team: u32
     }
 }
 
-pub(super) fn battleground_queue_id_like_cpp(
+pub(crate) fn battleground_queue_id_like_cpp(
     battlemaster_list_id: u16,
     queue_type: u8,
     rated: bool,
@@ -112,7 +112,7 @@ pub(super) fn battleground_queue_id_like_cpp(
         | 0x1F10_0000_0000_0000
 }
 
-pub(super) fn battlemaster_entry_like_cpp(
+pub(crate) fn battlemaster_entry_like_cpp(
     id: u32,
     instance_type: i8,
     flags: i8,
@@ -125,7 +125,7 @@ pub(super) fn battlemaster_entry_like_cpp(
     }
 }
 
-pub(super) fn trade_test_spell_info(spell_id: i32) -> SpellInfo {
+pub(crate) fn trade_test_spell_info(spell_id: i32) -> SpellInfo {
     SpellInfo {
         spell_id,
         cast_time_ms: 0,
@@ -142,7 +142,7 @@ pub(super) fn trade_test_spell_info(spell_id: i32) -> SpellInfo {
     }
 }
 
-pub(super) fn cuf_profile(name: &str, frame_height: u16) -> wow_packet::packets::misc::CufProfile {
+pub(crate) fn cuf_profile(name: &str, frame_height: u16) -> wow_packet::packets::misc::CufProfile {
     wow_packet::packets::misc::CufProfile {
         profile_name: name.to_string(),
         frame_height,

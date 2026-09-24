@@ -21,3 +21,6 @@ pub mod talent;
 pub mod trainer;
 pub mod vehicle;
 pub mod void_storage;
+
+#[cfg(test)]
+mod test_support;

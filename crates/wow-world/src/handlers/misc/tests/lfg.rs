@@ -5,6 +5,11 @@
 
 use super::*;
 
+use crate::handlers::misc::{
+    LFG_LOCKSTATUS_MISSING_ACHIEVEMENT_LIKE_CPP, LFG_LOCKSTATUS_MISSING_ITEM_LIKE_CPP,
+    LFG_LOCKSTATUS_QUEST_NOT_COMPLETED_LIKE_CPP,
+};
+
 #[tokio::test]
 async fn set_difficulty_id_group_lfg_is_silent_like_cpp() {
     let (mut session, send_rx) = make_session();

@@ -4,7 +4,7 @@
 
 use super::*;
 
-pub(super) fn unique_temp_data_dir(test_name: &str) -> std::path::PathBuf {
+pub(crate) fn unique_temp_data_dir(test_name: &str) -> std::path::PathBuf {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before unix epoch")
@@ -14,7 +14,7 @@ pub(super) fn unique_temp_data_dir(test_name: &str) -> std::path::PathBuf {
     data_dir
 }
 
-pub(super) fn write_no_area_map_file_like_cpp(
+pub(crate) fn write_no_area_map_file_like_cpp(
     data_dir: &std::path::Path,
     map_id: u32,
     x: f32,
@@ -44,7 +44,7 @@ pub(super) fn write_no_area_map_file_like_cpp(
     .expect("write test map");
 }
 
-pub(super) fn make_session() -> (crate::session::WorldSession, flume::Receiver<Vec<u8>>) {
+pub(crate) fn make_session() -> (crate::session::WorldSession, flume::Receiver<Vec<u8>>) {
     let (_pkt_tx, pkt_rx) = flume::bounded(8);
     let (send_tx, send_rx) = flume::bounded(16);
     (
@@ -64,7 +64,7 @@ pub(super) fn make_session() -> (crate::session::WorldSession, flume::Receiver<V
     )
 }
 
-pub(super) fn make_session_with_realm_send() -> (
+pub(crate) fn make_session_with_realm_send() -> (
     crate::session::WorldSession,
     flume::Receiver<Vec<u8>>,
     flume::Receiver<Vec<u8>>,
@@ -75,7 +75,7 @@ pub(super) fn make_session_with_realm_send() -> (
     (session, instance_rx, realm_rx)
 }
 
-pub(super) fn quest_template(id: u32) -> QuestTemplate {
+pub(crate) fn quest_template(id: u32) -> QuestTemplate {
     QuestTemplate {
         id,
         quest_type: 2,
@@ -148,7 +148,7 @@ pub(super) fn quest_template(id: u32) -> QuestTemplate {
     }
 }
 
-pub(super) fn install_pending_bind_instance_context_like_cpp(
+pub(crate) fn install_pending_bind_instance_context_like_cpp(
     session: &mut crate::session::WorldSession,
     player_guid: ObjectGuid,
     map_id: u32,
@@ -201,7 +201,7 @@ pub(super) fn install_pending_bind_instance_context_like_cpp(
     mgr
 }
 
-pub(super) fn install_represented_guild_bank_like_cpp(
+pub(crate) fn install_represented_guild_bank_like_cpp(
     session: &mut crate::session::WorldSession,
     banker: ObjectGuid,
     guild_id: u64,
@@ -291,7 +291,7 @@ fn misc_test_creature_create_data(
     }
 }
 
-pub(super) fn register_misc_test_creature(
+pub(crate) fn register_misc_test_creature(
     session: &mut crate::session::WorldSession,
     guid: ObjectGuid,
     entry: u32,
@@ -319,7 +319,7 @@ pub(super) fn register_misc_test_creature(
     );
 }
 
-pub(super) fn broadcast_info_with_command_tx(
+pub(crate) fn broadcast_info_with_command_tx(
     command_tx: flume::Sender<SessionCommand>,
 ) -> PlayerSessionRegistrationLikeCpp {
     let (send_tx, _send_rx) = flume::bounded::<Vec<u8>>(4);
@@ -355,7 +355,7 @@ pub(super) fn broadcast_info_with_command_tx(
     }
 }
 
-pub(super) fn add_canonical_flight_master_for_misc_test(
+pub(crate) fn add_canonical_flight_master_for_misc_test(
     canonical: &crate::session::SharedCanonicalMapManager,
     guid: ObjectGuid,
     position: Position,
@@ -385,7 +385,7 @@ pub(super) fn add_canonical_flight_master_for_misc_test(
         .unwrap();
 }
 
-pub(super) fn add_canonical_auctioneer_for_misc_test(
+pub(crate) fn add_canonical_auctioneer_for_misc_test(
     canonical: &crate::session::SharedCanonicalMapManager,
     guid: ObjectGuid,
     position: Position,
@@ -416,14 +416,14 @@ pub(super) fn add_canonical_auctioneer_for_misc_test(
         .unwrap();
 }
 
-pub(super) fn install_trade_test_spell(session: &mut crate::session::WorldSession, spell_id: i32) {
+pub(crate) fn install_trade_test_spell(session: &mut crate::session::WorldSession, spell_id: i32) {
     let mut spell_store = SpellStore::new();
     spell_store.insert(spell_id, trade_test_spell_info(spell_id));
     session.set_spell_store(Arc::new(spell_store));
     session.set_known_spells_like_cpp(vec![spell_id]);
 }
 
-pub(super) fn insert_trade_test_item(
+pub(crate) fn insert_trade_test_item(
     session: &mut crate::session::WorldSession,
     owner_guid: ObjectGuid,
     slot: u8,
@@ -451,7 +451,7 @@ pub(super) fn insert_trade_test_item(
     session.insert_inventory_item_object(item);
 }
 
-pub(super) fn install_add_toy_item_templates(
+pub(crate) fn install_add_toy_item_templates(
     session: &mut crate::session::WorldSession,
     toy_item_id: u32,
     toy_flags2: u32,
@@ -585,12 +585,12 @@ pub(super) fn install_add_toy_item_templates(
     ));
 }
 
-pub(super) fn shared_canonical_map_manager_for_misc_test()
+pub(crate) fn shared_canonical_map_manager_for_misc_test()
 -> crate::session::SharedCanonicalMapManager {
     Arc::new(Mutex::new(wow_map::MapManager::default()))
 }
 
-pub(super) fn add_canonical_test_player_on_map_for_misc_test(
+pub(crate) fn add_canonical_test_player_on_map_for_misc_test(
     canonical: &crate::session::SharedCanonicalMapManager,
     guid: ObjectGuid,
     position: Position,
