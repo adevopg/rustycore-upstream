@@ -227,6 +227,10 @@ encoger).
   pendientes de esas herramientas.
 - El baseline de capas refleja las inversiones que la ola C debe retirar; el de dependencias, lo
   que ADR-003/004 exige retirar de los dominios.
+- Los techos físicos hicieron su trabajo en la puerta de la ola A: `chat.rs` (312 > 311) y
+  `trainer.rs` (855 > 846) habían crecido por los movimientos. En vez de subir el techo se sacaron
+  sus registros de opcode a `chat/registrations.rs` y `trainer/registrations.rs` (movimiento puro);
+  `chat.rs` queda en 84 líneas y el ratchet físico pasa con 102 techos legacy.
 
 ## 8. Decisiones de A0
 

@@ -213,42 +213,9 @@ fn trainer_condition_admission_proof_like_cpp(
 
 // ── Handler registrations ─────────────────────────────────────────────────────
 
-inventory::submit! {
-    PacketHandlerEntry {
-        opcode: ClientOpcodes::TrainerList,
-        status: SessionStatus::LoggedIn,
-        processing: PacketProcessing::Inplace,
-        handler_name: "handle_trainer_list",
-        handler: |session, _catalogs, mut pkt| {
-            Box::pin(async move {
-                match wow_packet::packets::gossip::Hello::read(&mut pkt) {
-                    Ok(hello) => session.handle_trainer_list(hello).await,
-                    Err(e) => tracing::warn!("Failed to read TrainerList: {e}"),
-                }
-            })
-        },
-    }
-}
 
-inventory::submit! {
-    PacketHandlerEntry {
-        opcode: ClientOpcodes::TrainerBuySpell,
-        status: SessionStatus::LoggedIn,
-        processing: PacketProcessing::Inplace,
-        handler_name: "handle_trainer_buy_spell",
-        handler: |session, catalogs, pkt| {
-            Box::pin(async move {
-                session
-                    .handle_trainer_buy_spell_with_generator_like_cpp(
-                        catalogs.id_generators.item.as_ref(),
-                        catalogs.battle_pet_trainer_selection.as_ref(),
-                        pkt,
-                    )
-                    .await
-            })
-        },
-    }
-}
+
+mod registrations;
 
 // ── Handler implementations ───────────────────────────────────────────────────
 
