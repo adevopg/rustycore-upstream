@@ -14,6 +14,10 @@ tests, presupuestos y checklist de cambios— es
 paridad con la referencia C++ es **de lógica**, no de estructura; ningún corte se justifica con
 "en C++ es así".
 
+El orden global —incluidas las olas de saneamiento del resto del workspace y las dependencias
+entre fases— vive en [workspace-structure-programme.md](workspace-structure-programme.md); este
+documento detalla solo `wow-world`.
+
 ## 1. Problema, con números
 
 | medida | valor |

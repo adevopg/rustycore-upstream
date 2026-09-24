@@ -158,6 +158,8 @@ regeneran a ciegas ni se suben para que pase una fase.
 ## 10. Cómo se cambia este estándar
 
 Con un commit de documentación que explique la razón y el impacto, actualizando también
-[wow-world-distribution-plan.md](wow-world-distribution-plan.md) si cambian fases o presupuestos.
-No se crean documentos competidores: este es el estándar estructural y el plan de distribución es
-su programa de aplicación.
+[wow-world-distribution-plan.md](wow-world-distribution-plan.md) si cambian fases o presupuestos y
+[workspace-structure-programme.md](workspace-structure-programme.md) si cambia el orden o el estado
+de las fases. No se crean documentos competidores: este es el estándar estructural, el plan de
+distribución es su programa para `wow-world` y el programa maestro es el índice y el orden de todo
+el workspace.
