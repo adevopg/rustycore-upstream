@@ -112,7 +112,7 @@ Se actualiza **en el mismo commit** que cierra cada fase. Convención: `[ ]` pen
 curso, `[x]` cerrada con commit.
 
 ```
-A0.1 [ ]  A0.2 [ ]  A0.3 [ ]  A0.4 [ ]  A0.5 [ ]  A0.6 [ ]  A0.7 [ ]
+A0.1 [ ]  A0.2 [x]  A0.3 [~]  A0.4 [~]  A0.5 [x]  A0.6 [x]  A0.7 [ ]
 A1 [ ]  A2 [ ]  A3 [ ]
 B1 [x] e719ac38   B2 [ ]  B3 [ ]  B4 [ ]  B5 [ ]  B6 [ ]  B7 [ ]
 C1 [ ]  C2 [ ]  C3 [ ]  C4 [ ]
@@ -202,3 +202,25 @@ proyecto es GPL v3), no solo avisos y duplicados; verificar y documentar el reso
 de `unsafe` (forbid en dominio/app, permitido solo en crates justificados con
 `deny(unsafe_op_in_unsafe_fn)`); y ejecutar **`cargo-machete` antes de A1** para no arreglar crates
 que A1 va a retirar.
+
+## 7. Primeros resultados de las comprobaciones (A0.2)
+
+`tools/xtask` (sin dependencias externas) con `structure-audit`, `check-layers`, `check-deps`,
+`context <fase>` y `check-scope <fase>`. Los dos primeros usan **ratchets con baseline**: fallan si
+aparece una violación nueva **o si una entrada del baseline ya no existe** (la lista solo puede
+encoger).
+
+- `check-layers`: **PASS** con 13 violaciones conocidas (`tools/xtask/layer-baseline.txt`).
+- `check-deps`: **PASS** con 4 dependencias prohibidas conocidas
+  (`tools/xtask/deps-baseline.txt`): `wow-ai` y `wow-loot` declaran `rand`; `wow-loot` declara
+  `tokio`; `wow-conditions` declara `parking_lot`. Son exactamente los dominios que deben pasar a
+  entradas inyectadas (ADR-004) y a núcleo síncrono (ADR-003); se retiran en la ola C/D.
+- La regla se afinó al medir: `sqlx` es legítimo en `wow-database`/`wow-persistence` y `tokio` en
+  la capa de red; la prohibición estricta es para los crates de **reglas** (L3).
+- `[workspace.lints]` **ya existía pero ningún crate optaba a él** (0 de 40): A0.3 queda a medias y
+  se cierra en el siguiente paso.
+- `cargo-machete`, `cargo-deny`, `cargo-nextest`, `cargo-public-api` y `cargo-hakari` **no están
+  instalados** en el host; A0.4 y A0.7 quedan parcialmente cubiertos por `structure-audit` y
+  pendientes de esas herramientas.
+- El baseline de capas refleja las inversiones que la ola C debe retirar; el de dependencias, lo
+  que ADR-003/004 exige retirar de los dominios.
