@@ -4,6 +4,7 @@
 //! registrations are unchanged and shared fixtures stay in the parent module.
 
 use super::*;
+use wow_data::{ItemLimitCategoryEntry, ItemLimitCategoryStore};
 
 #[tokio::test]
 async fn quest_confirm_accept_source_item_bound_objective_dont_report_flag_sends_direct_like_cpp() {

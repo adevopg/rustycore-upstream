@@ -26,7 +26,8 @@ use wow_data::{
     PlayerConditionStore,
 };
 use wow_entities::{INVENTORY_SLOT_BAG_0, MAX_BAG_SIZE, NULL_BAG, NULL_SLOT};
-use wow_packet::packets::item::{BuyItem, BuyResult};
+use wow_constants::BuyResult;
+use wow_packet::packets::misc::BuyItem;
 
 use super::super::super::player_team_for_race_cpp;
 

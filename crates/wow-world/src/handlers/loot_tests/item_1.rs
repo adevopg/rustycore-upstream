@@ -4,6 +4,7 @@
 //! registrations are unchanged and shared fixtures stay in the parent module.
 
 use super::*;
+use wow_loot::{LOOT_METHOD_GROUP_LIKE_CPP, LOOT_METHOD_MASTER_LIKE_CPP};
 
 #[test]
 fn stored_item_money_commit_unknown_requires_joint_balance_and_source_evidence_like_cpp() {

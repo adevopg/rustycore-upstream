@@ -7,7 +7,7 @@ use std::sync::Arc;
 use wow_core::{ObjectGuid, Position};
 use wow_social::group::{GroupInfo, GroupRegistry, PendingInvites};
 
-pub(super) fn install_confirm_accept_sender_snapshot(
+pub(crate) fn install_confirm_accept_sender_snapshot(
     session: &mut WorldSession,
     sender_guid: ObjectGuid,
     quest_id: u32,
@@ -86,7 +86,7 @@ fn insert_canonical_party_player_like_cpp(
 }
 
 /// Set one faction standing on a party member's canonical `Player`.
-pub(super) fn set_canonical_party_reputation_like_cpp(
+pub(crate) fn set_canonical_party_reputation_like_cpp(
     canonical: &crate::session::SharedCanonicalMapManager,
     guid: ObjectGuid,
     faction_id: u32,
@@ -108,7 +108,7 @@ pub(super) fn set_canonical_party_reputation_like_cpp(
     );
 }
 
-pub(super) fn install_represented_party(
+pub(crate) fn install_represented_party(
     session: &mut WorldSession,
     sender_guid: ObjectGuid,
     receiver_guid: ObjectGuid,

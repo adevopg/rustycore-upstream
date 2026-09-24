@@ -4,6 +4,7 @@
 //! registrations are unchanged and shared fixtures stay in the parent module.
 
 use super::*;
+use wow_social::group::{GroupInfo, GroupRegistry, PendingInvites};
 
 #[tokio::test]
 async fn loot_unit_new_main_target_releases_existing_view_like_cpp() {

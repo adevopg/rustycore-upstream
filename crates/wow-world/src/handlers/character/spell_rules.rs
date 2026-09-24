@@ -61,8 +61,8 @@ pub(super) fn apply_skill_rewarded_spell_changes_to_login_like_cpp(
     }
 }
 
-const SKILL_UNARMED_LIKE_CPP: u16 = 162;
-const SKILL_FIST_WEAPONS_LIKE_CPP: u16 = 473;
+pub(in crate::handlers::character) const SKILL_UNARMED_LIKE_CPP: u16 = 162;
+pub(in crate::handlers::character) const SKILL_FIST_WEAPONS_LIKE_CPP: u16 = 473;
 
 /// Pinned 3.4.3 C++ `Player::_LoadSkills` final Fist Weapons fixup.
 ///

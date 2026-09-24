@@ -12,7 +12,7 @@ use wow_data::{
 };
 use wow_entities::ITEM_LIMIT_CATEGORY_MODE_HAVE;
 
-pub(super) fn quest_template_with_source_item(
+pub(crate) fn quest_template_with_source_item(
     id: u32,
     source_item_id: u32,
     source_item_count: u32,
@@ -25,7 +25,7 @@ pub(super) fn quest_template_with_source_item(
     quest
 }
 
-pub(super) fn store_with_source_item_quest(
+pub(crate) fn store_with_source_item_quest(
     quest_id: u32,
     source_item_id: u32,
     source_item_count: u32,
@@ -39,7 +39,7 @@ pub(super) fn store_with_source_item_quest(
     )])
 }
 
-pub(super) fn install_source_item_template(
+pub(crate) fn install_source_item_template(
     session: &mut WorldSession,
     entry: u32,
     stackable: i32,
@@ -50,7 +50,7 @@ pub(super) fn install_source_item_template(
     );
 }
 
-pub(super) fn install_source_item_template_with_flags3(
+pub(crate) fn install_source_item_template_with_flags3(
     session: &mut WorldSession,
     entry: u32,
     stackable: i32,
@@ -62,7 +62,7 @@ pub(super) fn install_source_item_template_with_flags3(
     );
 }
 
-pub(super) fn install_source_item_template_with_start_quest(
+pub(crate) fn install_source_item_template_with_start_quest(
     session: &mut WorldSession,
     entry: u32,
     stackable: i32,
@@ -79,7 +79,7 @@ pub(super) fn install_source_item_template_with_start_quest(
     );
 }
 
-pub(super) fn install_source_item_template_with_limit_category(
+pub(crate) fn install_source_item_template_with_limit_category(
     session: &mut WorldSession,
     entry: u32,
     stackable: i32,
@@ -96,7 +96,7 @@ pub(super) fn install_source_item_template_with_limit_category(
     );
 }
 
-pub(super) fn install_source_item_template_with_start_quest_and_limit_category(
+pub(crate) fn install_source_item_template_with_start_quest_and_limit_category(
     session: &mut WorldSession,
     entry: u32,
     stackable: i32,
@@ -136,7 +136,7 @@ pub(super) fn install_source_item_template_with_start_quest_limit_category_and_f
     );
 }
 
-pub(super) fn install_source_item_template_with_start_quest_limit_category_flags3_and_bonding(
+pub(crate) fn install_source_item_template_with_start_quest_limit_category_flags3_and_bonding(
     session: &mut WorldSession,
     entry: u32,
     stackable: i32,
@@ -190,7 +190,7 @@ pub(super) fn install_source_item_template_with_start_quest_limit_category_flags
     )])));
 }
 
-pub(super) fn insert_direct_inventory_item(
+pub(crate) fn insert_direct_inventory_item(
     session: &mut WorldSession,
     player_guid: ObjectGuid,
     slot: u8,
@@ -220,7 +220,7 @@ pub(super) fn insert_direct_inventory_item(
     session.insert_inventory_item_object(item);
 }
 
-pub(super) fn install_have_limit_category_like_cpp(
+pub(crate) fn install_have_limit_category_like_cpp(
     session: &mut WorldSession,
     category_id: u32,
     quantity: u8,

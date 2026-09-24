@@ -324,7 +324,7 @@ impl WorldSession {
 
         #[cfg(test)]
         let had_non_player_seer = self
-            .represented_seer_guid_like_cpp
+            .represented_seer_guid_like_cpp()
             .is_some_and(|seer_guid| !seer_guid.is_empty() && seer_guid != player_guid);
         #[cfg(not(test))]
         let had_non_player_seer = !self.last_observed_farsight_object_like_cpp.is_empty();

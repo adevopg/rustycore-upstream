@@ -7,7 +7,10 @@ use super::*;
 use crate::handlers::character::vendor::rules::{
     LoadedItemRefundDecision, loaded_item_refund_decision,
 };
-use crate::handlers::character::spell_rules::sync_loaded_fist_weapons_with_unarmed_like_cpp;
+use crate::handlers::character::spell_rules::{
+    SKILL_FIST_WEAPONS_LIKE_CPP, SKILL_UNARMED_LIKE_CPP,
+    sync_loaded_fist_weapons_with_unarmed_like_cpp,
+};
 
 #[test]
 fn continue_login_has_no_concrete_persistence_after_remaining_writes_move() {

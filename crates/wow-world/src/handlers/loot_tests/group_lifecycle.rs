@@ -1,6 +1,7 @@
 //! Shared group-loot and generation-lifecycle fixtures for loot tests.
 
 use std::collections::HashMap;
+use wow_loot::{LOOT_METHOD_GROUP_LIKE_CPP, LOOT_METHOD_MASTER_LIKE_CPP};
 use std::sync::Arc;
 use wow_core::ObjectGuid;
 use wow_packet::packets::loot::{

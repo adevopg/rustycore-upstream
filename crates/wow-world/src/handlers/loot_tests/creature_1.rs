@@ -4,6 +4,7 @@
 //! registrations are unchanged and shared fixtures stay in the parent module.
 
 use super::*;
+use wow_loot::{LOOT_METHOD_GROUP_LIKE_CPP, LOOT_METHOD_MASTER_LIKE_CPP};
 
 #[tokio::test]
 async fn creature_spell_cast_command_sends_start_then_basic_go_after_one_gate_like_cpp() {

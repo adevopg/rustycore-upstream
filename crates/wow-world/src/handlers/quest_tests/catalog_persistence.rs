@@ -8,7 +8,7 @@ use wow_persistence::{
     QuestPoiPersistencePortLikeCpp,
 };
 
-pub(super) struct QuestPoiPortFixtureLikeCpp(pub(super) QuestPoiLoadOutcomeLikeCpp);
+pub(crate) struct QuestPoiPortFixtureLikeCpp(pub(super) QuestPoiLoadOutcomeLikeCpp);
 
 impl QuestPoiPersistencePortLikeCpp for QuestPoiPortFixtureLikeCpp {
     fn load_quest_poi_rows_like_cpp(
@@ -19,7 +19,7 @@ impl QuestPoiPersistencePortLikeCpp for QuestPoiPortFixtureLikeCpp {
     }
 }
 
-pub(super) struct ItemTemplateAddonCatalogPortFixtureLikeCpp {
+pub(crate) struct ItemTemplateAddonCatalogPortFixtureLikeCpp {
     pub(super) requests: std::sync::Mutex<Vec<ItemTemplateAddonCatalogRequestLikeCpp>>,
     outcomes:
         std::sync::Mutex<std::collections::VecDeque<ItemTemplateAddonLootMetadataOutcomeLikeCpp>>,
@@ -59,7 +59,7 @@ impl ItemTemplateAddonCatalogPersistencePortLikeCpp for ItemTemplateAddonCatalog
     }
 }
 
-pub(super) fn quest_poi_blob_row_like_cpp(
+pub(crate) fn quest_poi_blob_row_like_cpp(
     quest_id: i32,
     idx1: i32,
 ) -> QuestPoiBlobLoadRowLikeCpp {
