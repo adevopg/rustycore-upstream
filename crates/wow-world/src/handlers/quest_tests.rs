@@ -53,6 +53,7 @@ use wow_persistence::{
 };
 use wow_social::group::{GroupInfo, GroupRegistry, PendingInvites};
 
+#[path = "quest_tests/source_items.rs"]
 mod source_items;
 pub(super) use source_items::{
     install_have_limit_category_like_cpp, install_source_item_template,
@@ -62,11 +63,13 @@ pub(super) use source_items::{
     install_source_item_template_with_start_quest_limit_category_flags3_and_bonding,
     insert_direct_inventory_item, quest_template_with_source_item, store_with_source_item_quest,
 };
+#[path = "quest_tests/party.rs"]
 mod party;
 pub(super) use party::{
     install_confirm_accept_sender_snapshot, install_represented_party,
     set_canonical_party_reputation_like_cpp,
 };
+#[path = "quest_tests/catalog_persistence.rs"]
 mod catalog_persistence;
 pub(super) use catalog_persistence::{
     ItemTemplateAddonCatalogPortFixtureLikeCpp, QuestPoiPortFixtureLikeCpp,

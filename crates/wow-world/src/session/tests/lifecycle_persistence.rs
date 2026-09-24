@@ -7,8 +7,11 @@
 //! pin which marks are requested, against which logical database, and that
 //! every outcome class is handled without panicking.
 
+#[path = "lifecycle_persistence/account_collections.rs"]
 mod account_collections;
+#[path = "lifecycle_persistence/character_lifecycle.rs"]
 mod character_lifecycle;
+#[path = "lifecycle_persistence/player_persistence.rs"]
 mod player_persistence;
 
 use super::*;
