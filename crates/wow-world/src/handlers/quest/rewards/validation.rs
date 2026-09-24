@@ -8,7 +8,7 @@
 use super::*;
 
 impl WorldSession {
-    pub(super) fn represented_reward_choice_template_exists_like_cpp(
+    pub(in crate::handlers::quest) fn represented_reward_choice_template_exists_like_cpp(
         &self,
         choice: QuestChoiceItemLikeCpp,
     ) -> bool {
@@ -23,7 +23,7 @@ impl WorldSession {
         }
     }
 
-    fn represented_can_select_quest_package_item_like_cpp(
+    pub(in crate::handlers::quest) fn represented_can_select_quest_package_item_like_cpp(
         &self,
         quest_package_item: &QuestPackageItemEntry,
     ) -> bool {
@@ -61,7 +61,7 @@ impl WorldSession {
         }
     }
 
-    pub(super) fn represented_quest_package_choice_matches_like_cpp(
+    pub(in crate::handlers::quest) fn represented_quest_package_choice_matches_like_cpp(
         &self,
         quest: &wow_data::quest::QuestTemplate,
         choice: QuestChoiceItemLikeCpp,
@@ -92,7 +92,7 @@ impl WorldSession {
             .any(|entry| entry.item_id == choice_item_id)
     }
 
-    fn send_quest_failed_like_cpp(&self, quest_id: u32, reason: InventoryResult) {
+    pub(in crate::handlers::quest) fn send_quest_failed_like_cpp(&self, quest_id: u32, reason: InventoryResult) {
         if quest_id == 0 {
             return;
         }
@@ -113,7 +113,7 @@ impl WorldSession {
             .unwrap_or(InventoryResult::ItemNotFound)
     }
 
-    fn send_quest_package_reward_inventory_error_like_cpp(
+    pub(in crate::handlers::quest) fn send_quest_package_reward_inventory_error_like_cpp(
         &self,
         result: InventoryResult,
         item_id: u32,
@@ -125,7 +125,7 @@ impl WorldSession {
         self.send_equip_error(result, None, None, 0, limit_category);
     }
 
-    pub(super) fn represented_can_reward_quest_inventory_like_cpp(
+    pub(in crate::handlers::quest) fn represented_can_reward_quest_inventory_like_cpp(
         &self,
         quest: &wow_data::quest::QuestTemplate,
         choice: QuestChoiceItemLikeCpp,

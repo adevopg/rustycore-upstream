@@ -1,5 +1,6 @@
 //! Direct loot item storage and publication helpers.
 
+use wow_entities::Item;
 use super::*;
 mod disenchant;
 

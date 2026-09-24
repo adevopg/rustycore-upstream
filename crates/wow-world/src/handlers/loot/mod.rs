@@ -247,7 +247,7 @@ impl RepresentedLootPlayerContext {
             .get(&quest_id)
             .copied()
             .or_else(|| {
-                self.quest_test_fixture_like_cpp.rewarded_quests
+                self.rewarded_quests
                     .contains(&quest_id)
                     .then_some(QUEST_STATUS_REWARDED_LIKE_CPP)
             })

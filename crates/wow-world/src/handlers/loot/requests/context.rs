@@ -11,7 +11,7 @@ impl WorldSession {
     /// C++ `Loot::FillLoot` calls `FillNotNormalLootFor` for every connected
     /// group member at reward distance from the opening player before the
     /// chest's shared `Loot` becomes visible.
-    pub(super) fn represented_group_looters_at_reward_distance_like_cpp(
+    pub(in crate::handlers::loot) fn represented_group_looters_at_reward_distance_like_cpp(
         &self,
         player_guid: ObjectGuid,
     ) -> Vec<ObjectGuid> {
@@ -64,7 +64,7 @@ impl WorldSession {
         looters
     }
 
-    pub(super) fn represented_dungeon_trash_looter_like_cpp(
+    pub(in crate::handlers::loot) fn represented_dungeon_trash_looter_like_cpp(
         &self,
         connected_tappers: &[ObjectGuid],
     ) -> ObjectGuid {
@@ -81,7 +81,7 @@ impl WorldSession {
         selected.unwrap_or(connected_tappers[0])
     }
 
-    pub(super) fn advance_represented_dungeon_trash_looter_like_cpp(
+    pub(in crate::handlers::loot) fn advance_represented_dungeon_trash_looter_like_cpp(
         &self,
         connected_tappers: &[ObjectGuid],
     ) {
@@ -94,7 +94,7 @@ impl WorldSession {
             .advance_looter_transition_like_cpp(group_guid, connected_tappers.iter().copied());
     }
 
-    pub(super) fn item_loot_quest_status_allows_for_player_like_cpp(
+    pub(in crate::handlers::loot) fn item_loot_quest_status_allows_for_player_like_cpp(
         &self,
         item_id: u32,
         needs_quest: bool,
@@ -123,7 +123,7 @@ impl WorldSession {
         (!needs_quest && !has_non_none_start_quest_status) || has_quest_for_item
     }
 
-    pub(super) fn represented_loot_player_context_like_cpp(
+    pub(in crate::handlers::loot) fn represented_loot_player_context_like_cpp(
         &self,
         player_guid: ObjectGuid,
     ) -> Option<RepresentedLootPlayerContext> {
@@ -170,7 +170,7 @@ impl WorldSession {
         })
     }
 
-    pub(super) fn item_template_flags2_like_cpp(&self, item_id: u32) -> Option<u32> {
+    pub(in crate::handlers::loot) fn item_template_flags2_like_cpp(&self, item_id: u32) -> Option<u32> {
         self.item_stats_store()
             .and_then(|store| store.sparse_template(item_id))
             .map(|template| template.flags[1])
@@ -317,7 +317,7 @@ impl WorldSession {
             })
     }
 
-    pub(super) fn direct_inventory_item_count_like_cpp(&self, item_id: u32) -> Option<u32> {
+    pub(in crate::handlers::loot) fn direct_inventory_item_count_like_cpp(&self, item_id: u32) -> Option<u32> {
         Some(
             self.represented_inventory_item_counts_like_cpp()?
                 .get(&item_id)
@@ -326,7 +326,7 @@ impl WorldSession {
         )
     }
 
-    pub(super) fn player_quest_objective_progress_like_cpp(
+    pub(in crate::handlers::loot) fn player_quest_objective_progress_like_cpp(
         &self,
         objective_id: u32,
     ) -> Option<i32> {
@@ -361,7 +361,7 @@ impl WorldSession {
         None
     }
 
-    pub(super) fn remote_player_quest_objective_progress_like_cpp(
+    pub(in crate::handlers::loot) fn remote_player_quest_objective_progress_like_cpp(
         &self,
         objective_id: u32,
         player_context: &RepresentedLootPlayerContext,
@@ -387,7 +387,7 @@ impl WorldSession {
         None
     }
 
-    pub(super) async fn load_item_template_addon_loot_metadata_for_item_ids_like_cpp<I>(
+    pub(in crate::handlers::loot) async fn load_item_template_addon_loot_metadata_for_item_ids_like_cpp<I>(
         &self,
         item_ids: I,
     ) -> HashMap<u32, ItemTemplateAddonLootMetadataLikeCpp>

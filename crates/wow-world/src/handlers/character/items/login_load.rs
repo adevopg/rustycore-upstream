@@ -8,14 +8,18 @@
 use std::sync::Arc;
 
 use super::*;
+use crate::handlers::character::vendor::rules::{
+    LoadedItemRefundDecision, loaded_item_refund_decision,
+};
+use crate::handlers::character::world_entry::is_represented_bag_slot;
 
 pub(in crate::handlers::character) struct LoginInventorySnapshotLikeCpp {
     pub(in crate::handlers::character) visible_items: [(i32, u16, u16); 19],
     pub(in crate::handlers::character) inv_slots: [ObjectGuid; 141],
     pub(in crate::handlers::character) item_creates: Vec<wow_packet::packets::update::ItemCreateData>,
     pub(in crate::handlers::character) loaded_equipped_item_guids: Vec<ObjectGuid>,
-    pub(in crate::handlers::character) loaded_item_time_updates: Vec<crate::session::PlayerItemTimeUpdate>,
-    pub(in crate::handlers::character) loaded_non_equipped_enchantment_updates: Vec<crate::session::PlayerEnchantTimeUpdate>,
+    pub(in crate::handlers::character) loaded_item_time_updates: Vec<wow_entities::PlayerItemTimeUpdate>,
+    pub(in crate::handlers::character) loaded_non_equipped_enchantment_updates: Vec<wow_entities::PlayerEnchantTimeUpdate>,
 }
 
 impl WorldSession {

@@ -6,6 +6,7 @@
 //! Loot window open/close requests and the represented loot cache.
 
 use super::*;
+use wow_packet::ClientPacket;
 use wow_entities::ItemObjectUpdateLikeCpp;
 
 mod context;

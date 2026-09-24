@@ -18,7 +18,8 @@ use wow_entities::{
     INVENTORY_SLOT_BAG_0, MAX_BAG_SIZE, MAX_MONEY_AMOUNT, NULL_BAG, NULL_SLOT,
     is_equipment_pos, is_inventory_pos,
 };
-use wow_packet::packets::item::{BuyItem, BuyResult};
+use wow_constants::BuyResult;
+use wow_packet::packets::misc::BuyItem;
 
 use super::super::{player_class_mask, player_team_for_race_cpp};
 

@@ -13,7 +13,6 @@ mod healing_application;
 
 impl WorldSession {
 
-    #[cfg(test)]
     /// C++ `Unit::SpellDamageBonusDone` (`Unit.cpp:6623-6680`) for the
     /// represented player-caster `SPELL_DIRECT_DAMAGE`:
     /// `int32(max((pdamage + int32(SpellBaseDamageBonusDone(schoolMask) *

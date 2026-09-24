@@ -8,7 +8,7 @@
 use super::*;
 
 impl WorldSession {
-    async fn load_represented_creature_loot_condition_rows_like_cpp(
+    pub(in crate::handlers::loot) async fn load_represented_creature_loot_condition_rows_like_cpp(
         &self,
         condition_ids: &[LootConditionId],
     ) -> HashMap<LootConditionId, Vec<LootConditionRowLikeCpp>> {
@@ -24,7 +24,7 @@ impl WorldSession {
         rows_by_id
     }
 
-    async fn load_represented_creature_loot_condition_reference_rows_like_cpp(
+    pub(in crate::handlers::loot) async fn load_represented_creature_loot_condition_reference_rows_like_cpp(
         &self,
         condition_rows: &HashMap<LootConditionId, Vec<LootConditionRowLikeCpp>>,
     ) -> HashMap<u32, Vec<LootConditionRowLikeCpp>> {
@@ -128,7 +128,7 @@ impl WorldSession {
         conditions
     }
 
-    fn represented_creature_loot_item_allowed_like_cpp(
+    pub(in crate::handlers::loot) fn represented_creature_loot_item_allowed_like_cpp(
         &self,
         context: LootStoreItemContext,
         condition_rows: &HashMap<LootConditionId, Vec<LootConditionRowLikeCpp>>,
@@ -144,7 +144,7 @@ impl WorldSession {
         )
     }
 
-    fn represented_creature_loot_item_allowed_for_player_like_cpp(
+    pub(in crate::handlers::loot) fn represented_creature_loot_item_allowed_for_player_like_cpp(
         &self,
         context: LootStoreItemContext,
         player_guid: ObjectGuid,
@@ -276,7 +276,7 @@ impl WorldSession {
         }
     }
 
-    pub(super) async fn load_creature_item_template_addon_loot_metadata_like_cpp(
+    pub(in crate::handlers::loot) async fn load_creature_item_template_addon_loot_metadata_like_cpp(
         &self,
         item_id: u32,
     ) -> ItemTemplateAddonLootMetadataLikeCpp {

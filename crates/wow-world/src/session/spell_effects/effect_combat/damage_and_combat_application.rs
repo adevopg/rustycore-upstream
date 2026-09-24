@@ -206,6 +206,7 @@ impl WorldSession {
         .await
     }
 
+    #[cfg(test)]
     pub(in crate::session) async fn apply_damage(
         &mut self,
         spell_id: Option<i32>,

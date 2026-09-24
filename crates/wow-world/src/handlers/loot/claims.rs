@@ -9,6 +9,7 @@
 // `use super::*`, and the persistence inventory cannot resolve a glob, so
 // without these every database access in the file is invisible to the
 // ratchet (see #277).
+use wow_entities::Item;
 use super::*;
 use wow_entities::ItemObjectUpdateLikeCpp;
 
