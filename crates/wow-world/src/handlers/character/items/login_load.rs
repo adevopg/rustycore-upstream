@@ -450,22 +450,6 @@ impl WorldSession {
             // inventory_type is now loaded from the canonical ItemTemplate bridge.
             // No SQL cache needed.
         }
-        let (loaded_item_time_updates, loaded_non_equipped_enchantment_updates) = self
-            .register_loaded_inventory_item_duration_refs_like_cpp(
-                &loaded_inventory_item_guids,
-                &loaded_equipped_item_guids,
-            );
-
-        Some(LoginInventorySnapshotLikeCpp {
-            visible_items,
-            inv_slots,
-            item_creates,
-            loaded_equipped_item_guids,
-            loaded_item_time_updates,
-            loaded_non_equipped_enchantment_updates,
-        })
-    }
-}
         // ── Load void storage ──
         // C++ `Player::LoadFromDB` calls `_LoadVoidStorage` only when the
         // already-loaded player flags say the vault is unlocked. A locked
@@ -607,4 +591,19 @@ impl WorldSession {
             self.mark_represented_equipment_sets_loaded_like_cpp();
         }
 
+        let (loaded_item_time_updates, loaded_non_equipped_enchantment_updates) = self
+            .register_loaded_inventory_item_duration_refs_like_cpp(
+                &loaded_inventory_item_guids,
+                &loaded_equipped_item_guids,
+            );
+
         Some(LoginInventorySnapshotLikeCpp {
+            visible_items,
+            inv_slots,
+            item_creates,
+            loaded_equipped_item_guids,
+            loaded_item_time_updates,
+            loaded_non_equipped_enchantment_updates,
+        })
+    }
+}

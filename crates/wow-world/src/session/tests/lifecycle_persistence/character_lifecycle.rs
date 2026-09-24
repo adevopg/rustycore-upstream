@@ -367,6 +367,3 @@ async fn a_session_without_a_port_performs_no_durable_write_like_cpp() {
         .await;
 }
 
-/// Each account collection reaches the port as its own request against the
-/// Login database. Three requests, not one: C++ logout commits them
-/// separately, and #187 freezes that until a deliberate behaviour change.
