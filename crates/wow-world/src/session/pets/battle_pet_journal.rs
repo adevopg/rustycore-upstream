@@ -24,7 +24,7 @@ impl WorldSession {
         }
         #[cfg(test)]
         return self
-            .battle_pet_species_store
+            .battle_pet_test_fixture_like_cpp.battle_pet_species_store
             .as_ref()
             .and_then(|store| store.get(species))
             .cloned();
@@ -33,7 +33,7 @@ impl WorldSession {
     }
     #[cfg(test)]
     pub fn set_battle_pet_breed_quality_store(&mut self, store: Arc<BattlePetBreedQualityStore>) {
-        self.battle_pet_breed_quality_store = Some(store);
+        self.battle_pet_test_fixture_like_cpp.battle_pet_breed_quality_store = Some(store);
     }
     pub(in crate::session) fn battle_pet_xp_per_level_like_cpp(&self, level: u16) -> Option<u16> {
         let canonical = self
@@ -42,11 +42,11 @@ impl WorldSession {
             .and_then(|attachment| attachment.owner_like_cpp().xp_per_level_like_cpp(level));
         #[cfg(test)]
         return canonical.or_else(|| {
-            self.battle_pet_xp_game_table
+            self.battle_pet_test_fixture_like_cpp.battle_pet_xp_game_table
                 .as_ref()
                 .and_then(|table| table.xp_per_level_like_cpp(level))
                 .or_else(|| {
-                    self.represented_battle_pet_xp_per_level_like_cpp
+                    self.battle_pet_test_fixture_like_cpp.represented_battle_pet_xp_per_level_like_cpp
                         .get(&level)
                         .copied()
                 })
@@ -60,7 +60,7 @@ impl WorldSession {
             return attachment.has_lease_like_cpp();
         }
         #[cfg(test)]
-        return self.represented_battle_pet_journal_lock_like_cpp;
+        return self.battle_pet_test_fixture_like_cpp.represented_battle_pet_journal_lock_like_cpp;
         #[cfg(not(test))]
         false
     }
@@ -78,7 +78,7 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.represented_battle_pet_journal_lock_like_cpp = true;
+            self.battle_pet_test_fixture_like_cpp.represented_battle_pet_journal_lock_like_cpp = true;
             self.send_packet_realm(&wow_packet::packets::misc::BattlePetJournalLockAcquired);
         }
         #[cfg(not(test))]
@@ -98,7 +98,7 @@ impl WorldSession {
             return false;
         }
 
-        let Some(pet) = self.represented_battle_pets_like_cpp.get_mut(&pet_guid) else {
+        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get_mut(&pet_guid) else {
             return false;
         };
 
@@ -147,7 +147,7 @@ impl WorldSession {
         }
         #[cfg(test)]
         return Some(
-            self.represented_battle_pets_like_cpp
+            self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
                 .values()
                 .filter(|pet| pet.save_info != RepresentedBattlePetSaveInfoLikeCpp::Removed)
                 .map(|pet| pet.level)
@@ -170,7 +170,7 @@ impl WorldSession {
             return RepresentedBattlePetQualityOutcomeLikeCpp::NoJournalLock;
         }
 
-        let Some(pet) = self.represented_battle_pets_like_cpp.get(&pet_guid) else {
+        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get(&pet_guid) else {
             return RepresentedBattlePetQualityOutcomeLikeCpp::UnknownPet;
         };
 
@@ -196,11 +196,11 @@ impl WorldSession {
             self.battle_pet_calculate_stats_like_cpp(breed, species, quality, level);
 
         let pet = self
-            .represented_battle_pets_like_cpp
+            .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
             .get_mut(&pet_guid)
             .expect("pet was checked before stats calculation");
         pet.quality = quality;
-        crate::session_rules::apply_battle_pet_calculated_stats_like_cpp(pet, calculated_stats);
+        crate::session::apply_battle_pet_calculated_stats_like_cpp(pet, calculated_stats);
 
         if pet.save_info != RepresentedBattlePetSaveInfoLikeCpp::New {
             pet.save_info = RepresentedBattlePetSaveInfoLikeCpp::Changed;
@@ -246,7 +246,7 @@ impl WorldSession {
         match owner
             .try_mutate_pet_like_cpp(lease, pet_guid, move |pet| {
                 pet.quality = quality;
-                crate::session_rules::apply_battle_pet_calculated_stats_like_cpp(pet, calculated);
+                crate::session::apply_battle_pet_calculated_stats_like_cpp(pet, calculated);
             })
             .await
         {
@@ -283,7 +283,7 @@ impl WorldSession {
             return RepresentedBattlePetGrantLevelOutcomeLikeCpp::NoJournalLock;
         }
 
-        let Some(pet) = self.represented_battle_pets_like_cpp.get(&pet_guid) else {
+        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get(&pet_guid) else {
             return RepresentedBattlePetGrantLevelOutcomeLikeCpp::UnknownPet;
         };
 
@@ -311,7 +311,7 @@ impl WorldSession {
             level += 1;
             remaining_levels -= 1;
             #[cfg(test)]
-            self.represented_battle_pet_level_criteria_like_cpp
+            self.battle_pet_test_fixture_like_cpp.represented_battle_pet_level_criteria_like_cpp
                 .push(RepresentedBattlePetLevelCriteriaLikeCpp { species, level });
         }
 
@@ -319,14 +319,14 @@ impl WorldSession {
             self.battle_pet_calculate_stats_like_cpp(breed, species, quality, level);
 
         let pet = self
-            .represented_battle_pets_like_cpp
+            .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
             .get_mut(&pet_guid)
             .expect("pet was checked before stats calculation");
         pet.level = level;
         if level >= MAX_BATTLE_PET_LEVEL_LIKE_CPP {
             pet.exp = 0;
         }
-        crate::session_rules::apply_battle_pet_calculated_stats_like_cpp(pet, calculated_stats);
+        crate::session::apply_battle_pet_calculated_stats_like_cpp(pet, calculated_stats);
 
         if pet.save_info != RepresentedBattlePetSaveInfoLikeCpp::New {
             pet.save_info = RepresentedBattlePetSaveInfoLikeCpp::Changed;
@@ -386,13 +386,13 @@ impl WorldSession {
                 if level >= MAX_BATTLE_PET_LEVEL_LIKE_CPP {
                     pet.exp = 0;
                 }
-                crate::session_rules::apply_battle_pet_calculated_stats_like_cpp(pet, calculated);
+                crate::session::apply_battle_pet_calculated_stats_like_cpp(pet, calculated);
             })
             .await
         {
             Ok(((), packet)) => {
                 #[cfg(test)]
-                self.represented_battle_pet_level_criteria_like_cpp
+                self.battle_pet_test_fixture_like_cpp.represented_battle_pet_level_criteria_like_cpp
                     .extend(criteria);
                 self.send_packet(&wow_packet::packets::misc::BattlePetUpdates {
                     pets: vec![packet],
@@ -419,20 +419,20 @@ impl WorldSession {
         level: u16,
         xp_per_level: u16,
     ) {
-        self.represented_battle_pet_xp_per_level_like_cpp
+        self.battle_pet_test_fixture_like_cpp.represented_battle_pet_xp_per_level_like_cpp
             .insert(level, xp_per_level);
     }
     #[cfg(test)]
     pub(crate) fn represented_battle_pet_level_criteria_like_cpp(
         &self,
     ) -> &[RepresentedBattlePetLevelCriteriaLikeCpp] {
-        &self.represented_battle_pet_level_criteria_like_cpp
+        &self.battle_pet_test_fixture_like_cpp.represented_battle_pet_level_criteria_like_cpp
     }
     #[cfg(test)]
     pub(crate) fn represented_battle_pet_active_level_criteria_like_cpp(
         &self,
     ) -> &[RepresentedBattlePetLevelCriteriaLikeCpp] {
-        &self.represented_battle_pet_active_level_criteria_like_cpp
+        &self.battle_pet_test_fixture_like_cpp.represented_battle_pet_active_level_criteria_like_cpp
     }
     /// C++ `BattlePetMgr::SendJournal` packet body builder.
     pub(crate) fn represented_battle_pet_journal_like_cpp(
@@ -457,7 +457,7 @@ impl WorldSession {
                 pets: Vec::new(),
             };
 
-            for (pet_guid, pet) in &self.represented_battle_pets_like_cpp {
+            for (pet_guid, pet) in &self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp {
                 if pet.save_info == RepresentedBattlePetSaveInfoLikeCpp::Removed {
                     continue;
                 }
@@ -472,12 +472,12 @@ impl WorldSession {
                 journal.pets.push(pet.packet_info_like_cpp(*pet_guid));
             }
 
-            for slot in &self.represented_battle_pet_slots_like_cpp {
+            for slot in &self.battle_pet_test_fixture_like_cpp.represented_battle_pet_slots_like_cpp {
                 let mut packet_slot = slot.packet_slot_like_cpp();
                 if packet_slot.pet_guid
                     != wow_packet::packets::misc::empty_battle_pet_guid_like_cpp()
                     && !self
-                        .represented_battle_pets_like_cpp
+                        .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
                         .contains_key(&packet_slot.pet_guid)
                 {
                     packet_slot.pet_guid =

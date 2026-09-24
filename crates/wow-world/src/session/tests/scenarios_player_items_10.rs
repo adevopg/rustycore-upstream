@@ -82,7 +82,7 @@ fn open_item_wrapped_gift_row_helper_updates_runtime_and_top_level_metadata_like
     assert_eq!(item.data().durability, 55);
     assert_eq!(item.update_state(), ItemUpdateState::Changed);
     assert!(!item.is_wrapped());
-    let inventory_item = session.inventory_items.get(&23).unwrap();
+    let inventory_item = session.player_item_test_fixture_like_cpp.inventory_items.get(&23).unwrap();
     assert_eq!(inventory_item.entry_id, 200);
     assert_eq!(
         inventory_item.inventory_type,
@@ -203,7 +203,7 @@ async fn open_item_missing_runtime_object_fails_closed_like_cpp() {
     let item_guid = ObjectGuid::create_item(1, 902);
     session.set_player_guid(Some(player_guid));
     install_open_item_has_loot_template_with_lock(&mut session, 700, 123);
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         23,
         InventoryItem {
             guid: item_guid,
@@ -354,7 +354,7 @@ fn direct_destroy_uses_cpp_can_unequip_gate_for_equipment_and_bags() {
     ])));
 
     let chest_guid = ObjectGuid::create_item(1, 1000);
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         EQUIPMENT_SLOT_CHEST,
         InventoryItem {
             guid: chest_guid,
@@ -387,7 +387,7 @@ fn direct_destroy_uses_cpp_can_unequip_gate_for_equipment_and_bags() {
     session.in_combat = false;
 
     let bag_guid = ObjectGuid::create_item(1, 1001);
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         INVENTORY_SLOT_BAG_START,
         InventoryItem {
             guid: bag_guid,
@@ -565,7 +565,7 @@ fn canonical_player_logout_cleanup_removes_player_before_session_inventory_like_
         session.player_name = Some("LogoutMap".into());
         session.player_position = Some(Position::new(1.0, 2.0, 3.0, 0.0));
         session.current_map_id = 571;
-        session.inventory_items.insert(
+        session.player_item_test_fixture_like_cpp.inventory_items.insert(
             23,
             InventoryItem {
                 guid: item_guid,
@@ -611,7 +611,7 @@ fn canonical_player_logout_cleanup_removes_player_before_session_inventory_like_
                 .get_typed_player(player_guid)
                 .is_none()
         );
-        assert!(session.inventory_items.is_empty());
+        assert!(session.player_item_test_fixture_like_cpp.inventory_items.is_empty());
         assert!(session.inventory_item_objects.is_empty());
     });
 }
@@ -664,7 +664,7 @@ fn direct_inventory_store_plan_uses_cpp_can_store_merge_then_empty_order() {
         },
     )])));
 
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         35,
         InventoryItem {
             guid: item_guid,
@@ -730,7 +730,7 @@ fn direct_inventory_store_plan_respects_cpp_explicit_stack_before_other_merge() 
 
     for (slot, db_guid) in [(35, 900_u64), (36, 901_u64)] {
         let item_guid = ObjectGuid::create_item(1, db_guid as i64);
-        session.inventory_items.insert(
+        session.player_item_test_fixture_like_cpp.inventory_items.insert(
             slot,
             InventoryItem {
                 guid: item_guid,

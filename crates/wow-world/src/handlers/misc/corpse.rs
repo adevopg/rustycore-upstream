@@ -188,7 +188,7 @@ impl crate::session::WorldSession {
             .flatten();
 
         let mut source_info =
-            crate::conditions::ConditionSourceInfo::from_targets(Some(&player_object), None, None);
+            wow_conditions::ConditionSourceInfo::from_targets(Some(&player_object), None, None);
         source_info.set_unit_target_snapshot(0, player_unit_snapshot);
         source_info.set_player_target_snapshot(0, player_snapshot);
         if let (Some(store), Some(context)) = (
@@ -201,17 +201,17 @@ impl crate::session::WorldSession {
             }
         }
 
-        crate::conditions::is_object_meet_to_conditions_like_cpp(
+        wow_conditions::is_object_meet_to_conditions_like_cpp(
             &mut source_info,
             conditions.as_slice(),
             condition_store.as_ref(),
-            |condition, source_info| match crate::conditions::condition_meets_basic_like_cpp(
+            |condition, source_info| match wow_conditions::condition_meets_basic_like_cpp(
                 condition,
                 source_info,
                 |current_area, required_area| current_area == required_area,
             ) {
-                crate::conditions::ConditionMeetResult::Evaluated(value) => value,
-                crate::conditions::ConditionMeetResult::Unsupported => {
+                wow_conditions::ConditionMeetResult::Evaluated(value) => value,
+                wow_conditions::ConditionMeetResult::Unsupported => {
                     warn!(
                         "Cemetery condition check failed closed: unsupported {:?}",
                         condition.condition_type

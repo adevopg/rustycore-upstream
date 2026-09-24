@@ -109,7 +109,7 @@ fn direct_inventory_store_plan_counts_represented_bag_contents_for_limit_categor
         },
     ])));
 
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         INVENTORY_SLOT_BAG_START,
         InventoryItem {
             guid: bag_guid,
@@ -230,7 +230,7 @@ fn direct_inventory_store_plan_allocates_represented_bag_slot_like_cpp() {
         (701, sparse(InventoryType::NonEquip, 20, 0)),
     ])));
 
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         INVENTORY_SLOT_BAG_START,
         InventoryItem {
             guid: bag_guid,
@@ -254,7 +254,7 @@ fn direct_inventory_store_plan_allocates_represented_bag_slot_like_cpp() {
         let slot = INVENTORY_SLOT_ITEM_START + slot_offset;
         let db_guid = 900 + u64::from(slot_offset);
         let guid = ObjectGuid::create_item(1, db_guid as i64);
-        session.inventory_items.insert(
+        session.player_item_test_fixture_like_cpp.inventory_items.insert(
             slot,
             InventoryItem {
                 guid,
@@ -863,7 +863,7 @@ fn loaded_equipped_item_enchantments_apply_effect_actions_like_cpp() {
 #[test]
 fn send_new_item_plan_maps_entity_fields_to_item_push_result_like_cpp() {
     let plan = send_new_item_plan(SendNewItemDelivery::Direct);
-    let packet = crate::session_rules::item_push_result_from_send_new_item_plan(&plan);
+    let packet = crate::session::item_push_result_from_send_new_item_plan(&plan);
 
     assert_eq!(packet.player_guid, plan.player_guid);
     assert_eq!(packet.item_guid, plan.item_guid);

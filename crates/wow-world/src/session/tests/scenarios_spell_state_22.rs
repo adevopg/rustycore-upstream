@@ -539,7 +539,7 @@ fn represented_item_mods_apply_scaling_stat_loop_spell_bonus_and_armor_like_cpp(
             plate_chest_armor: 0,
         },
     ])));
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         EQUIPMENT_SLOT_CHEST,
         InventoryItem {
             guid: item_guid,

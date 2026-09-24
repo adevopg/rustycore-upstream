@@ -28,7 +28,7 @@
 
 use std::sync::Arc;
 
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use wow_constants::ClientOpcodes;
 use wow_constants::unit::NPCFlags1;
@@ -50,13 +50,13 @@ use wow_packet::packets::trainer::{
     TrainerBuyFailed, TrainerBuySpellRequest, TrainerListPacket, TrainerListSpell,
 };
 
-use crate::conditions;
 use crate::session::WorldSession;
 use crate::trainer_offer::{
     TrainerAdmissionProofLikeCpp, TrainerBattlePetProofLikeCpp, TrainerOfferDecisionLikeCpp,
     TrainerOfferInputLikeCpp, TrainerProductLikeCpp, decide_trainer_offer_like_cpp,
     trainer_price_like_cpp,
 };
+use wow_conditions as conditions;
 
 const TRAINER_LIST_NPC_FLAGS_LIKE_CPP: u32 = NPCFlags1::TRAINER.bits();
 const TRAINER_BUY_NPC_FLAGS_LIKE_CPP: u32 = NPCFlags1::TRAINER.bits()
@@ -253,6 +253,15 @@ inventory::submit! {
 // ── Handler implementations ───────────────────────────────────────────────────
 
 impl WorldSession {
+    /// C++ `HandleShowTradeSkillOpcode` currently only logs this request.
+    pub async fn handle_show_trade_skill(&mut self) {
+        if let Some(player_guid) = self.player_guid() {
+            debug!("ShowTradeSkill from {:?}", player_guid);
+        } else {
+            debug!("ShowTradeSkill from account {}", self.account_id);
+        }
+    }
+
     fn trainer_spell_condition_proof_like_cpp(
         &self,
         trainer_id: u32,

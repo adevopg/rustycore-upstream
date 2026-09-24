@@ -360,7 +360,7 @@ async fn repair_item_handler_requires_repair_npc_and_repairs_single_item_like_cp
             data: 1.25,
         },
     ])));
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         23,
         InventoryItem {
             guid: item_guid,
@@ -595,7 +595,7 @@ async fn repair_all_inventory_item_durability_charges_once_like_cpp() {
             data: 1.25,
         },
     ])));
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         EQUIPMENT_SLOT_OFFHAND,
         InventoryItem {
             guid: weapon_guid,
@@ -604,7 +604,7 @@ async fn repair_all_inventory_item_durability_charges_once_like_cpp() {
             inventory_type: Some(InventoryType::Shield as u8),
         },
     );
-    session.inventory_items.insert(
+    session.player_item_test_fixture_like_cpp.inventory_items.insert(
         INVENTORY_SLOT_BAG_START,
         InventoryItem {
             guid: bag_guid,

@@ -531,11 +531,11 @@ impl crate::session::WorldSession {
         let area_table_store = self.area_table_store().cloned();
 
         let mut source_info =
-            crate::conditions::ConditionSourceInfo::from_targets(Some(&player_object), None, None);
+            wow_conditions::ConditionSourceInfo::from_targets(Some(&player_object), None, None);
         source_info.set_unit_target_snapshot(0, player_unit_snapshot);
         source_info.set_player_target_snapshot(0, player_snapshot);
 
-        crate::conditions::is_object_meeting_not_grouped_conditions_like_cpp(
+        wow_conditions::is_object_meeting_not_grouped_conditions_like_cpp(
             condition_store.as_ref(),
             ConditionSourceType::AreaTriggerClientTriggered,
             trigger_id,
@@ -583,7 +583,7 @@ impl crate::session::WorldSession {
                     return false;
                 }
 
-                match crate::conditions::condition_meets_basic_like_cpp(
+                match wow_conditions::condition_meets_basic_like_cpp(
                     condition,
                     source_info,
                     |current_area, required_area| {
@@ -592,8 +592,8 @@ impl crate::session::WorldSession {
                         })
                     },
                 ) {
-                    crate::conditions::ConditionMeetResult::Evaluated(value) => value,
-                    crate::conditions::ConditionMeetResult::Unsupported => {
+                    wow_conditions::ConditionMeetResult::Evaluated(value) => value,
+                    wow_conditions::ConditionMeetResult::Unsupported => {
                         warn!(
                             trigger_id,
                             condition_type = ?condition.condition_type,

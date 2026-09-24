@@ -3,7 +3,7 @@
 
 //! Private client_state capability handlers extracted from the legacy misc owner.
 
-use tracing::warn;
+use tracing::{trace, warn};
 use wow_constants::ClientOpcodes;
 use wow_handler::{PacketProcessing, SessionStatus};
 
@@ -528,6 +528,16 @@ inventory::submit! {
 }
 
 impl crate::session::WorldSession {
+    pub async fn handle_ping(&mut self, ping: wow_packet::packets::auth::Ping) {
+        trace!(
+            "Ping: serial={}, latency={}ms for account {}",
+            ping.serial, ping.latency, self.account_id
+        );
+        self.send_packet(&wow_packet::packets::auth::Pong {
+            serial: ping.serial,
+        });
+    }
+
     // ── Silent-ignore stubs ────────────────────────────────────────────────────
     // These opcodes are sent by the client at login but require no server
     // response at this stage (UI state, client-side settings, system queries

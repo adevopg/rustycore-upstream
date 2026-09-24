@@ -3,7 +3,7 @@
 
 //! Private auction capability handlers extracted from the legacy misc owner.
 
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use wow_constants::ClientOpcodes;
 use wow_constants::unit::NPCFlags1;
 use wow_entities::MAX_MONEY_AMOUNT;
@@ -184,6 +184,21 @@ inventory::submit! {
 }
 
 impl crate::session::WorldSession {
+    /// CMSG_AUCTION_HELLO_REQUEST — player talks to an auctioneer.
+    /// C++ refs: `HandleAuctionHelloOpcode` / `SendAuctionHello`
+    /// (`Handlers/AuctionHouseHandler.cpp:192-205,995-1007`).
+    pub async fn handle_auction_hello_request(&mut self, mut pkt: wow_packet::WorldPacket) {
+        use wow_packet::packets::misc::AuctionHelloResponse;
+        let guid = pkt
+            .read_packed_guid()
+            .unwrap_or(wow_core::ObjectGuid::EMPTY);
+        info!(
+            "AuctionHelloRequest from {:?} account {}",
+            guid, self.account_id
+        );
+        self.send_packet(&AuctionHelloResponse::open(guid));
+    }
+
     // ── Auction house list stubs ──────────────────────────────────────────────
 
     /// CMSG_AUCTION_LIST_BIDDER_ITEMS — list items bid on.

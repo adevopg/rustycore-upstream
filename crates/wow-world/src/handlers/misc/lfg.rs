@@ -404,7 +404,7 @@ impl crate::session::WorldSession {
                 .statuses_like_cpp()
                 .get(&quest.id)
                 .is_none_or(|status| {
-                    status.status != crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP
+                    status.status != wow_conditions::QUEST_STATUS_COMPLETE_LIKE_CPP
                 })
         {
             return false;

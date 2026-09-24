@@ -10,4 +10,6 @@ mod persistence;
 mod publication;
 mod reset;
 mod rewards;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 pub(in crate::session) mod state;
