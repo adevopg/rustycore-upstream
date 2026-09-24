@@ -8,6 +8,12 @@ de issue.
 
 Base medida: `3.4.3` @ `9daa13f6`. Trabajo en la rama `584-wow-world-distribution`.
 
+El estándar estructural que gobierna estos cortes —capas, nombres, visibilidad, colocación de
+tests, presupuestos y checklist de cambios— es
+[structure-and-conventions.md](structure-and-conventions.md). Regla central de ese estándar: la
+paridad con la referencia C++ es **de lógica**, no de estructura; ningún corte se justifica con
+"en C++ es así".
+
 ## 1. Problema, con números
 
 | medida | valor |
