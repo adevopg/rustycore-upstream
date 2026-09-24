@@ -12,8 +12,6 @@ impl MapInstance {
         let coord = GridCoord::new(x, y);
         let removed = self.grids.remove(&coord).is_some();
         if removed {
-            self.personal_phases
-                .unload_grid_like_cpp(coord.personal_phase_grid_id_like_cpp());
         }
         removed
     }
@@ -26,20 +24,7 @@ impl MapInstance {
         }
     }
 
-    pub fn remove_personal_phase_objects_like_cpp(&mut self) -> usize {
-        let objects_to_remove = std::mem::take(&mut self.personal_phase_objects_to_remove);
-        let removed = objects_to_remove.len();
-        for object in objects_to_remove {
-            for grid in self.grids.values_mut() {
-                grid.remove_creature(object);
-            }
-        }
-        removed
-    }
 
-    pub fn queued_personal_phase_remove_count_like_cpp(&self) -> usize {
-        self.personal_phase_objects_to_remove.len()
-    }
 
     // ── Respawn queue (Slice 4A.2a) ───────────────────────────────────────────
     //
