@@ -176,7 +176,7 @@ impl WorldSession {
             .map(|template| template.flags[1])
     }
 
-    pub(super) fn item_loot_quest_status_allows_like_cpp(
+    pub(in crate::handlers::loot) fn item_loot_quest_status_allows_like_cpp(
         &self,
         item_id: u32,
         needs_quest: bool,
@@ -203,7 +203,7 @@ impl WorldSession {
             || ((!needs_quest && !has_non_none_start_quest_status) || has_quest_for_item)
     }
 
-    pub(super) fn has_incomplete_quest_objective_for_item_like_cpp(&self, item_id: u32) -> bool {
+    pub(in crate::handlers::loot) fn has_incomplete_quest_objective_for_item_like_cpp(&self, item_id: u32) -> bool {
         let Ok(item_object_id) = i32::try_from(item_id) else {
             return false;
         };

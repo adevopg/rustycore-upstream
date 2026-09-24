@@ -200,7 +200,7 @@ impl WorldSession {
         ) && template.max_stack_size != 0
     }
 
-    pub(super) fn evaluate_creature_loot_condition_for_player_like_cpp_representable(
+    pub(in crate::handlers::loot) fn evaluate_creature_loot_condition_for_player_like_cpp_representable(
         &self,
         condition: &LootConditionRowLikeCpp,
         player_context: &RepresentedLootPlayerContext,
