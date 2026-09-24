@@ -10,7 +10,6 @@ use wow_packet::packets::loot::{
 use wow_social::group::{GroupInfo, GroupRegistry, PendingInvites};
 
 use super::{
-    LOOT_METHOD_GROUP_LIKE_CPP, LOOT_METHOD_MASTER_LIKE_CPP,
     broadcast_info, install_cached_test_creature_loot_authority_like_cpp,
     loot_unit_packet, make_session_with_send_capacity, register_test_creature_like_cpp,
     represented_loot_object_guid_like_cpp, test_creature, test_creature_guid,

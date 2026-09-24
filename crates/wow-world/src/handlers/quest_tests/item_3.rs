@@ -4,6 +4,7 @@
 //! registrations are unchanged and shared fixtures stay in the parent module.
 
 use super::*;
+use wow_entities::ITEM_LIMIT_CATEGORY_MODE_HAVE;
 use wow_data::{ItemLimitCategoryEntry, ItemLimitCategoryStore};
 
 #[tokio::test]
