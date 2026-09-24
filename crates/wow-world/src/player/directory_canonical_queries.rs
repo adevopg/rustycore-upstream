@@ -10,7 +10,7 @@ use crate::canonical_player_access::{
     canonical_unit_party_member_visible_auras_like_cpp, with_canonical_player_at_like_cpp,
     with_canonical_player_at_mut_like_cpp,
 };
-use crate::phasing::party_member_phase_states_like_cpp;
+use wow_map::phasing::party_member_phase_states_like_cpp;
 use crate::player_directory::PlayerRegistry;
 
 impl PlayerRegistry {
