@@ -260,3 +260,25 @@ y `cargo-machete` cuando estén disponibles; no se finge que se han pasado.
 es requisito. `cargo-public-api`: el snapshot de `wow-entities`/`wow-map`/`wow-packet` queda
 pendiente de la herramienta; la regla de ADR-008 se aplica igual. `cargo-hakari`: **no** se adopta;
 solo si una medición de build demuestra duplicación de features.
+
+## 9. Lecciones de la ola A (apuntadas antes de seguir)
+
+- **Las categorías de `dependency-policy.json` son más estrictas que el mapa de capas de este
+  plan.** `domain-runtime` solo puede depender de `foundation` y `domain-runtime`; el mapa del plan
+  situaba `wow-data` (categoría `adapter-platform`) por debajo de `wow-map`, pero el proyecto lo
+  prohíbe. Consecuencia: el movimiento de `phasing` a `wow-map` **se revirtió** (commit de revert) y
+  `phasing` necesita su **propio crate de categoría `application`** (`wow-phasing`) con una
+  excepción justificada hacia `adapter-platform`, que se hará en la ola C/D. Regla para el futuro:
+  **antes de mover código entre crates, comprobar la categoría de ambos en
+  `tools/architecture/dependency-policy.json`**, no solo la capa del plan.
+- **`tools/xtask` se clasificó como `tooling`** en el mismo fichero; sin clasificar, el checker
+  rechaza el paquete.
+- **El ratchet de hotspots puede encoger sin tocar la baseline**: tras el revert, `loot` y `quest`
+  quedan por debajo de lo registrado, que es aceptable (la baseline es cota superior, no espejo).
+- **Trabajo de #1233 traído adelante por la puerta**: las familias de campos de `WorldSession` del
+  ledger estaban sin actualizar desde el refactor (139 nombres obsoletos, 21 campos nuevos sin
+  dueño). Se reclasificaron con regla explícita: los 15 `*_test_fixture_like_cpp` a
+  `test_only_fixtures`, y los 6 de producción por palabra clave (durabilidad→inventario/economía,
+  límites de stats y regeneración de tablas→catálogos, auras de criatura→mapa/runtime, log de
+  ejecución de hechizo→hechizos/progresión, sincronización de tiempo→driver/timers). Conteos:
+  531 campos (225 producción, 306 fixtures).

@@ -51,7 +51,8 @@
       "world-server"
     ],
     "tooling": [
-      "capture-diff"
+      "capture-diff",
+      "xtask"
     ]
   },
   "allowed_category_dependencies": {
