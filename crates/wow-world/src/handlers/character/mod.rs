@@ -94,6 +94,12 @@ use wow_packet::packets::movement::TransportInfo;
 use wow_packet::packets::quest::QuestGiverStatusMultiple;
 use wow_packet::packets::spell::{SpellCastVisual, SpellTargetData};
 use wow_packet::packets::update::*;
+// Explicit provenance for child modules that reach these names through `super::{}`:
+// a glob import leaves the ownership checker without a defining source.
+use wow_packet::packets::misc::BindPointUpdate;
+use wow_packet::packets::update::{
+    ItemCreateData, PlayerCombatStats, UpdateBlock, UpdateObject, UpdateType,
+};
 use wow_packet::{ClientPacket, WorldPacket};
 use wow_persistence::{
     PlayerInitialWorldStateRowsLikeCpp, PlayerLoginTransportLoadOutcomeLikeCpp,
