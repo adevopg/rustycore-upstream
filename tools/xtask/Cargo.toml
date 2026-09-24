@@ -6,3 +6,6 @@ publish = false
 description = "Structure automation for the RustyCore workspace: audit, layer edges, banned dependencies, agent context and scope."
 
 [dependencies]
+
+[lints]
+workspace = true

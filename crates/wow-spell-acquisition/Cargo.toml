@@ -13,3 +13,6 @@ test-fixtures = []
 [dependencies]
 wow-core = { workspace = true }
 wow-data = { workspace = true }
+
+[lints]
+workspace = true

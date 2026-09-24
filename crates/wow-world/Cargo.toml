@@ -52,3 +52,6 @@ wow-session = { workspace = true, features = ["test-support"] }
 wow-recastdetour = { workspace = true, features = ["test-fixtures"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

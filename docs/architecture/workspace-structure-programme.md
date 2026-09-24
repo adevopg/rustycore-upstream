@@ -112,7 +112,7 @@ Se actualiza **en el mismo commit** que cierra cada fase. Convención: `[ ]` pen
 curso, `[x]` cerrada con commit.
 
 ```
-A0.1 [ ]  A0.2 [x]  A0.3 [~]  A0.4 [~]  A0.5 [x]  A0.6 [x]  A0.7 [ ]
+A0.1 [ ]  A0.2 [x]  A0.3 [x]  A0.4 [~]  A0.5 [x]  A0.6 [x]  A0.7 [ ]
 A1 [ ]  A2 [ ]  A3 [ ]
 B1 [x] e719ac38   B2 [ ]  B3 [ ]  B4 [ ]  B5 [ ]  B6 [ ]  B7 [ ]
 C1 [ ]  C2 [ ]  C3 [ ]  C4 [ ]
@@ -217,8 +217,11 @@ encoger).
   entradas inyectadas (ADR-004) y a núcleo síncrono (ADR-003); se retiran en la ola C/D.
 - La regla se afinó al medir: `sqlx` es legítimo en `wow-database`/`wow-persistence` y `tokio` en
   la capa de red; la prohibición estricta es para los crates de **reglas** (L3).
-- `[workspace.lints]` **ya existía pero ningún crate optaba a él** (0 de 40): A0.3 queda a medias y
-  se cierra en el siguiente paso.
+- A0.3: `[workspace.lints]` ya existía y **13 crates ya optaban** a él; se añadió el opt-in a los
+  28 restantes (41/41, incluido `tools/xtask`). Medición de ruido con la política actual
+  (`all` + `pedantic` en warn): `wow-loot` 2 warnings, `wow-map` 15, `wow-world` 350. La política
+  es usable; los 350 de `wow-world` son deuda de F13 y no bloquean. Corrección: una nota anterior
+  de este documento decía "0 de 40" por un grep con el patrón equivocado.
 - `cargo-machete`, `cargo-deny`, `cargo-nextest`, `cargo-public-api` y `cargo-hakari` **no están
   instalados** en el host; A0.4 y A0.7 quedan parcialmente cubiertos por `structure-audit` y
   pendientes de esas herramientas.
