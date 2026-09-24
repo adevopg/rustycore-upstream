@@ -51,10 +51,16 @@ Thumbs.db
 !.codex/agents/
 .codex/agents/*
 !.codex/agents/luna-worker.toml
+!.codex/agents/deepseek-worker.toml
 !.codex/agents/astra-specialist.toml
 .agent/
 .agents/*
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/rustycore-worker.md
+!.claude/agents/deepseek-worker.md
 .openclaw/
 .trae/
 memory/

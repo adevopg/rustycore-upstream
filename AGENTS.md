@@ -112,7 +112,7 @@ Use implemented, production-integrated and parity-proven as distinct evidence le
 
 Use [orchestrate-rustycore](.agents/skills/orchestrate-rustycore/SKILL.md) for development
 coordination when useful bounded independent work can be delegated. This explicitly
-requests selective subagent work, with Luna as the usual bounded implementation
+requests selective subagent work, with DeepSeek (Luna as API fallback) as the usual bounded implementation
 collaborator, not delegation for every task. Project Codex defaults
 live in `.codex/config.toml` and `.codex/agents/`; they do not override runtime permissions.
 
