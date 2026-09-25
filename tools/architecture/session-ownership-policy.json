@@ -6639,7 +6639,7 @@
           "kind": "method",
           "name": "load_account_transmog_illusions_like_cpp",
           "visibility": "pub (in crate :: handlers :: character)",
-          "signature": "async fn load_account_transmog_illusions_like_cpp (& mut self)",
+          "signature": "async fn load_account_transmog_illusions_like_cpp (& mut self ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -6653,7 +6653,7 @@
           "kind": "method",
           "name": "login_known_spells_after_account_collections_like_cpp",
           "visibility": "pub (in crate :: handlers :: character)",
-          "signature": "fn login_known_spells_after_account_collections_like_cpp (& self) -> Vec < i32 >",
+          "signature": "fn login_known_spells_after_account_collections_like_cpp (& self ,) -> Vec < i32 >",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -13862,7 +13862,7 @@
           "kind": "method",
           "name": "direct_inventory_item_count_like_cpp",
           "visibility": "pub (in crate :: handlers :: loot)",
-          "signature": "fn direct_inventory_item_count_like_cpp (& self , item_id : u32) -> Option < u32 >",
+          "signature": "fn direct_inventory_item_count_like_cpp (& self , item_id : u32 ,) -> Option < u32 >",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -13876,7 +13876,7 @@
           "kind": "method",
           "name": "has_incomplete_quest_objective_for_item_like_cpp",
           "visibility": "pub (in crate :: handlers :: loot)",
-          "signature": "fn has_incomplete_quest_objective_for_item_like_cpp (& self , item_id : u32) -> bool",
+          "signature": "fn has_incomplete_quest_objective_for_item_like_cpp (& self , item_id : u32 ,) -> bool",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -13931,7 +13931,7 @@
           "kind": "method",
           "name": "item_template_flags2_like_cpp",
           "visibility": "pub (in crate :: handlers :: loot)",
-          "signature": "fn item_template_flags2_like_cpp (& self , item_id : u32) -> Option < u32 >",
+          "signature": "fn item_template_flags2_like_cpp (& self , item_id : u32 ,) -> Option < u32 >",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -13945,7 +13945,7 @@
           "kind": "method",
           "name": "load_item_template_addon_loot_metadata_for_item_ids_like_cpp",
           "visibility": "pub (in crate :: handlers :: loot)",
-          "signature": "async fn load_item_template_addon_loot_metadata_for_item_ids_like_cpp < I > (& self , item_ids : I ,) -> HashMap < u32 , ItemTemplateAddonLootMetadataLikeCpp > where I : IntoIterator < Item = u32 > ,",
+          "signature": "async fn load_item_template_addon_loot_metadata_for_item_ids_like_cpp < I , > (& self , item_ids : I ,) -> HashMap < u32 , ItemTemplateAddonLootMetadataLikeCpp > where I : IntoIterator < Item = u32 > ,",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -14068,7 +14068,7 @@
           "kind": "method",
           "name": "destroy_fully_looted_direct_item",
           "visibility": "pub (in crate :: handlers :: loot)",
-          "signature": "async fn destroy_fully_looted_direct_item (& mut self , item_guid : ObjectGuid)",
+          "signature": "async fn destroy_fully_looted_direct_item (& mut self , item_guid : ObjectGuid ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -14151,7 +14151,7 @@
           "kind": "method",
           "name": "stored_new_item_dynamic_flags_like_cpp",
           "visibility": "pub (in crate :: handlers :: loot)",
-          "signature": "fn stored_new_item_dynamic_flags_like_cpp (& self , item_id : u32 , slot : u8) -> u32",
+          "signature": "fn stored_new_item_dynamic_flags_like_cpp (& self , item_id : u32 , slot : u8 ,) -> u32",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -17614,7 +17614,7 @@
           "kind": "method",
           "name": "send_quest_failed_like_cpp",
           "visibility": "pub (in crate :: handlers :: quest)",
-          "signature": "fn send_quest_failed_like_cpp (& self , quest_id : u32 , reason : InventoryResult)",
+          "signature": "fn send_quest_failed_like_cpp (& self , quest_id : u32 , reason : InventoryResult ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
