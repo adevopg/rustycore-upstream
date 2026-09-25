@@ -12,6 +12,7 @@
 
 mod account;
 mod bank;
+mod create_items;
 mod entry_zone;
 mod gossip;
 mod items;

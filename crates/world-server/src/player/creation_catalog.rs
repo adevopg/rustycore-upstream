@@ -1,11 +1,13 @@
 //! Composition boundary for represented C++ Player-creation World sources.
 
+use std::collections::HashMap;
+
 use anyhow::{Result, bail};
 use wow_core::Position;
 use wow_persistence::{
     PlayerCreateCastSpellPersistenceRowLikeCpp, PlayerCreateCustomSpellPersistenceRowLikeCpp,
-    PlayerCreateInfoPersistenceRowLikeCpp, PlayerCreationCatalogLoadOutcomeLikeCpp,
-    PlayerCreationCatalogPersistencePortLikeCpp,
+    PlayerCreateInfoPersistenceRowLikeCpp, PlayerCreateItemPersistenceRowLikeCpp,
+    PlayerCreationCatalogLoadOutcomeLikeCpp, PlayerCreationCatalogPersistencePortLikeCpp,
 };
 
 fn player_create_info_row_like_cpp(
@@ -66,6 +68,46 @@ fn player_create_custom_spell_row_like_cpp(
         class_mask: row.class_mask,
         spell_id: row.spell_id,
     }
+}
+
+fn player_create_item_override_row_like_cpp(
+    row: PlayerCreateItemPersistenceRowLikeCpp,
+) -> wow_data::PlayerCreateInfoItemOverrideRowLikeCpp {
+    wow_data::PlayerCreateInfoItemOverrideRowLikeCpp {
+        race: row.race,
+        class: row.class,
+        item_id: row.item_id,
+        amount: row.amount,
+    }
+}
+
+/// C++ `ItemTemplate::Effects[0]` is the effect with the lowest
+/// `LegacySlotIndex`; `ObjectMgr::LoadItemTemplates` inserts each effect with
+/// `lower_bound`, so among equal indices the last-iterated (highest ID) wins.
+fn first_item_effect_categories_like_cpp(
+    item_effect_store: &wow_data::ItemEffectStore,
+) -> HashMap<u32, u16> {
+    let mut first: HashMap<u32, (u8, u32, u16)> = HashMap::new();
+    for effect in item_effect_store.values() {
+        let candidate = (
+            effect.legacy_slot_index,
+            effect.id,
+            effect.spell_category_id,
+        );
+        first
+            .entry(effect.parent_item_id)
+            .and_modify(|current| {
+                if candidate.0 < current.0 || (candidate.0 == current.0 && candidate.1 > current.1)
+                {
+                    *current = candidate;
+                }
+            })
+            .or_insert(candidate);
+    }
+    first
+        .into_iter()
+        .map(|(item_id, (_, _, category))| (item_id, category))
+        .collect()
 }
 
 fn loaded_rows_like_cpp<T>(outcome: PlayerCreationCatalogLoadOutcomeLikeCpp<T>) -> Result<Vec<T>> {
@@ -160,6 +202,62 @@ pub(crate) async fn load_player_create_custom_spell_store_like_cpp(
             .map(player_create_custom_spell_row_like_cpp),
         ),
     )
+}
+
+/// C++ `ObjectMgr::LoadPlayerInfo` "Load playercreate items" plus the
+/// `playercreateinfo_item` overrides. Requires the validated base store and
+/// the item template sources (`Item.db2`, `ItemSparse.db2`, `ItemEffect.db2`).
+pub(crate) async fn load_player_create_item_store_like_cpp(
+    persistence: &dyn PlayerCreationCatalogPersistencePortLikeCpp,
+    data_dir: &str,
+    locale: &str,
+    create_info_store: &wow_data::PlayerCreateInfoStoreLikeCpp,
+    item_store: &wow_data::ItemStore,
+    item_stats_store: &wow_data::ItemStatsStore,
+    item_effect_store: &wow_data::ItemEffectStore,
+) -> Result<wow_data::PlayerCreateInfoItemStoreLikeCpp> {
+    let loadouts = wow_data::character_progression::CharacterLoadoutStore::load(data_dir, locale)?;
+    let loadout_items =
+        wow_data::character_progression::CharacterLoadoutItemStore::load(data_dir, locale)?;
+    let overrides =
+        loaded_rows_like_cpp(persistence.load_player_create_item_rows_like_cpp().await)?;
+    let first_effect_categories = first_item_effect_categories_like_cpp(item_effect_store);
+
+    let store = wow_data::PlayerCreateInfoItemStoreLikeCpp::build_like_cpp(
+        loadouts.entries(),
+        loadout_items.entries(),
+        overrides
+            .into_iter()
+            .map(player_create_item_override_row_like_cpp),
+        |race, class| create_info_store.get(race, class).is_some(),
+        |item_id| {
+            // C++ `ObjectMgr::GetItemTemplate`: an ItemSparse row with its
+            // Item.db2 row (`ObjectMgr::LoadItemTemplates`).
+            let basic = item_store.get(item_id)?;
+            let sparse = item_stats_store.sparse_template(item_id)?;
+            Some(wow_data::PlayerCreateItemTemplateLikeCpp {
+                class_id: basic.class_id,
+                subclass_id: basic.subclass_id,
+                buy_count: sparse.vendor_stack_count.max(1),
+                max_stack_size: sparse.max_stack_size(),
+                first_effect_spell_category_id: first_effect_categories.get(&item_id).copied(),
+            })
+        },
+    );
+    let report = store.load_report_like_cpp();
+    tracing::info!(
+        race_class_pairs = store.len(),
+        loadout_items = report.loadout_items,
+        override_rows = report.override_rows,
+        skipped_invalid_race = report.skipped_invalid_race,
+        skipped_invalid_class = report.skipped_invalid_class,
+        skipped_unknown_item = report.skipped_unknown_item,
+        skipped_zero_amount = report.skipped_zero_amount,
+        invalid_remove_count = report.invalid_remove_count,
+        remove_not_found = report.remove_not_found,
+        "Loaded C++ player create items"
+    );
+    Ok(store)
 }
 
 #[cfg(test)]
@@ -319,6 +417,58 @@ mod tests {
                 }
             })
         }
+        fn load_player_create_item_rows_like_cpp(
+            &self,
+        ) -> PersistenceFutureLikeCpp<
+            '_,
+            PlayerCreationCatalogLoadOutcomeLikeCpp<PlayerCreateItemPersistenceRowLikeCpp>,
+        > {
+            Box::pin(async { PlayerCreationCatalogLoadOutcomeLikeCpp::Loaded(Vec::new()) })
+        }
+    }
+
+    #[test]
+    fn item_override_row_preserves_signed_amount() {
+        assert_eq!(
+            player_create_item_override_row_like_cpp(PlayerCreateItemPersistenceRowLikeCpp {
+                race: 0,
+                class: 6,
+                item_id: 40582,
+                amount: -1,
+            }),
+            wow_data::PlayerCreateInfoItemOverrideRowLikeCpp {
+                race: 0,
+                class: 6,
+                item_id: 40582,
+                amount: -1,
+            }
+        );
+    }
+
+    #[test]
+    fn first_item_effect_uses_lowest_legacy_slot_like_cpp() {
+        let effect = |id, slot, category, parent| wow_data::ItemEffectEntry {
+            id,
+            legacy_slot_index: slot,
+            trigger_type: 0,
+            charges: 0,
+            cooldown_msec: 0,
+            category_cooldown_msec: 0,
+            spell_category_id: category,
+            spell_id: 0,
+            chr_specialization_id: 0,
+            parent_item_id: parent,
+        };
+        let store = wow_data::ItemEffectStore::from_entries([
+            effect(1, 1, 99, 4540),
+            effect(2, 0, 11, 4540),
+            effect(3, 0, 59, 159),
+            effect(4, 0, 12, 159),
+        ]);
+        let categories = first_item_effect_categories_like_cpp(&store);
+        assert_eq!(categories.get(&4540), Some(&11));
+        assert_eq!(categories.get(&159), Some(&12));
+        assert_eq!(categories.get(&1), None);
     }
 
     #[tokio::test]

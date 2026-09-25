@@ -35,6 +35,15 @@ pub struct PlayerCreateCustomSpellPersistenceRowLikeCpp {
     pub spell_id: u32,
 }
 
+/// One C++ `SELECT race, class, itemid, amount FROM playercreateinfo_item` row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerCreateItemPersistenceRowLikeCpp {
+    pub race: u8,
+    pub class: u8,
+    pub item_id: u32,
+    pub amount: i8,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlayerCreationCatalogLoadOutcomeLikeCpp<T> {
     Loaded(Vec<T>),
@@ -66,5 +75,14 @@ pub trait PlayerCreationCatalogPersistencePortLikeCpp: Send + Sync {
     ) -> PersistenceFutureLikeCpp<
         '_,
         PlayerCreationCatalogLoadOutcomeLikeCpp<PlayerCreateCustomSpellPersistenceRowLikeCpp>,
+    >;
+
+    /// C++ `ObjectMgr::LoadPlayerInfo` "Loading Player Create Items Override
+    /// Data..." source, read after the base rows and item templates exist.
+    fn load_player_create_item_rows_like_cpp(
+        &self,
+    ) -> PersistenceFutureLikeCpp<
+        '_,
+        PlayerCreationCatalogLoadOutcomeLikeCpp<PlayerCreateItemPersistenceRowLikeCpp>,
     >;
 }

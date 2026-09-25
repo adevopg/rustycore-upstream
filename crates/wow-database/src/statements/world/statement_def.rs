@@ -448,6 +448,9 @@ impl StatementDef for WorldStatements {
             Self::SEL_PLAYER_CREATEINFO_CUSTOM_SPELL => {
                 "SELECT racemask, classmask, Spell FROM playercreateinfo_spell_custom"
             }
+            Self::SEL_PLAYER_CREATEINFO_ITEM => {
+                "SELECT race, class, itemid, amount FROM playercreateinfo_item"
+            }
             Self::SEL_GAMEOBJECT_TEMPLATE_BY_ENTRY => concat!(
                 "SELECT entry, type, displayId, name, IconName, castBarCaption, unk1, ",
                 "size, Data0, Data1, Data2, Data3, Data4, Data5, Data6, Data7, ",

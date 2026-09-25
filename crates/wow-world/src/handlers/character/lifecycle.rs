@@ -12,6 +12,8 @@ impl WorldSession {
     pub async fn handle_create_character_with_generator_like_cpp(
         &mut self,
         generator: &wow_core::ObjectGuidGenerator,
+        item_generator: &wow_core::ObjectGuidGenerator,
+        create_items: &wow_data::PlayerCreateInfoItemStoreLikeCpp,
         pkt: CreateCharacter,
     ) {
         let port = match self.character_administration_persistence_port_like_cpp() {
@@ -90,6 +92,42 @@ impl WorldSession {
             .unwrap_or_else(|| default_health_mana(pkt.class));
         let power1 = default_character_power1_like_cpp(pkt.class, mana);
 
+        // C++ `Player::Create` "original items" and the `equipmentCache`
+        // written by the following `Player::SaveToDB`.
+        let initial_items = super::create_items::initial_character_items_like_cpp(
+            create_items.items_like_cpp(pkt.race, pkt.class),
+            create_items.item_context_like_cpp(pkt.race, pkt.class),
+            |item_id| {
+                Some(super::create_items::InitialItemTemplateLikeCpp {
+                    storage: self.item_storage_template(item_id)?,
+                    always_allow_dual_wield: self.item_template_flags3(item_id).is_some_and(
+                        |flags| flags & wow_constants::ItemFlags3::AlwaysAllowDualWield as u32 != 0,
+                    ),
+                    max_durability: self.item_template_max_durability(item_id),
+                })
+            },
+            |item_id| self.item_display_id(item_id, 0).unwrap_or(0),
+            |count| {
+                self.allocate_item_instance_guids_with_generator_like_cpp(item_generator, count)
+                    .map(|guids| guids.into_iter().map(|(db_guid, _)| db_guid).collect())
+            },
+        );
+        let Some(initial_items) = initial_items else {
+            self.send_packet(&CreateChar {
+                code: response_codes::CHAR_CREATE_ERROR,
+                guid: ObjectGuid::EMPTY,
+            });
+            return;
+        };
+        for dropped in &initial_items.dropped {
+            // C++ `StoreNewItemInBestSlots` logs and skips the item.
+            warn!(
+                "Player::StoreNewItemInBestSlots: Player '{}' can't equip or store initial item \
+                 (ItemID: {}, Count: {}, Race: {}, Class: {})",
+                pkt.name, dropped.item_id, dropped.count, pkt.race, pkt.class
+            );
+        }
+
         let create_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -122,6 +160,8 @@ impl WorldSession {
                     },
                 )
                 .collect(),
+            equipment_cache: initial_items.equipment_cache,
+            items: initial_items.rows,
         };
 
         match port.create_character_like_cpp(request).await {
@@ -163,8 +203,14 @@ impl WorldSession {
             });
             return;
         };
-        self.handle_create_character_with_generator_like_cpp(generator.as_ref(), pkt)
-            .await;
+        let item_generator = wow_core::ObjectGuidGenerator::new(HighGuid::Item, 1);
+        self.handle_create_character_with_generator_like_cpp(
+            generator.as_ref(),
+            &item_generator,
+            &wow_data::PlayerCreateInfoItemStoreLikeCpp::default(),
+            pkt,
+        )
+        .await;
     }
 
     /// Handle CMSG_CHAR_DELETE — delete a character.

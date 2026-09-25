@@ -15,6 +15,24 @@ pub struct CharacterCustomizationPersistenceLikeCpp {
     pub choice_id: i32,
 }
 
+/// One initial item created by C++ `Player::Create` and written by
+/// `Player::SaveToDB` -> `_SaveInventory` / `Item::SaveToDB` in the
+/// `CharacterHandler::HandleCharCreateOpcode` transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CharacterCreateItemPersistenceLikeCpp {
+    pub item_guid: u64,
+    pub item_id: u32,
+    pub count: u32,
+    pub durability: u32,
+    /// `ItemData::DynamicFlags` (new-item and binding flags).
+    pub dynamic_flags: u32,
+    /// C++ `PlayerInfo::itemContext`.
+    pub item_context: u8,
+    /// Containing bag item GUID, or 0 for `INVENTORY_SLOT_BAG_0`.
+    pub bag_guid: u64,
+    pub slot: u8,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CharacterCreatePersistenceRequestLikeCpp {
     pub guid: u64,
@@ -31,6 +49,10 @@ pub struct CharacterCreatePersistenceRequestLikeCpp {
     pub power1: u32,
     pub last_login_build: u32,
     pub customizations: Vec<CharacterCustomizationPersistenceLikeCpp>,
+    /// C++ `Player::SaveToDB` "cache equipment" string.
+    pub equipment_cache: String,
+    /// Initial items in C++ storage order; containers precede their contents.
+    pub items: Vec<CharacterCreateItemPersistenceLikeCpp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

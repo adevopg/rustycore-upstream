@@ -2336,6 +2336,21 @@ async fn run_inner(
         item_effect_store.len()
     );
 
+    // C++ ObjectMgr::LoadPlayerInfo "Load playercreate items" (+ overrides).
+    let player_create_item_store = Arc::new(
+        crate::player::creation_catalog::load_player_create_item_store_like_cpp(
+            &player_creation_catalog_persistence,
+            &data_dir,
+            &locale,
+            &player_create_info_store,
+            &item_store,
+            &item_stats_store,
+            &item_effect_store,
+        )
+        .await
+        .context("Failed to load C++ player create items")?,
+    );
+
     // Load Lock.db2 for C++ sLockStore existence checks during CMSG_OPEN_ITEM.
     let lock_store = Arc::new(
         wow_data::LockStore::load(&data_dir, &locale)
@@ -4685,6 +4700,7 @@ async fn run_inner(
                     trait_node_entries: Arc::clone(&trait_node_entry_store),
                     cast_spells: Arc::clone(&player_create_cast_spell_store),
                     custom_spells: Arc::clone(&player_create_custom_spell_store),
+                    create_items: Arc::clone(&player_create_item_store),
                     start_all_spells: world_config_bool(
                         &world_configs,
                         "CONFIG_START_ALL_SPELLS",

@@ -5,16 +5,48 @@ use std::sync::Arc;
 use wow_persistence::{
     CharacterAdministrationLoadOutcomeLikeCpp as LoadOutcome,
     CharacterAdministrationMutationOutcomeLikeCpp as MutationOutcome,
-    CharacterAdministrationPersistencePortLikeCpp, CharacterCreatePersistenceRequestLikeCpp,
-    CharacterCustomizationPersistenceLikeCpp, CharacterCustomizeCandidateLikeCpp,
-    CharacterRaceOrFactionChangeCandidateLikeCpp, CharacterRaceOrFactionChangeCommitLikeCpp,
-    CharacterRenameCandidateLikeCpp, PersistenceFutureLikeCpp,
+    CharacterAdministrationPersistencePortLikeCpp, CharacterCreateItemPersistenceLikeCpp,
+    CharacterCreatePersistenceRequestLikeCpp, CharacterCustomizationPersistenceLikeCpp,
+    CharacterCustomizeCandidateLikeCpp, CharacterRaceOrFactionChangeCandidateLikeCpp,
+    CharacterRaceOrFactionChangeCommitLikeCpp, CharacterRenameCandidateLikeCpp,
+    PersistenceFutureLikeCpp,
 };
 
-use crate::{CharStatements, CharacterDatabase, SqlTransaction, WorldDatabase, WorldStatements};
+use crate::{
+    CharStatements, CharacterDatabase, PreparedStatement, SqlTransaction, WorldDatabase,
+    WorldStatements,
+};
 use crate::{CharacterIdentityCacheEntryLikeCpp, CharacterIdentityCacheLikeCpp};
 
 mod race_faction_change;
+
+/// C++ `Item::SaveToDB` (`CHAR_REP_ITEM_INSTANCE`) plus
+/// `Player::_SaveInventory` (`CHAR_REP_INVENTORY_ITEM`) for one initial item
+/// of a new character. New items carry no random properties, enchantments
+/// or charges string in the represented Rust item-instance insert.
+fn character_create_item_statements_like_cpp(
+    owner_guid: u64,
+    item: &CharacterCreateItemPersistenceLikeCpp,
+) -> [PreparedStatement; 2] {
+    let mut instance =
+        PreparedStatement::for_statement(CharStatements::INS_ITEM_INSTANCE_WITH_RANDOM_CONTEXT);
+    instance.set_u64(0, item.item_guid);
+    instance.set_u32(1, item.item_id);
+    instance.set_u64(2, owner_guid);
+    instance.set_u32(3, item.count);
+    instance.set_u32(4, item.durability);
+    instance.set_u32(5, item.dynamic_flags);
+    instance.set_i32(6, 0);
+    instance.set_i32(7, 0);
+    instance.set_u8(8, item.item_context);
+
+    let mut link = PreparedStatement::for_statement(CharStatements::REP_CHAR_INVENTORY_ITEM);
+    link.set_u64(0, owner_guid);
+    link.set_u64(1, item.bag_guid);
+    link.set_u8(2, item.slot);
+    link.set_u64(3, item.item_guid);
+    [instance, link]
+}
 
 pub struct MariaDbCharacterAdministrationPersistenceAdapterLikeCpp {
     character_db: Arc<CharacterDatabase>,
@@ -136,20 +168,31 @@ impl CharacterAdministrationPersistencePortLikeCpp
                 statement.set_u32(index, 0);
             }
             statement.set_string(65, "");
-            statement.set_string(66, "");
+            statement.set_string(66, &request.equipment_cache);
             statement.set_string(67, "");
             statement.set_u8(68, 0);
             statement.set_u32(69, request.last_login_build);
 
-            if let Err(error) = self.character_db.execute(&statement).await {
+            // C++ `HandleCharCreateOpcode` saves the character row and its
+            // initial inventory (`Player::SaveToDB` -> `_SaveInventory`) in
+            // one character transaction; keep those rows atomic here.
+            let mut transaction = SqlTransaction::new();
+            transaction.append(statement);
+            for item in &request.items {
+                for item_statement in character_create_item_statements_like_cpp(request.guid, item)
+                {
+                    transaction.append(item_statement);
+                }
+            }
+            if let Err(error) = self.character_db.commit_transaction(transaction).await {
                 return MutationOutcome::Failed {
                     reason: error.to_string(),
                 };
             }
 
-            // Preserve the existing best-effort order: character, choices,
-            // then initial action buttons. C++-parity atomic creation remains
-            // a gameplay gap; this boundary extraction does not alter it.
+            // Preserve the existing best-effort order after that commit:
+            // choices, then initial action buttons. C++-parity atomic creation
+            // of those rows remains a gameplay gap.
             for customization in &request.customizations {
                 let mut statement = self
                     .character_db
@@ -469,5 +512,35 @@ impl CharacterAdministrationPersistencePortLikeCpp
                 },
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::StatementDef;
+
+    #[test]
+    fn create_item_statements_insert_instance_then_inventory_link_like_cpp() {
+        let [instance, link] = character_create_item_statements_like_cpp(
+            7,
+            &CharacterCreateItemPersistenceLikeCpp {
+                item_guid: 100,
+                item_id: 6948,
+                count: 1,
+                durability: 0,
+                dynamic_flags: 1,
+                item_context: 75,
+                bag_guid: 0,
+                slot: 35,
+            },
+        );
+        assert_eq!(
+            instance.sql(),
+            CharStatements::INS_ITEM_INSTANCE_WITH_RANDOM_CONTEXT.sql()
+        );
+        assert_eq!(instance.sql().matches('?').count(), 9);
+        assert_eq!(link.sql(), CharStatements::REP_CHAR_INVENTORY_ITEM.sql());
+        assert_eq!(link.sql().matches('?').count(), 4);
     }
 }

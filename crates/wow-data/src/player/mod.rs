@@ -6,11 +6,13 @@
 pub mod choice;
 pub mod condition;
 pub mod create;
+pub mod create_items;
 pub mod power;
 pub mod stats;
 
 pub use choice::*;
 pub use condition::*;
 pub use create::*;
+pub use create_items::*;
 pub use power::*;
 pub use stats::*;

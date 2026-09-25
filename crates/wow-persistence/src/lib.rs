@@ -158,9 +158,9 @@ pub use catalogs::{
 };
 pub use character_administration::{
     CharacterAdministrationLoadOutcomeLikeCpp, CharacterAdministrationMutationOutcomeLikeCpp,
-    CharacterAdministrationPersistencePortLikeCpp, CharacterCreatePersistenceRequestLikeCpp,
-    CharacterCustomizationPersistenceLikeCpp, CharacterCustomizeCandidateLikeCpp,
-    CharacterRenameCandidateLikeCpp,
+    CharacterAdministrationPersistencePortLikeCpp, CharacterCreateItemPersistenceLikeCpp,
+    CharacterCreatePersistenceRequestLikeCpp, CharacterCustomizationPersistenceLikeCpp,
+    CharacterCustomizeCandidateLikeCpp, CharacterRenameCandidateLikeCpp,
 };
 pub use character_race_faction_change::{
     CharacterFactionChangeCommitLikeCpp, CharacterGuildRemovalLikeCpp,
@@ -231,8 +231,8 @@ pub use player::{
 };
 pub use player::{
     PlayerCreateCastSpellPersistenceRowLikeCpp, PlayerCreateCustomSpellPersistenceRowLikeCpp,
-    PlayerCreateInfoPersistenceRowLikeCpp, PlayerCreationCatalogLoadOutcomeLikeCpp,
-    PlayerCreationCatalogPersistencePortLikeCpp,
+    PlayerCreateInfoPersistenceRowLikeCpp, PlayerCreateItemPersistenceRowLikeCpp,
+    PlayerCreationCatalogLoadOutcomeLikeCpp, PlayerCreationCatalogPersistencePortLikeCpp,
 };
 pub use player::{
     PlayerQuestActivePersistenceRowLikeCpp, PlayerQuestDailyPersistenceRowLikeCpp,
