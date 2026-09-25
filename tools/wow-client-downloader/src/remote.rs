@@ -107,10 +107,9 @@ impl Remote {
         Ok(Some(blob))
     }
 
-    /// `data/xx/yy/<archive>.index`.
-    pub fn archive_index(&self, archive: &Key) -> Result<Vec<u8>> {
-        self.client
-            .get(&format!("{}.index", self.url("data", archive)))
+    /// `<dir>/xx/yy/<key>.index` (`dir` = `data` or `patch`).
+    pub fn index(&self, dir: &str, key: &Key) -> Result<Vec<u8>> {
+        self.client.get(&format!("{}.index", self.url(dir, key)))
     }
 
     /// Bytes `start..=end` of an archive.

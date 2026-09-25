@@ -168,6 +168,9 @@ pub struct DownloadOptions {
     pub limit_files: Option<usize>,
     pub limit_bytes: Option<u64>,
     pub include_fdids: Vec<u32>,
+    /// Only rewrite `.idx` files and complete `Data/indices` of an existing
+    /// install (`data.###` untouched).
+    pub indices_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +207,9 @@ DOWNLOAD OPTIONS:
   --region EU|US|KR|TW|CN  region (default derived from the locale)
   --threads N         parallel CDN connections (default 4)
   --dry-run           resolve manifests and print file count and size; write nothing
+  --indices-only      existing install: rewrite the .idx files and fetch/build missing
+                      Data/indices (archives, patch archives, groups, file indices);
+                      data.### are not touched
 
 COMMON OPTIONS:
   --port P            port of the temporary local server (default: random for download/list, 1119 for serve)
@@ -250,6 +256,7 @@ pub fn parse(argv: &[String]) -> Result<Command> {
     let mut mirror = Some(product::DEFAULT_MIRROR.to_owned());
     let mut cache = None;
     let mut dry_run = false;
+    let mut indices_only = false;
     let (mut limit_files, mut limit_bytes, mut include_fdids) = (None, None, Vec::new());
 
     while cursor.pos + 1 < cursor.items.len() {
@@ -271,6 +278,7 @@ pub fn parse(argv: &[String]) -> Result<Command> {
             "--no-mirror" => mirror = None,
             "--cache" => cache = Some(PathBuf::from(cursor.value(&flag)?)),
             "--dry-run" => dry_run = true,
+            "--indices-only" => indices_only = true,
             "--limit-files" => limit_files = Some(parse_num(&flag, &cursor.value(&flag)?)?),
             "--limit-bytes" => limit_bytes = Some(parse_num(&flag, &cursor.value(&flag)?)?),
             "--include-fdid" => {
@@ -306,6 +314,7 @@ pub fn parse(argv: &[String]) -> Result<Command> {
             limit_files,
             limit_bytes,
             include_fdids,
+            indices_only,
         })),
         "list" => Ok(Command::List(net)),
         "serve" => Ok(Command::Serve(ServeOptions {
@@ -363,6 +372,11 @@ mod tests {
         assert!(o.net.mirror.is_none() && o.dry_run);
         assert_eq!(o.limit_files, Some(5));
         assert_eq!(o.include_fdids, [1_349_477, 1]);
+        assert!(!o.indices_only);
+        let Command::Download(r) = parse(&argv("download -o d --indices-only")).unwrap() else {
+            panic!()
+        };
+        assert!(r.indices_only);
     }
 
     #[test]

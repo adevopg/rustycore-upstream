@@ -113,7 +113,7 @@ fn load_one(
     {
         return Ok(entries);
     }
-    let data = remote.archive_index(archive)?;
+    let data = remote.index("data", archive)?;
     let entries = cdn_index::parse(&data, Some(archive))?;
     write_atomic(&path, &data)?;
     Ok(entries)

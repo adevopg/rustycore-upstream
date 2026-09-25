@@ -18,6 +18,7 @@ mod download;
 mod encoding;
 mod fetch;
 mod http;
+mod index_set;
 mod jenkins;
 mod manifest;
 mod plan;

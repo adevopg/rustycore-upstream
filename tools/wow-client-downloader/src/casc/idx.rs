@@ -11,8 +11,11 @@
 //!   chained over the 18-byte entries (the Blizzard variant of
 //!   `CaptureGuardedBlock2`), entries sorted by key: 9-byte `EKey` prefix,
 //!   5-byte big-endian storage offset `(archive << 30) | offset`, 4-byte LE size;
-//! * zero padding to a 64 KiB multiple (blizzget pads to a fixed 0xA0000,
-//!   the Agent's own files are 0x160000 bytes).
+//! * a zero-filled update section of at least [`UPDATE_SECTION_MIN`] bytes,
+//!   then zero padding to a 64 KiB multiple. The client's TACT rejects a file
+//!   whose update section is shorter ("Truncated updated section in KMT file
+//!   detected" -> `NeedsRepair`); every Agent-written file (16/16 checked)
+//!   has `size == align_up(entries_end + 0x7800, 0x10000)`.
 //!
 //! The bucket of a key is `CascLib`'s: `x = xor(key[0..9])`,
 //! `(x & 0x0F) ^ (x >> 4)` (checked against a real Agent install, where each
@@ -69,9 +72,15 @@ pub fn build(bucket: u8, entries: &[IdxEntry]) -> Vec<u8> {
     out.extend_from_slice(&(block.len() as u32).to_le_bytes());
     out.extend_from_slice(&high.to_le_bytes());
     out.extend_from_slice(&block);
-    out.resize(out.len().div_ceil(0x1_0000) * 0x1_0000, 0);
+    out.resize(
+        (out.len() + UPDATE_SECTION_MIN).div_ceil(0x1_0000) * 0x1_0000,
+        0,
+    );
     out
 }
+
+/// Minimum size of the (empty) KMT update section that follows the entries.
+pub(crate) const UPDATE_SECTION_MIN: usize = 0x7800;
 
 #[cfg(test)]
 mod tests {
@@ -98,11 +107,38 @@ mod tests {
         };
         let data = build(2, &[e, e]);
         assert_eq!(data.len(), 0x1_0000);
+        // entries end at 0x28 + 36; the update section must still fit after them
+        assert!(data.len() - (0x28 + 36) >= UPDATE_SECTION_MIN);
         assert_eq!(&data[8..16], &[7, 0, 2, 0, 4, 5, 9, 30]);
         assert_eq!(&data[16..24], &[0, 0, 0, 0xC0, 0xFF, 0, 0, 0]);
         assert_eq!(u32::from_le_bytes(data[0x20..0x24].try_into().unwrap()), 18);
         assert_eq!(&data[0x28..0x31], &[1; 9]);
         assert_eq!(&data[0x31..0x36], &[0, 0xC0, 0, 0x12, 0x34]);
         assert_eq!(file_name(0x0f, 1), "0f00000001.idx");
+    }
+
+    #[test]
+    fn update_section_is_never_truncated() {
+        // Entries that end just below a 64 KiB boundary (as in a real bucket of
+        // the 3.4.3 client) must push the file to the next boundary.
+        let e = IdxEntry {
+            key: [2; 9],
+            storage_offset: 0,
+            size: 1,
+        };
+        let n = (0x1_0000 - 0x28 - 100) / 18;
+        let mut entries = Vec::new();
+        for i in 0..n {
+            let mut k = e;
+            k.key[..4].copy_from_slice(&(i as u32).to_be_bytes());
+            entries.push(k);
+        }
+        let data = build(0, &entries);
+        let end = 0x28 + n * 18;
+        assert_eq!(
+            data.len(),
+            (end + UPDATE_SECTION_MIN).div_ceil(0x1_0000) * 0x1_0000
+        );
+        assert!(data[end..].iter().all(|&b| b == 0));
     }
 }

@@ -186,3 +186,46 @@ fn refuses_foreign_storage() {
     fs::write(dir.path().join("Data/data/data.000"), b"agent data").unwrap();
     assert!(LocalStorage::open(dir.path()).is_err());
 }
+
+#[test]
+fn index_only_open_never_touches_archives() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut files = BTreeMap::new();
+    files.insert(MAP_DB2, b"WDC4 table".repeat(10));
+    drop(build_storage(dir.path(), &files, MAX_ARCHIVE_SIZE));
+    let data = dir.path().join("Data/data/data.000");
+    // A tail the full open would truncate stays in index-only mode.
+    OpenOptions::new()
+        .append(true)
+        .open(&data)
+        .unwrap()
+        .write_all(&[0xEE; 64])
+        .unwrap();
+    let len = fs::metadata(&data).unwrap().len();
+    let journal = fs::read(dir.path().join("Data/data").join(JOURNAL)).unwrap();
+    for f in fs::read_dir(dir.path().join("Data/data")).unwrap() {
+        let p = f.unwrap().path();
+        if p.extension().is_some_and(|e| e == "idx") {
+            fs::remove_file(p).unwrap();
+        }
+    }
+    let mut storage = LocalStorage::open_index_only(dir.path()).unwrap();
+    storage.write_indices().unwrap();
+    assert!(
+        storage.write(&[1; 16], b"BLTE\0\0\0\0N").is_err(),
+        "read-only"
+    );
+    assert_eq!(fs::metadata(&data).unwrap().len(), len);
+    assert_eq!(
+        fs::read(dir.path().join("Data/data").join(JOURNAL)).unwrap(),
+        journal
+    );
+    let casc = wow_casc::Storage::open(dir.path(), "wow_classic", wow_casc::locale::ALL).unwrap();
+    assert_eq!(
+        &casc.read_file_by_id(MAP_DB2, 0).unwrap().unwrap()[..4],
+        b"WDC4"
+    );
+    // Not a storage of this tool.
+    let other = tempfile::tempdir().unwrap();
+    assert!(LocalStorage::open_index_only(other.path()).is_err());
+}

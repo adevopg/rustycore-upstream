@@ -57,6 +57,9 @@ pub struct LocalStorage {
     /// Newest archive and its current length.
     current: Option<(u16, File, u64)>,
     max_archive_size: u64,
+    /// Opened by [`LocalStorage::open_index_only`]: archives and journal are
+    /// never modified.
+    read_only: bool,
 }
 
 impl LocalStorage {
@@ -96,36 +99,7 @@ impl LocalStorage {
             ensure!(raw.starts_with(JOURNAL_MAGIC), "{JOURNAL} has a bad magic");
         }
 
-        // Replay; keep only records whose bytes are really on disk.
-        let archive_len =
-            |a: u16| -> u64 { fs::metadata(data_dir.join(archive_name(a))).map_or(0, |m| m.len()) };
-        let mut entries = HashMap::new();
-        let mut ends: HashMap<u16, u64> = HashMap::new();
-        let mut lengths: HashMap<u16, u64> = HashMap::new();
-        let mut dropped = false;
-        for r in raw.get(8..).unwrap_or_default().chunks(RECORD) {
-            if r.len() < RECORD {
-                dropped = true;
-                break;
-            }
-            let ekey: Key = r[..16].try_into().expect("16 bytes");
-            let loc = Location {
-                archive: u16::from_le_bytes([r[16], r[17]]),
-                offset: u32::from_le_bytes(r[18..22].try_into().expect("4 bytes")),
-                size: u32::from_le_bytes(r[22..26].try_into().expect("4 bytes")),
-            };
-            let end = u64::from(loc.offset) + u64::from(loc.size);
-            let len = *lengths
-                .entry(loc.archive)
-                .or_insert_with(|| archive_len(loc.archive));
-            if end > len {
-                dropped = true;
-                continue;
-            }
-            let e = ends.entry(loc.archive).or_default();
-            *e = (*e).max(end);
-            entries.insert(ekey, loc);
-        }
+        let (entries, ends, dropped) = replay(&raw, &data_dir);
         // Truncate half-written tails; remove archives without entries.
         for a in archives {
             let path = data_dir.join(archive_name(a));
@@ -141,6 +115,7 @@ impl LocalStorage {
             journal,
             current: None,
             max_archive_size,
+            read_only: false,
         };
         if dropped {
             storage.rewrite_journal()?;
@@ -153,6 +128,36 @@ impl LocalStorage {
             storage.current = Some((newest, file, ends[&newest]));
         }
         Ok(storage)
+    }
+
+    /// Opens an existing storage written by this tool without modifying its
+    /// archives or journal (no tail truncation, no appends): for rewriting
+    /// the `.idx` files and `Data/indices` only. Journal records whose bytes
+    /// are not on disk are left out of the indices.
+    pub fn open_index_only(root: &Path) -> Result<Self> {
+        let data_dir = root.join("Data").join("data");
+        let journal_path = data_dir.join(JOURNAL);
+        if !journal_path.is_file() {
+            bail!(
+                "{} has no {JOURNAL}: not a storage written by this tool",
+                data_dir.display()
+            );
+        }
+        let raw = fs::read(&journal_path)?;
+        ensure!(raw.starts_with(JOURNAL_MAGIC), "{JOURNAL} has a bad magic");
+        let (entries, _, dropped) = replay(&raw, &data_dir);
+        if dropped {
+            println!("warning: some journal records are not on disk and are not indexed");
+        }
+        Ok(Self {
+            root: root.to_path_buf(),
+            journal: File::open(&journal_path)?,
+            data_dir,
+            entries,
+            current: None,
+            max_archive_size: MAX_ARCHIVE_SIZE,
+            read_only: true,
+        })
     }
 
     fn rewrite_journal(&mut self) -> Result<()> {
@@ -185,6 +190,7 @@ impl LocalStorage {
         if self.contains(ekey) {
             return Ok(());
         }
+        ensure!(!self.read_only, "storage opened for index repair only");
         let total = (blte.len() + HEADER_SIZE) as u64;
         ensure!(
             total <= self.max_archive_size,
@@ -237,7 +243,9 @@ impl LocalStorage {
         if let Some((_, file, _)) = &self.current {
             file.sync_data()?;
         }
-        self.journal.sync_data()?;
+        if !self.read_only {
+            self.journal.sync_data()?;
+        }
         Ok(())
     }
 
@@ -282,6 +290,42 @@ impl LocalStorage {
             .join("Data/indices")
             .join(format!("{archive}.index"))
     }
+}
+
+/// Journal replay: the entries whose bytes are really on disk, the end of the
+/// last entry per archive, and whether records were dropped (torn or beyond
+/// an archive's length).
+fn replay(raw: &[u8], data_dir: &Path) -> (HashMap<Key, Location>, HashMap<u16, u64>, bool) {
+    let archive_len =
+        |a: u16| -> u64 { fs::metadata(data_dir.join(archive_name(a))).map_or(0, |m| m.len()) };
+    let mut entries = HashMap::new();
+    let mut ends: HashMap<u16, u64> = HashMap::new();
+    let mut lengths: HashMap<u16, u64> = HashMap::new();
+    let mut dropped = false;
+    for r in raw.get(8..).unwrap_or_default().chunks(RECORD) {
+        if r.len() < RECORD {
+            dropped = true;
+            break;
+        }
+        let ekey: Key = r[..16].try_into().expect("16 bytes");
+        let loc = Location {
+            archive: u16::from_le_bytes([r[16], r[17]]),
+            offset: u32::from_le_bytes(r[18..22].try_into().expect("4 bytes")),
+            size: u32::from_le_bytes(r[22..26].try_into().expect("4 bytes")),
+        };
+        let end = u64::from(loc.offset) + u64::from(loc.size);
+        let len = *lengths
+            .entry(loc.archive)
+            .or_insert_with(|| archive_len(loc.archive));
+        if end > len {
+            dropped = true;
+            continue;
+        }
+        let e = ends.entry(loc.archive).or_default();
+        *e = (*e).max(end);
+        entries.insert(ekey, loc);
+    }
+    (entries, ends, dropped)
 }
 
 fn archive_name(archive: u16) -> String {

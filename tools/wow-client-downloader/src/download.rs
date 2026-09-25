@@ -21,6 +21,7 @@ use crate::casc::{LocalStorage, write_atomic};
 use crate::cli::{Arch, DownloadOptions, LOCALES, NetOptions, Os, Selection};
 use crate::fetch::{self, Job};
 use crate::http::HttpClient;
+use crate::index_set::{self, IndexSet};
 use crate::plan::{self, Kind, Manifests, Needed, Plan};
 use crate::product;
 use crate::progress::Progress;
@@ -71,6 +72,9 @@ fn with_server<T>(
 }
 
 pub fn run(opts: &DownloadOptions) -> Result<()> {
+    if opts.indices_only {
+        return repair_indices(opts);
+    }
     let region = opts.selection.branch();
     with_server(&opts.net, &region, |remote| download(remote, opts))
 }
@@ -159,6 +163,15 @@ fn download(remote: &Remote, opts: &DownloadOptions) -> Result<()> {
     );
     failures.extend(runner.batch("game data", rest, &locations, &mut storage)?);
 
+    let set = IndexSet::from_cdn_config(&m.cdn_config)?;
+    let indices = index_set::ensure(
+        remote,
+        &opts.output.join("Data/indices"),
+        &set,
+        opts.net.threads,
+    )?;
+    println!("Data/indices: {indices}");
+
     finalize(remote, sel, &mut storage, &plan, &opts.output, &subfolder)?;
     report(&failures, &plan, &storage, &opts.output)
 }
@@ -193,6 +206,51 @@ fn report(
         );
     }
     Ok(())
+}
+
+/// `download --indices-only`: for an install written by this tool, rewrites
+/// the local `.idx` files from the journal and fetches/builds the missing
+/// `Data/indices` files. `data.###`, the journal, configs and `.build.info`
+/// are left untouched.
+fn repair_indices(opts: &DownloadOptions) -> Result<()> {
+    let text = fs::read_to_string(opts.output.join(".build.info"))
+        .with_context(|| format!("{}: no .build.info", opts.output.display()))?;
+    let info = crate::tables::Table::parse(&text)?;
+    let row = info
+        .find_row("Product", product::PRODUCT)
+        .with_context(|| format!(".build.info has no {} row", product::PRODUCT))?;
+    let branch = info.get(row, "Branch").unwrap_or("us").to_owned();
+    let cdn_key = info
+        .get(row, "CDN Key")
+        .and_then(parse_key)
+        .context(".build.info: bad CDN Key")?;
+
+    let mut storage = LocalStorage::open_index_only(&opts.output)?;
+    storage.write_indices()?;
+    println!(
+        "Rewrote {} local .idx files for {} stored entries",
+        crate::casc::idx::BUCKETS,
+        storage.len()
+    );
+    with_server(&opts.net, &branch, |remote| {
+        if remote.cdn_key != cdn_key {
+            bail!(
+                "install is for CDN config {}, the patch server offers {}",
+                hex(&cdn_key),
+                hex(&remote.cdn_key)
+            );
+        }
+        let data = remote.config(&cdn_key)?;
+        let set = IndexSet::from_cdn_config(&crate::config::ConfigFile::parse(&data)?)?;
+        let report = index_set::ensure(
+            remote,
+            &opts.output.join("Data/indices"),
+            &set,
+            opts.net.threads,
+        )?;
+        println!("Data/indices: {report}");
+        Ok(())
+    })
 }
 
 /// Runs one labelled batch of downloads.
