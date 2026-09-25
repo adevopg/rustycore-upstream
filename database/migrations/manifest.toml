@@ -56,6 +56,29 @@ SELECT IF(
 
 [[migrations]]
 component = "core"
+database = "auth"
+version = "2026.09.25.00"
+description = "battlepay account tables: web orders, distributions, SSO tokens, browser url map, token wallets"
+file = "../../sql/updates/auth/wotlk_classic/2026_09_25_00_auth.sql"
+sha256 = "10277954260c62258a3aca23211e96bc43b3ca39f9d0c35d12a75b9b3eecc7db"
+state = "active"
+adopt_query = '''
+SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_purchase' AND column_name IN ('id','external_id','signature','battlenet_account','account','realm','character_guid','product_id','rmah_auction','rmah_realm','price','currency','status','web_order_id','payment_ref','ip','created','paid','delivered','vas_target_account','vas_target_bnet_account','vas_target_realm','revoked','revoke_applied')) = 24
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'battlepay_purchase' AND index_name = 'uk_external' AND column_name = 'external_id') = 1
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlenet_account_web_token' AND column_name IN ('token','battlenet_account','account','realm','character_guid','program','kind','ip','created','expires')) = 10
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'browser_url_map' AND column_name IN ('host','target','comment')) = 3
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_distribution' AND column_name IN ('id','account','battlenet_account','product_id','purchase_id','status','revoked','realm','character_guid','specialization_id','choice_id','created','assigned','finished','revoke_applied')) = 15
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'account_tokens' AND column_name IN ('account_id','tokenType','amount')) = 3
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'account_tokens' AND index_name = 'PRIMARY' AND column_name IN ('account_id','tokenType')) = 2
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'account_donate_token_log' AND column_name IN ('id','time','accountId','realmId','characterId','change','tokenType','buyType','productId')) = 9
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'account_game_time' AND column_name IN ('id','expire_time','tokens_redeemed','last_redeem')) = 4
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'account_wow_token' AND column_name IN ('id','account','type','created')) = 4,
+  1, 0)
+'''
+
+[[migrations]]
+component = "core"
 database = "characters"
 version = "2026.08.01.00"
 description = "spell acquisition operation attribution"
@@ -82,5 +105,31 @@ SELECT IF(
   (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'character_battle_pet_purchase' AND column_name IN ('request_key','guid','account_id','trainer_id','spell_id','species','breed','quality','display_id','level','price','money_before','money_after','status','published','failure_reason','created_at','updated_at')) = 18
   AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'character_battle_pet_purchase' AND index_name = 'PRIMARY' AND column_name = 'request_key') = 1
   AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'character_battle_pet_purchase' AND index_name = 'idx_guid_status' AND column_name IN ('guid','status')) = 2,
+  1, 0)
+'''
+
+[[migrations]]
+component = "core"
+database = "world"
+version = "2026.09.25.00"
+description = "battlepay product catalog: products, items, groups, shop entries, display info, locales, tokens, web extension"
+file = "../../sql/updates/world/wotlk_classic/2026_09_25_00_world.sql"
+sha256 = "670c0d36957e38a3e860a4a47b4909735200f0806de48da974ab47b51a5ec8a9"
+state = "active"
+adopt_query = '''
+SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_product' AND column_name IN ('ProductID','NormalPriceFixedPoint','CurrentPriceFixedPoint','Type','ChoiceType','Flags','DisplayInfoID','ScriptName','ClassMask','WebsiteType','GameTimeDays')) = 11
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_product_item' AND column_name IN ('ID','ProductID','ItemID','Quantity','DisplayID','PetResult')) = 6
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_product_group' AND column_name IN ('GroupID','Name','IconFileDataID','DisplayType','Ordering','Flags','TokenType','IngameOnly','OwnsTokensOnly')) = 9
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_product_group_locales' AND column_name IN ('GroupID','Locale','Name')) = 3
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'battlepay_product_group_locales' AND index_name = 'PRIMARY' AND column_name IN ('GroupID','Locale')) = 2
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_shop_entry' AND column_name IN ('EntryID','GroupID','ProductID','Ordering','Flags','BannerType','DisplayInfoID')) = 7
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_display_info' AND column_name IN ('DisplayInfoId','CreatureDisplayInfoID','FileDataID','Flags','Name1','Name2','Name3','Name4')) = 8
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_display_info_locales' AND column_name IN ('Id','Locale','Name1','Name2','Name3','Name4')) = 6
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'battlepay_display_info_locales' AND index_name = 'PRIMARY' AND column_name IN ('Id','Locale')) = 2
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_display_info_visuals' AND column_name IN ('DisplayInfoId','DisplayId','VisualId','ProductName')) = 4
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'battlepay_display_info_visuals' AND index_name = 'PRIMARY' AND column_name IN ('DisplayInfoId','DisplayId')) = 2
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_tokens' AND column_name IN ('tokenType','name','loginMessage','listIfNone')) = 4
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_product_web' AND column_name IN ('ProductID','Category','Featured','ImageUrl','Icon','Visible','SortOrder')) = 7,
   1, 0)
 '''
