@@ -13,4 +13,3 @@ mod defensive_combat_stats;
 mod weapon_offense;
 #[path = "scenarios_player_items_12/resistance_and_spell_power.rs"]
 mod resistance_and_spell_power;
-

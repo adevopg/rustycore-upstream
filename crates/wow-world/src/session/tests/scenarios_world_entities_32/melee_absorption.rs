@@ -778,4 +778,3 @@ fn legacy_creature_melee_tick_once_honors_ignore_absorb_like_cpp() {
     assert_eq!(command.damage, 0);
     assert_eq!(victim_health(), 95);
 }
-

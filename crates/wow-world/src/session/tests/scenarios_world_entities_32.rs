@@ -12,4 +12,3 @@ mod melee_hit_and_armor;
 mod melee_damage_modifiers;
 #[path = "scenarios_world_entities_32/melee_absorption.rs"]
 mod melee_absorption;
-

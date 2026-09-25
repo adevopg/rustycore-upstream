@@ -304,4 +304,3 @@ impl PlayerRegistry {
             .unwrap_or(false)
     }
 }
-

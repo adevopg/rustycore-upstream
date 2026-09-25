@@ -366,4 +366,3 @@ async fn crit_aura_percentages_follow_weapon_dependent_auras_like_cpp() {
     assert_eq!(armed.offhand_crit_pct, 8.0);
     assert_eq!(armed.ranged_crit_pct, 8.0);
 }
-

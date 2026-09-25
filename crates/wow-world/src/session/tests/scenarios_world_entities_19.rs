@@ -19,4 +19,3 @@ mod legacy_creature_tick_noop;
 mod player_melee_modifiers;
 #[path = "scenarios_world_entities_19/player_melee_outcomes.rs"]
 mod player_melee_outcomes;
-

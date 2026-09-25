@@ -694,4 +694,3 @@ async fn ranged_attack_power_auras_skip_wand_users_like_cpp() {
     );
     assert_eq!(stats.ranged_attack_power_multiplier, 0.0);
 }
-

@@ -566,4 +566,3 @@ fn legacy_creature_melee_tick_once_applies_creature_attacker_done_bonus_like_cpp
         70
     );
 }
-

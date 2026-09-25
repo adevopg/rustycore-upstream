@@ -9,4 +9,3 @@ use super::*;
 mod creature_melee_admission;
 #[path = "scenarios_world_entities_28/creature_melee_damage.rs"]
 mod creature_melee_damage;
-

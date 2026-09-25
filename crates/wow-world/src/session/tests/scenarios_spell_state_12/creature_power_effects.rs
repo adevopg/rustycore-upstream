@@ -459,4 +459,3 @@ async fn spell_power_burn_on_a_creature_applies_the_scaled_damage_like_cpp() {
         "the take-power row still ships with the finished cast: {opcodes:?}"
     );
 }
-

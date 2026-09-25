@@ -266,4 +266,3 @@ pub(super) fn apply_melee_absorb_to_canonical_creature_like_cpp(
 
     Some((absorb.absorbed, absorb.damage, events))
 }
-

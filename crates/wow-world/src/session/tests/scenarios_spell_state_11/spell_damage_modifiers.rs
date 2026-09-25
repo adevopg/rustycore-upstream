@@ -531,4 +531,3 @@ async fn spell_school_damage_applies_damage_percent_done_by_target_aura_mechanic
         700
     );
 }
-

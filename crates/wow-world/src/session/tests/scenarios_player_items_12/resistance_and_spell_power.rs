@@ -552,4 +552,3 @@ async fn override_spell_power_by_ap_publishes_the_field_and_recomputes_like_cpp(
     assert_eq!(overridden.mod_damage_done_pos[1..], [110; 6]);
     assert_eq!(overridden.attack_power, 220);
 }
-

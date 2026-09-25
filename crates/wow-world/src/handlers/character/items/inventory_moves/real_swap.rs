@@ -417,4 +417,3 @@ impl WorldSession {
         .await;
     }
 }
-

@@ -193,4 +193,3 @@ async fn spell_inebriate_effect_ignores_non_player_target_like_cpp() {
         vec![ServerOpcodes::SpellGo, ServerOpcodes::CooldownEvent]
     );
 }
-

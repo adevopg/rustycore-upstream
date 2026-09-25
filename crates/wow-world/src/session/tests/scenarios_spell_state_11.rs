@@ -32,4 +32,3 @@ fn replacement_spell_runtime_like_cpp(
     );
     state
 }
-

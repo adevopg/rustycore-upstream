@@ -205,4 +205,3 @@ async fn spell_add_extra_attacks_without_target_is_noop_like_cpp() {
         vec![ServerOpcodes::SpellGo, ServerOpcodes::CooldownEvent]
     );
 }
-

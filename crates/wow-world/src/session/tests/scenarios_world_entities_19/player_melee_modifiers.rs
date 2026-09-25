@@ -531,4 +531,3 @@ async fn map_owned_player_melee_applies_victim_melee_damage_taken_like_cpp() {
         "the -50 melee-damage-taken aura halves the 100 damage roll"
     );
 }
-

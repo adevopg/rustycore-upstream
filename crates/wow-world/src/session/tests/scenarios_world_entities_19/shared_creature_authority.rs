@@ -227,4 +227,3 @@ async fn two_players_attacking_one_creature_resolve_once_under_the_map_owner_lik
         "and the creature's health must not move"
     );
 }
-

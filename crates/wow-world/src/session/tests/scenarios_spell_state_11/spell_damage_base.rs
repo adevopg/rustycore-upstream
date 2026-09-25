@@ -262,4 +262,3 @@ async fn spell_school_damage_uses_max_damage_done_percent_like_cpp() {
     // `SpellDamagePctDone`'s player branch takes `max(1.5, 2.5) = 2.5`.
     assert_eq!(current_hp, 750);
 }
-

@@ -609,4 +609,3 @@ fn legacy_creature_melee_tick_once_applies_player_victim_armor_like_cpp() {
     assert_eq!(command.original_damage, 10);
     assert_eq!(victim_health(&canonical), 65);
 }
-

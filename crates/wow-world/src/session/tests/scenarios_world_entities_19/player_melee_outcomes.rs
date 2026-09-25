@@ -597,4 +597,3 @@ async fn map_owned_player_melee_applies_victim_critical_chance_auras_like_cpp() 
     );
     assert_eq!(command.swings[0].victim_state, VICTIM_STATE_HIT);
 }
-

@@ -682,4 +682,3 @@ fn legacy_creature_melee_tick_once_removes_attacking_auras_on_compatibility_hit_
             .has_applied(kept)
     );
 }
-

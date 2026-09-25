@@ -985,4 +985,3 @@ fn legacy_creature_melee_tick_once_resolves_creature_victim_bands_like_cpp() {
         wow_packet::packets::combat::VICTIM_STATE_IS_IMMUNE
     );
 }
-

@@ -380,4 +380,3 @@ fn white_swing_applies_victim_armor_mitigation_like_cpp() {
         .expect("apply normal target-resistance aura");
     assert_eq!(swing(&mut session), Some(vec![1_000]));
 }
-

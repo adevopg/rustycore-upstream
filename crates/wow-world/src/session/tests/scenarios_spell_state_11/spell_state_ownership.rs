@@ -608,4 +608,3 @@ fn player_registry_publishes_party_member_pet_aura_flags_and_points_like_cpp() {
     assert_eq!(aura.flags, (AFLAG_SCALABLE_LIKE_CPP | 0x0001) as u16);
     assert_eq!(aura.points, vec![37.0]);
 }
-

@@ -154,4 +154,3 @@ async fn gameobject_goober_just_deactivated_non_consumable_anim_progress_sends_n
     );
     assert!(drain_server_opcodes(&send_rx).is_empty());
 }
-

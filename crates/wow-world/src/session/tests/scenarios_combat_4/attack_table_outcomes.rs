@@ -405,4 +405,3 @@ fn white_swing_publishes_a_block_like_cpp() {
     assert_eq!(swings[0].hit_info, HIT_INFO_AFFECTS_VICTIM | HIT_INFO_BLOCK);
     assert_eq!(swings[0].victim_state, VICTIM_STATE_HIT);
 }
-

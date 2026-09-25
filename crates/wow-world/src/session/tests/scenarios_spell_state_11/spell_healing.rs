@@ -353,4 +353,3 @@ async fn spell_self_heal_skips_dead_player_like_cpp() {
     assert!(!session.player_is_alive_like_cpp());
     assert!(send_rx.try_recv().is_err());
 }
-

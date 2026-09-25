@@ -410,4 +410,3 @@ impl WorldSession {
         Some(QuestSourceItemStoreOutcomeLikeCpp::StoredNewItem)
     }
 }
-

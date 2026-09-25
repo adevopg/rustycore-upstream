@@ -83,4 +83,3 @@ fn legacy_creature_aggro_tick_once_is_noop_under_session_owner_like_cpp() {
     };
     assert_eq!(combat_target, None);
 }
-

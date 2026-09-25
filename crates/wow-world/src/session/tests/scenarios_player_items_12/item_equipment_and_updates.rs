@@ -351,4 +351,3 @@ fn send_item_enchant_time_update_plan_sends_cpp_packet() {
 
     assert_eq!(send_rx.try_recv().unwrap(), expected);
 }
-

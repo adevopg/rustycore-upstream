@@ -324,4 +324,3 @@ fn white_swing_applies_victim_melee_damage_taken_like_cpp() {
         .expect("apply ignore-target-resist aura");
     assert_eq!(swing(&mut session).map(|swings| swings[0].damage), Some(50));
 }
-

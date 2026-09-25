@@ -88,4 +88,3 @@ fn reputation_gain_applies_recruit_a_friend_bonus_for_non_spell_sources_like_cpp
         "C++ skips Recruit-A-Friend for REPUTATION_SOURCE_SPELL"
     );
 }
-

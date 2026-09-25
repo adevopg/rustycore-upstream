@@ -254,4 +254,3 @@ async fn spell_reputation_effect_ignores_non_player_target_like_cpp() {
         vec![ServerOpcodes::SpellGo, ServerOpcodes::CooldownEvent]
     );
 }
-

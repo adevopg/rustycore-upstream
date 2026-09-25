@@ -529,4 +529,3 @@ impl WorldSession {
         true
     }
 }
-

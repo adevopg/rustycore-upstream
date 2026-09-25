@@ -764,4 +764,3 @@ async fn spell_energize_interrupts_flagged_power_regen_like_cpp() {
         );
     }
 }
-

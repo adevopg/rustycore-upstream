@@ -195,4 +195,3 @@ fn legacy_creature_movement_tick_once_uses_creature_visibility_override_like_cpp
         other => panic!("expected NearbyVisible, got {other:?}"),
     }
 }
-
