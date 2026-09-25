@@ -90,7 +90,6 @@
     ]
   },
   "restricted_packages": {
-    "wow-combat": [],
     "wow-conditions": [
       "wow-constants",
       "wow-data",
