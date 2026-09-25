@@ -11,10 +11,8 @@ name = "wow-vmap-extractor"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = { workspace = true }
-thiserror = { workspace = true }
 wow-casc = { path = "../../crates/wow-casc" }
-wow-vmap = { path = "../../crates/wow-vmap" }
+wow-data = { path = "../../crates/wow-data" }
 
 [lints]
 workspace = true
