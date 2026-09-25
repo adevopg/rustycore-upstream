@@ -7,11 +7,14 @@ use wow_persistence::{
     CharacterAdministrationMutationOutcomeLikeCpp as MutationOutcome,
     CharacterAdministrationPersistencePortLikeCpp, CharacterCreatePersistenceRequestLikeCpp,
     CharacterCustomizationPersistenceLikeCpp, CharacterCustomizeCandidateLikeCpp,
+    CharacterRaceOrFactionChangeCandidateLikeCpp, CharacterRaceOrFactionChangeCommitLikeCpp,
     CharacterRenameCandidateLikeCpp, PersistenceFutureLikeCpp,
 };
 
 use crate::{CharStatements, CharacterDatabase, SqlTransaction, WorldDatabase, WorldStatements};
 use crate::{CharacterIdentityCacheEntryLikeCpp, CharacterIdentityCacheLikeCpp};
+
+mod race_faction_change;
 
 pub struct MariaDbCharacterAdministrationPersistenceAdapterLikeCpp {
     character_db: Arc<CharacterDatabase>,
@@ -276,6 +279,116 @@ impl CharacterAdministrationPersistencePortLikeCpp
             match self.character_db.commit_transaction(transaction).await {
                 Ok(_) => {
                     self.identity_cache.update_name(guid, &new_name);
+                    MutationOutcome::Applied
+                }
+                Err(error) => MutationOutcome::Failed {
+                    reason: error.to_string(),
+                },
+            }
+        })
+    }
+
+    fn load_race_or_faction_change_candidate_like_cpp(
+        &self,
+        guid: u64,
+    ) -> PersistenceFutureLikeCpp<'_, LoadOutcome<CharacterRaceOrFactionChangeCandidateLikeCpp>>
+    {
+        Box::pin(async move {
+            let mut cache = self
+                .character_db
+                .prepare(CharStatements::SEL_CHAR_RACE_OR_FACTION_CHANGE_CACHE);
+            cache.set_u64(0, guid);
+            let mut infos = self
+                .character_db
+                .prepare(CharStatements::SEL_CHAR_RACE_OR_FACTION_CHANGE_INFOS);
+            infos.set_u64(0, guid);
+            let cache = match self.character_db.query(&cache).await {
+                Ok(result) if result.is_empty() => return LoadOutcome::NotFound,
+                Ok(result) => result,
+                Err(error) => {
+                    return LoadOutcome::Failed {
+                        reason: error.to_string(),
+                    };
+                }
+            };
+            match self.character_db.query(&infos).await {
+                Ok(result) if result.is_empty() => LoadOutcome::NotFound,
+                Ok(result) => LoadOutcome::Loaded(
+                    race_faction_change::candidate_from_rows_like_cpp(&cache, &result),
+                ),
+                Err(error) => LoadOutcome::Failed {
+                    reason: error.to_string(),
+                },
+            }
+        })
+    }
+
+    fn load_reputation_standing_like_cpp(
+        &self,
+        guid: u64,
+        faction_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, LoadOutcome<i32>> {
+        Box::pin(async move {
+            let mut statement = self
+                .character_db
+                .prepare(CharStatements::SEL_CHAR_REP_BY_FACTION);
+            statement.set_u32(0, faction_id);
+            statement.set_u64(1, guid);
+            match self.character_db.query(&statement).await {
+                Ok(result) if result.is_empty() => LoadOutcome::NotFound,
+                Ok(result) => LoadOutcome::Loaded(crate::battle_pay_adapter::column_i64_like_cpp(
+                    &result, 0,
+                ) as i32),
+                Err(error) => LoadOutcome::Failed {
+                    reason: error.to_string(),
+                },
+            }
+        })
+    }
+
+    fn commit_race_or_faction_change_like_cpp(
+        &self,
+        request: CharacterRaceOrFactionChangeCommitLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'_, MutationOutcome> {
+        Box::pin(async move {
+            let mut new_guild_leader = None;
+            if let Some(guild) = request
+                .faction
+                .as_ref()
+                .and_then(|faction| faction.guild)
+                .filter(|guild| guild.is_leader)
+            {
+                let mut statement = self
+                    .character_db
+                    .prepare(CharStatements::SEL_GUILD_NEW_LEADER_CANDIDATE);
+                statement.set_u64(0, guild.guild_id);
+                statement.set_u64(1, request.guid);
+                match self.character_db.query(&statement).await {
+                    Ok(result) if result.is_empty() => {}
+                    Ok(result) => {
+                        new_guild_leader =
+                            Some(crate::battle_pay_adapter::column_u64_like_cpp(&result, 0));
+                    }
+                    Err(error) => {
+                        return MutationOutcome::Failed {
+                            reason: error.to_string(),
+                        };
+                    }
+                }
+            }
+            let transaction = race_faction_change::race_or_faction_change_transaction_like_cpp(
+                &request,
+                new_guild_leader,
+            );
+            match self.character_db.commit_transaction(transaction).await {
+                Ok(_) => {
+                    // C++ sCharacterCache->UpdateCharacterData(guid, name, sex, race).
+                    self.identity_cache.update_identity(
+                        request.guid,
+                        request.name.clone(),
+                        Some(request.race),
+                        Some(request.sex),
+                    );
                     MutationOutcome::Applied
                 }
                 Err(error) => MutationOutcome::Failed {

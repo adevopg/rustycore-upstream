@@ -212,6 +212,29 @@ impl FactionChangeStoreLikeCpp {
         self
     }
 
+    /// `(alliance, horde)` pairs of `ObjectMgr::FactionChange{Achievements,Quests,
+    /// Reputation,Spells,Titles}` in C++ `std::map` order (ascending alliance id).
+    pub fn pairs_like_cpp(&self, kind: FactionChangePairKindLikeCpp) -> Vec<(u32, u32)> {
+        let map = match kind {
+            FactionChangePairKindLikeCpp::Achievement => &self.achievements,
+            FactionChangePairKindLikeCpp::Quest => &self.quests,
+            FactionChangePairKindLikeCpp::Reputation => &self.reputations,
+            FactionChangePairKindLikeCpp::Spell => &self.spells,
+            FactionChangePairKindLikeCpp::Title => &self.titles,
+        };
+        sorted_pairs_like_cpp(map)
+    }
+
+    /// `(old item, new item)` of `FactionChangeItemsHordeToAlliance` (new team
+    /// Alliance) or `FactionChangeItemsAllianceToHorde`, ascending old item id.
+    pub fn item_conversion_like_cpp(&self, to_alliance: bool) -> Vec<(u32, u32)> {
+        sorted_pairs_like_cpp(if to_alliance {
+            &self.items_horde_to_alliance
+        } else {
+            &self.items_alliance_to_horde
+        })
+    }
+
     pub fn achievement_pair_like_cpp(&self, alliance_id: u32) -> Option<u32> {
         self.achievements.get(&alliance_id).copied()
     }
@@ -493,4 +516,10 @@ mod tests {
         assert_eq!(outcome.store.item_horde_to_alliance_like_cpp(70), None);
         assert_eq!(outcome.store.item_alliance_to_horde_like_cpp(80), None);
     }
+}
+
+fn sorted_pairs_like_cpp(map: &HashMap<u32, u32>) -> Vec<(u32, u32)> {
+    let mut pairs: Vec<(u32, u32)> = map.iter().map(|(key, value)| (*key, *value)).collect();
+    pairs.sort_unstable();
+    pairs
 }

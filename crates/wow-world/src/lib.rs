@@ -11,6 +11,8 @@ pub(crate) mod battle_pet_purchase;
 pub mod canonical_player_access;
 mod canonical_player_sync;
 mod character_administration;
+pub mod character_race_faction_change;
+pub mod character_undelete;
 mod finalization;
 pub use finalization::{
     FinalizationDisposition, FinalizationMode, FinalizationOutcome, FinalizationReport,

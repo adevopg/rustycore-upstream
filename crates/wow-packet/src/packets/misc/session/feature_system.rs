@@ -230,7 +230,10 @@ impl ServerPacket for FeatureSystemStatusGlueScreen {
 
         pkt.write_bit(false); // KioskModeEnabled
         pkt.write_bit(false); // CompetitiveModeEnabled
-        pkt.write_bit(false); // unused 10.0.2
+        // TC 3.4.3 "unused 10.0.2"; the 54261 client stores it as
+        // `C_CharacterServices.IsBoostEnabled` (reader byte +0x35, 0x14167b957).
+        // Boosts are sold by the shop, so it follows BpayStoreAvailable.
+        pkt.write_bit(self.config.bpay_store_available);
         pkt.write_bit(false); // TrialBoostEnabled
         pkt.write_bit(false); // TokenBalanceEnabled
         pkt.write_bit(false); // LiveRegionCharacterListEnabled

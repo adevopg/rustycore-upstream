@@ -329,14 +329,14 @@ departure from LegionCore, which delivered web orders on any realm.
 
 ### 8.5 Not ported (documented scope)
 
-Delivered product types are LegionCore `WebsiteType` 3 (Item) and 21 (ItemMount, delivered
-as its item; LegionCore had no delivery arm for it). Everything else is neither listed nor
-sellable: character boosts/distributions (0x2777/0x2779, `DisplayPromotion` at auth),
-VAS services and character transfer, class trials, game time, battle pets, WoW Token,
-toys API, RMAH, gold, script products, and the LegionCore custom addon chat messages
-(`NOVA_WOW_STORE_BALANCE`). No mail fallback exists: item products need the character in
-the world with enough bag space, checked before charging. Race restrictions of items are
-not filtered (only `AllowableClass` and learned-spell ownership).
+Delivered product types: LegionCore `WebsiteType` 3 (Item) and 21 (ItemMount, delivered
+as its item; LegionCore had no delivery arm for it), plus the character services,
+character transfer and character boosts of section 9. Not sold: class trials, game
+time (section 9.7), battle pets, WoW Token, toys API, RMAH, gold, script products, and
+the LegionCore custom addon chat messages (`NOVA_WOW_STORE_BALANCE`). No mail fallback
+exists: item products need the character in the world with enough bag space, checked
+before charging. Race restrictions of items are not filtered (only `AllowableClass`
+and learned-spell ownership).
 
 ### 8.6 Store "Loading" gate and currency (live test follow-up)
 
@@ -365,3 +365,114 @@ not filtered (only `AllowableClass` and learned-spell ownership).
   used by `Bpay.Currency` (USD 1, GBP 2, KRW 3, EUR 4, RUB 5) are valid in 54261, and EUR
   resolves to `REGION_EU`, which `SecureCurrencyUtil.currencySpecific` defines. The currency
   does not depend on any other server packet.
+
+## 9. Character services, transfers and boosts (54261)
+
+Code: `crates/wow-world/src/battle_pay/{product_kind,vas,transfer,boost,web}.rs`,
+codec `crates/wow-packet/src/packets/battlepay/vas.rs`, persistence
+`crates/wow-persistence/src/battle_pay_services.rs` +
+`crates/wow-database/src/battle_pay_services_adapter.rs`. Port of LegionCore
+`BattlepayManager::ProcessDelivery` (`BattlePayMgr.cpp:273-446`), `CharacterService.cpp`,
+the VAS handlers of `BattlePayHandler.cpp` (186, 223, 231, 338-448, 1292-1475, 1593-1650)
+and `AssignDistributionToCharacter` (`BattlePayMgr.cpp:1067-1200`). The at-login flows
+that consume the services are TrinityCore 3.4.3 `CharacterHandler.cpp` (rename,
+customize, race/faction change, undelete).
+
+### 9.1 Client evidence (54261 image, same method as section 1.1)
+
+| Item | Evidence |
+|---|---|
+| Lua enums | Registration code `0x140e67000..0x140e6e3d2` (values are `movsd xmm1` constants): `Enum.StoreError` Success 0 .. ClientRestricted 13 (sequential); `Enum.BattlepayProductDecorator` Boost 0, Expansion 1, WoWToken 2, VasService 3; `Enum.VasServiceType` NameChange 0, FactionChange 1, AppearanceChange 2, RaceChange 3, CharacterTransfer 4, FactionTransfer 5, CharacterClone 10; `Enum.VasPurchaseProgress` Invalid 0 .. Complete 7; `Enum.VasQueueStatus` UnderAnHour 0 .. Over_7_Days 11; `Enum.VasError` CharacterHasVasPending 4, InvalidDestinationAccount 6, InvalidSourceAccount 7, …, RealmNotEligible 20011, CannotMoveGuildMaster 20012, MaxCharactersOnServer 20013, UnderMinLevelReq 20021, IneligibleTargetRealm 20022, CharLocked 20026, NameNotAvailable 20051, AlreadyRenameFlagged 20055, CustomizeAlreadyRequested 20057, RaceClassComboIneligible 20062, BattlepayDeliveryPending 20078 (full list in `constants.rs::vas_error`). |
+| VAS decorator | `0x141a45740`: a product info whose ChoiceType is 7-10, 15, 16 or 19-23 is `VasService` (`0x141a49440`) and its `vasServiceType` is 7→0, 8→1, 9→2, 10→3, 15→4, 16→5, 23→4 (jump table `0x141a45d90`). A single product of `Type` 1 is `Boost` with `boostType` = the u32 after `ItemId` (`Product +0x118`). |
+| `STORE_CHARACTER_LIST_RECEIVED` | Fired by the SMSG 0x27f1 handler `0x141a4ac00` (slot `0x14309d858`, dispatcher case `0x140732d68`) when `Token` equals the pending store token (global `0x1431f7828`, incremented by every store request including `PurchaseProduct`). |
+| 0x27f1 / 0x36f8 | Reader `0x1406c1310` + element reader `0x14070a020` (`JamCliAccountCharacterData`); Write `0x140767150`. `RequestStoreCharacterListForVasType(t)` (`0x141a4c410`) sends 0x36f8 with ChoiceType 8/10/7 for DB2 VAS types 2/3/4 and 0x36f9 with 15 for type 1. |
+| 0x27f2 / 0x36f9 | Reader `0x1406fcff0` (`JamCliVASTargetRealm`, stride 0x124); handler `0x141a4ae10` stores the realms and then **sends 0x36f8 itself** with the echoed ChoiceType (`0x141a4afed`). |
+| 0x2819 / 0x3711 | 0x3711 is opcode-only (`0x14076a117`); 0x2819 is one byte `bits(4) TransferQueue, bits(4) FactionTransferQueue` (`0x1406cd600`). |
+| 0x281c / 0x3713 | 0x3713: `u32 ClientToken; u8 len>>3; bits(3) len&7; flush; BnetAccountName` (`0x14076a000`). 0x281c: `u32 ClientToken; u32 Result; guid Bnet; u32 Count; {guid WowAccount; bits(11) NameLen; flush; Name}` (`0x1406cd4c0`). |
+| 0x27f3 / 0x27f4 | 0x27f3 handler `0x141a4a790` keeps `Errors` for `C_StoreSecure.GetVASErrors` and signals `0x14117c820` (STORE_VAS_PURCHASE_ERROR); 0x27f4 handler `0x141a4a720` stores ProductID/guids for `GetVASCompletionInfo` and signals STORE_VAS_PURCHASE_COMPLETE. |
+| Boost assignment | `C_CharacterServices.AssignUpgradeDistribution(guid, faction, specID, classID, boostType, raceID)` (`0x140c8b320` -> `0x14169aaa0` -> `0x142583430`): picks the first distribution with `Status == 1`, not revoked, a product of Type 1 and the requested boost type, and sends CMSG 0x36cb `{ClientToken, DistributionID, TargetGuid, ProductChoice = faction << 24 | specID}`; classID/raceID are only validated client side. `C_SharedCharacterServices.GetUpgradeDistributions` (`0x1416989c0`) groups the same distributions by boost type. |
+| Boost enable | `C_CharacterServices.IsBoostEnabled` returns the FeatureSystemStatusGlueScreen bit read into `+0x35` (`0x14167b957`): the 11th bit, which TrinityCore 3.4.3 writes as "unused 10.0.2". RustyCore sets it from `Bpay.Enabled`. |
+| Boost data | `CharacterServiceInfo.db2` (54261): rows 119/131/145 are boosts 5/7/9 to levels 58/70/80 (TBC "Dark Portal Pass", WotLK "Mejora a Wrath" / Northrend upgrade, level 80); rows 123/125/139/141 are the VAS services transfer/faction/race/name. `CharacterLoadout.db2` purposes 10/12/15 hold one gear set per class of item level 52/125/187 (plus a bag and a hearthstone): used as the boost gear for levels 58/70/80 (mapping inferred from item levels). |
+
+### 9.2 Product kinds (`product_kind.rs`)
+
+| Kind | Catalog | Delivery (one Character/Login DB transaction with its witness) |
+|---|---|---|
+| Name / appearance / faction / race change | `WebsiteType` 5/22/9/10, or ChoiceType 7/9/8/10 | receipt + `UPDATE characters SET at_login = at_login | 0x1/0x8/0x40/0x80 WHERE guid AND account` (LegionCore `CharacterService`); mirrored on the in-world player so its save keeps it. |
+| Character transfer | ChoiceType 15 (product 189) / 16 (239, adds `AT_LOGIN_CHANGE_FACTION`) | receipt + `guild_member` removal + `UPDATE characters SET account = <target> ... AND online = 0` (same-realm branch of `CompleteVasCharacterTransfer`). |
+| Character boost | `WebsiteType` 29, level from ScriptName ("58"/"70"/"80", default 70) | Login DB: distribution inserted from the paid order row + order `Paid -> Delivered`. |
+| Restore deleted character | `WebsiteType` 15 | Login DB: `battlenet_accounts.LastCharacterUndelete = 0` + order delivered (LegionCore granted an account flag enabling undelete; TC 3.4.3 gates undelete by that cooldown). |
+
+At character select (no player) LegionCore `ProductFilter` lists services, boosts,
+transfers, the undelete service and mounts; plain items need a character in the world.
+
+### 9.3 VAS purchase flow (store, glue or in game)
+
+1. `PurchaseProduct` of a VAS product -> CMSG 0x36d3: no purchase is registered
+   (LegionCore `MakePurchase` VAS branch); the server answers 0x27f1 (token =
+   ClientToken, characters of this realm with the realm name the store filters by), or
+   0x27f2 for a transfer (the client then requests 0x36f8, answered with 0x27f1).
+2. `PurchaseVASProduct` -> CMSG 0x36fa: checks (VasError codes, answered as 0x27f3):
+   owned, not deleted, level >= 10 (the store's own rule), no boost pending, service
+   not already pending (AlreadyRenameFlagged / CustomizeAlreadyRequested /
+   CharacterHasVasPending); transfers: offline, not guild leader, destination = this
+   realm (IneligibleTargetRealm otherwise), destination game account belongs to the
+   named Battle.net account and has fewer than `CharactersPerRealm` characters.
+3. Accepted: 0x2783 + 0x2786 + 0x2787 (wallet) or 0x2824 (web; the order row stores the
+   target character and `vas_target_*`). Confirmation/payment -> delivery (9.2) ->
+   0x27f4 VasPurchaseComplete + 0x2786 Finish. Web orders paid after the window closed
+   are delivered by the next product-list request, also at character select.
+4. The client re-enumerates characters; the character then shows the TC 3.4.3
+   rename/customize/race/faction entry points.
+
+Products bought outside the VAS flow (ChoiceType 0) keep LegionCore's in-world
+behaviour: the service applies to the character in the world.
+
+### 9.4 Character boost
+
+- Purchase (glue or in game) -> distribution (`auth.battlepay_distribution`, status 1,
+  id `(time << 20) | seq`), announced with 0x2779. Distribution lists (0x2777) carry the
+  product with Type 1 and the boost type, which the client needs to offer the boost.
+- CMSG 0x36cb: distribution available and a boost; character of the account, offline,
+  below the boost level, and its class has a `CharacterLoadout` for the boost purpose.
+  Login DB `status 1 -> 2` (target, realm, spec), then Character DB
+  `level = <boost level>, xp = 0, at_login |= 0x400` (LegionCore
+  `CHAR_UPD_CHARACTER_BOOST_QUEUED`); a failed character update reverts the
+  distribution. Answers 0x2784 (result 0) + 0x27bf CharacterUpgradeStarted + 0x2779.
+  Failures answer 0x2784 with result 1 (PRODUCT_ASSIGN_TO_TARGET_FAILED).
+- Next login of that character (after `handle_player_login`): the class loadout items
+  go to the bags (the hearthstone is skipped when one is owned) and the boost money
+  (`Bpay.Boost.Money`, LegionCore 500 gold) is added, committed with a
+  `boost:<distribution>` receipt and the flag removal; the distribution becomes 4;
+  0x27c0 CharacterUpgradeComplete + 0x2779. Level, talents points and level-based
+  stats come from the already raised level.
+- Deviations: no spec/talent selection (the Wrath flow sends spec 0), no equipment
+  swap or mail fallback (items that do not fit keep the boost pending until the next
+  login with free space), no riding/profession grants (neither LegionCore's Legion
+  spells nor any 54261 evidence of what the Classic boost teaches), no revocation
+  (`BattlePayRevocation` is not ported; 0x36cc answers CHARACTER_UPGRADE_UNREVOKE_RESULT 1).
+
+### 9.5 Not ported
+
+- Cross-realm transfers (LegionCore PlayerDump export to `auth.vas_character_transfer`
+  and import by the target realm): RustyCore has no PlayerDump; only this realm is
+  offered as destination.
+- VAS distributions (Wrath glue "token" buttons, `C_CharacterServices.GetVASDistributions`
+  and `Assign*Distribution` via CMSG 0x3742 / SMSG 0x2888): services are delivered on
+  purchase to the chosen character instead, like LegionCore.
+- Queue times (0x3712/0x281a): transfers apply at confirmation; 0x2819 reports
+  UnderAnHour.
+
+### 9.6 Configuration
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Bpay.Boost.Money` | 5000000 | copper added by a boost (LegionCore `ApplyBoost`) |
+| `CharactersPerRealm` | 10 | transfer destination capacity |
+
+### 9.7 Game time
+
+WoW Classic 3.4.3 has no game-time packets the server must drive for a private realm
+(TrinityCore 3.4.3 has no game-time handling and RustyCore does not gate logins by
+paid time), so `WebsiteType` 31 products are not sold (`auth.account_game_time` exists
+only for bnet-shop compatibility).

@@ -16,6 +16,7 @@
 | world | `core:2026.09.25.00` | `sql/updates/world/wotlk_classic/2026_09_25_00_world.sql` | `670c0d36…5ec8a9` |
 | auth | `core:2026.09.25.00` | `sql/updates/auth/wotlk_classic/2026_09_25_00_auth.sql` | `10277954…ecc7db` |
 | characters | `core:2026.09.25.00` | `sql/updates/characters/wotlk_classic/2026_09_25_00_characters.sql` | `f1a652a0…f901ea` |
+| world | `core:2026.09.25.01` | `sql/updates/world/wotlk_classic/2026_09_25_01_world.sql` (services demo catalog) | `129cba67…8b8b93` |
 
 Both are idempotent (`CREATE TABLE IF NOT EXISTS` + `INSERT IGNORE`) and carry an
 `adopt_query` in `database/migrations/manifest.toml` that recognises an already
@@ -254,8 +255,32 @@ texts (`Locale` 6) in `battlepay_display_info_locales`, group names in
 6. Reload the catalog (server reload command, once available) or restart the world
    server.
 
-Character services use `Type` 1, a `ScriptName` and `WebsiteType` 29; the delivery
-creates a `battlepay_distribution` row instead of items.
+Character services need no items (see protocol doc section 9):
+
+| Service | `Type` | `ChoiceType` | `WebsiteType` | `ScriptName` | Shop entry `Flags` |
+|---|---|---|---|---|---|
+| Name change | 0 | 7 | 5 | — | 0 |
+| Appearance change | 0 | 9 | 22 | — | 2 |
+| Faction change | 0 | 8 | 9 | — | 1 |
+| Race change | 0 | 10 | 10 | — | 3 |
+| Character transfer (product id 189) | 0 | 15 | any | — | 4 |
+| Transfer + faction change (product id 239) | 0 | 16 | any | — | 5 |
+| Restore deleted character | 0 | 0 | 15 | — | 0 |
+| Character boost | 1 | 0 | 29 | contains `58`, `70` (default) or `80` | 0 |
+
+A VAS `ChoiceType` (7-10, 15, 16) makes the store run its character-selection flow
+(any screen); `ChoiceType` 0 sells the service to the character in the world
+(LegionCore). The group must have `IngameOnly = 0` to be listed on the character
+selection store; the client's services tab is group 22. A boost purchase creates an
+`auth.battlepay_distribution` row that the character selection screen assigns.
+
+### Services demo catalog (`core:2026.09.25.01`)
+
+Group 22 "Services" (`IngameOnly = 0`, wallet 1) with products 20 name change (10),
+21 appearance (10), 22 faction (25), 23 race (20), 24 restore deleted character (5),
+25 boost to 70 (40), 26 boost to 80 (60), 189 transfer (20), 239 transfer + faction
+(35); display infos 20-28 with enUS and esES texts; icons are the 54261
+`CharacterServiceInfo.db2` FileDataIDs.
 
 ## bnet-shop compatibility contract
 
@@ -290,8 +315,9 @@ token generation and the checkout packets) is in the protocol document.
 - `battlepay_product.ScriptName` is `varchar(64)` instead of `text`.
 - Extra secondary indexes: `battlepay_product_item.idx_product`,
   `battlepay_shop_entry.idx_group`.
-- Seeds differ (3.4.3 ids; LegionCore's 7.3.5 boosts, WoW Token, game time, RAF
-  rewards and character transfer products are not seeded). Column order of
+- Seeds differ (3.4.3 ids; WotLK Classic boosts 70/80 and the services/transfer
+  products are seeded by `core:2026.09.25.01`; LegionCore's WoW Token, game time and
+  RAF rewards are not). Column order of
   `battlepay_purchase` follows LegionCore's ALTER history exactly.
 - Nothing else: every column LegionCore reads or writes exists with the same name and
   type, including 7.3.5-only ones (`PetResult`, `GameTimeDays`, `rmah_*`, `vas_*`).

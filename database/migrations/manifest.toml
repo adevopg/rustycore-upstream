@@ -148,3 +148,19 @@ SELECT IF(
   AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlepay_product_web' AND column_name IN ('ProductID','Category','Featured','ImageUrl','Icon','Visible','SortOrder')) = 7,
   1, 0)
 '''
+
+[[migrations]]
+component = "core"
+database = "world"
+version = "2026.09.25.01"
+description = "battlepay demo catalog: character services, character transfer and wotlk classic boosts"
+file = "../../sql/updates/world/wotlk_classic/2026_09_25_01_world.sql"
+sha256 = "129cba678165678149fc197197ac3ca9fcc9a38e0520b533391bf4879b8b8b93"
+state = "active"
+adopt_query = '''
+SELECT IF(
+  (SELECT COUNT(*) FROM battlepay_product WHERE ProductID IN (20, 21, 22, 23, 24, 25, 26, 189, 239)) = 9
+  AND (SELECT COUNT(*) FROM battlepay_shop_entry WHERE EntryID BETWEEN 20 AND 28) = 9
+  AND (SELECT COUNT(*) FROM battlepay_product_group WHERE GroupID = 22) = 1,
+  1, 0)
+'''

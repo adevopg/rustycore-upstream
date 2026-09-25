@@ -4,4 +4,6 @@
 
 use super::*;
 
+mod race_faction_change;
 mod scenarios;
+mod undelete;

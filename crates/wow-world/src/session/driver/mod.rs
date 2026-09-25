@@ -415,6 +415,8 @@ impl WorldSession {
                 .unwrap_or(empty_catalogs.modules),
             id_generators: Arc::new(self.id_generators_for_test_like_cpp()),
             battle_pay: empty_catalogs.battle_pay,
+            race_faction_change: empty_catalogs.race_faction_change,
+            character_deletion: empty_catalogs.character_deletion,
         };
         catalogs
     }

@@ -47,6 +47,7 @@ use wow_social::group::{
 use crate::session::{GroupInvitePolicyLikeCpp, WorldSession, player_team_for_race_cpp};
 
 mod commands;
+mod offline_removal;
 mod ops_1;
 mod ops_2;
 mod ops_3;

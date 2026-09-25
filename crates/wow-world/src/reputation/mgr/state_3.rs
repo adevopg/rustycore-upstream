@@ -26,7 +26,7 @@ pub(super) fn default_state_flags_like_cpp(
     flags
 }
 
-pub(super) fn base_reputation_like_cpp(
+pub(crate) fn base_reputation_like_cpp(
     faction_entry: &FactionEntry,
     player_race: u8,
     player_class: u8,
@@ -223,7 +223,7 @@ pub(super) fn race_mask_has_race_like_cpp(mask: u64, race_id: u8) -> bool {
     player_race_mask_like_cpp(race_id).is_some_and(|race_mask| (mask & race_mask) != 0)
 }
 
-pub(super) fn player_race_mask_like_cpp(race_id: u8) -> Option<u64> {
+pub(crate) fn player_race_mask_like_cpp(race_id: u8) -> Option<u64> {
     let bit = match race_id {
         1..=11 => race_id - 1,
         22 => 21,

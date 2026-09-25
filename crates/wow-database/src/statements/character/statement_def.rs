@@ -1293,6 +1293,31 @@ impl StatementDef for CharStatements {
                 "INSERT INTO guild_member (guildid, guid, `rank`, pnote, offnote) VALUES (?, ?, ?, ?, ?)"
             }
             Self::DEL_GUILD_MEMBER => "DELETE FROM guild_member WHERE guid = ?",
+            Self::SEL_CHAR_RACE_OR_FACTION_CHANGE_CACHE => concat!(
+                "SELECT c.name, c.race, c.class, c.level, c.gender, gm.guildid, g.leaderguid ",
+                "FROM characters c LEFT JOIN guild_member gm ON c.guid = gm.guid ",
+                "LEFT JOIN guild g ON gm.guildid = g.guildid WHERE c.guid = ?",
+            ),
+            Self::SEL_GUILD_NEW_LEADER_CANDIDATE => concat!(
+                "SELECT guid FROM guild_member WHERE guildid = ? AND guid <> ? ",
+                "ORDER BY `rank` ASC, guid ASC LIMIT 1",
+            ),
+            Self::DEL_GUILD_BANK_ITEM_INSTANCE_GEMS => concat!(
+                "DELETE ig FROM item_instance_gems ig INNER JOIN guild_bank_item gbi ",
+                "ON gbi.item_guid = ig.itemGuid WHERE gbi.guildid = ?",
+            ),
+            Self::DEL_GUILD_BANK_ITEM_INSTANCE_TRANSMOG => concat!(
+                "DELETE it FROM item_instance_transmog it INNER JOIN guild_bank_item gbi ",
+                "ON gbi.item_guid = it.itemGuid WHERE gbi.guildid = ?",
+            ),
+            Self::DEL_GUILD_BANK_ITEM_GIFTS => concat!(
+                "DELETE cg FROM character_gifts cg INNER JOIN guild_bank_item gbi ",
+                "ON gbi.item_guid = cg.item_guid WHERE gbi.guildid = ?",
+            ),
+            Self::DEL_GUILD_BANK_ITEM_INSTANCES => concat!(
+                "DELETE ii FROM item_instance ii INNER JOIN guild_bank_item gbi ",
+                "ON gbi.item_guid = ii.guid WHERE gbi.guildid = ?",
+            ),
             Self::DEL_GUILD_MEMBERS => "DELETE FROM guild_member WHERE guildid = ?",
             Self::INS_GUILD_RANK => {
                 "INSERT INTO guild_rank (guildid, rid, RankOrder, rname, rights, BankMoneyPerDay) VALUES (?, ?, ?, ?, ?, ?)"
@@ -1597,6 +1622,33 @@ impl StatementDef for CharStatements {
                 "INSERT INTO character_battlepay_delivery (external_id, account, guid, product_id) ",
                 "VALUES (?, ?, ?, ?)",
             ),
+            Self::SEL_BATTLEPAY_ACCOUNT_CHARACTERS => concat!(
+                "SELECT c.guid, c.account, c.name, c.race, c.class, c.gender, c.level, c.at_login, c.online, ",
+                "c.logout_time, IFNULL(gm.guildid, 0), IFNULL(g.leaderguid, 0) FROM characters c ",
+                "LEFT JOIN guild_member gm ON gm.guid = c.guid LEFT JOIN guild g ON g.guildid = gm.guildid ",
+                "WHERE c.account = ? AND c.deleteInfos_Name IS NULL ORDER BY c.slot, c.guid",
+            ),
+            Self::SEL_BATTLEPAY_CHARACTER => concat!(
+                "SELECT c.guid, c.account, c.name, c.race, c.class, c.gender, c.level, c.at_login, c.online, ",
+                "c.logout_time, IFNULL(gm.guildid, 0), IFNULL(g.leaderguid, 0) FROM characters c ",
+                "LEFT JOIN guild_member gm ON gm.guid = c.guid LEFT JOIN guild g ON g.guildid = gm.guildid ",
+                "WHERE c.guid = ? AND c.deleteInfos_Name IS NULL",
+            ),
+            Self::UPD_BATTLEPAY_ADD_AT_LOGIN_FLAG => {
+                "UPDATE characters SET at_login = at_login | ? WHERE guid = ? AND account = ?"
+            }
+            Self::UPD_BATTLEPAY_TRANSFER_ACCOUNT => concat!(
+                "UPDATE characters SET account = ?, at_login = at_login | ? ",
+                "WHERE guid = ? AND account = ? AND online = 0",
+            ),
+            Self::DEL_BATTLEPAY_TRANSFER_GUILD_MEMBER => "DELETE FROM guild_member WHERE guid = ?",
+            Self::UPD_BATTLEPAY_CHARACTER_BOOST_QUEUED => concat!(
+                "UPDATE characters SET level = ?, xp = 0, at_login = at_login | ? ",
+                "WHERE guid = ? AND account = ? AND online = 0 AND deleteInfos_Account IS NULL AND level < ?",
+            ),
+            Self::UPD_BATTLEPAY_CHARACTER_BOOST_FINISHED => {
+                "UPDATE characters SET money = money + ?, at_login = at_login & ~? WHERE guid = ?"
+            }
             Self::GENERATED_CPP { sql, .. } => sql,
             Self::SEL_CHAR_QUEST_STATUS => {
                 "SELECT quest, status, explored, acceptTime, endTime FROM character_queststatus WHERE guid = ? AND status <> 0"

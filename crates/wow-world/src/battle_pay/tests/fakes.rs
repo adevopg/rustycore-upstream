@@ -20,12 +20,16 @@ use wow_persistence::{
     PersistenceFutureLikeCpp, PersistenceOutcomeLikeCpp, PlayerInventoryPersistenceRequestLikeCpp,
 };
 
+use super::fakes_services::{FakeCharacters, FakeDistributions, boost_loadouts};
 use crate::battle_pay::catalog::BattlePayCatalogLikeCpp;
 use crate::battle_pay::constants::BattlePayConfigLikeCpp;
 use crate::battle_pay::flow::{
     BattlePayIdentityLikeCpp, BattlePayPlayerLikeCpp, BattlePaySessionLikeCpp,
 };
 use crate::battle_pay::service::BattlePayServiceLikeCpp;
+use wow_persistence::{
+    BattlePayCharacterServicePersistencePortLikeCpp, BattlePayDistributionPersistencePortLikeCpp,
+};
 
 pub(super) const ACCOUNT: u32 = 7;
 pub(super) const REALM: u32 = 1;
@@ -198,6 +202,9 @@ fn row(order: &StoredOrder, id: usize) -> BattlePayPurchaseRowLikeCpp {
         character_guid: order.insert.character_guid,
         payment_ref: order.insert.payment_ref.clone(),
         web_order_id: order.web_order_id.clone(),
+        vas_target_account: order.insert.vas_target_account,
+        vas_target_bnet_account: order.insert.vas_target_bnet_account,
+        vas_target_realm: order.insert.vas_target_realm,
     }
 }
 
@@ -405,6 +412,9 @@ pub(super) struct FakeSession {
     pub owned: HashSet<u32>,
     pub grants: Vec<Vec<(u32, u32)>>,
     pub quarantined: Option<&'static str>,
+    pub at_login_flags: u16,
+    pub money: u64,
+    pub item_counts: HashMap<u32, u32>,
 }
 
 impl FakeSession {
@@ -415,12 +425,16 @@ impl FakeSession {
                 battlenet_account_id: 70,
                 realm_id: REALM,
                 region_id: 2,
+                virtual_realm_address: 0x0201_0001,
+                realm_name: "RustyCore".into(),
                 security: 0,
                 locale: 0,
                 ip: "203.0.113.5".into(),
                 player: Some(BattlePayPlayerLikeCpp {
                     guid: ObjectGuid::create_player(1, 42),
                     class_mask: 1,
+                    class: 1,
+                    level: 20,
                 }),
             },
             sent: Mutex::new(Vec::new()),
@@ -428,7 +442,17 @@ impl FakeSession {
             owned: HashSet::new(),
             grants: Vec::new(),
             quarantined: None,
+            at_login_flags: 0,
+            money: 0,
+            item_counts: HashMap::new(),
         }
+    }
+
+    /// A session at character select (no character in the world).
+    pub(super) fn at_glue() -> Self {
+        let mut session = Self::in_world();
+        session.identity.player = None;
+        session
     }
 
     /// Opcodes sent so far, in order, then cleared.
@@ -484,6 +508,22 @@ impl BattlePaySessionLikeCpp for FakeSession {
         async { Some(Vec::new()) }
     }
 
+    fn battle_pay_item_count(&self, item_id: u32) -> u32 {
+        self.item_counts.get(&item_id).copied().unwrap_or(0)
+    }
+
+    fn battle_pay_player_at_login_flags(&self) -> u16 {
+        self.at_login_flags
+    }
+
+    fn battle_pay_set_player_at_login_flags(&mut self, flags: u16) {
+        self.at_login_flags = flags;
+    }
+
+    fn battle_pay_add_player_money(&mut self, copper: u64) {
+        self.money += copper;
+    }
+
     fn battle_pay_quarantine(&mut self, reason: &'static str) {
         self.quarantined = Some(reason);
     }
@@ -493,21 +533,40 @@ pub(super) struct Harness {
     pub service: BattlePayServiceLikeCpp,
     pub account: Arc<FakeAccount>,
     pub delivery: Arc<FakeDelivery>,
+    pub characters: Arc<FakeCharacters>,
+    pub distributions: Arc<FakeDistributions>,
     pub generator: ObjectGuidGenerator,
 }
 
 pub(super) fn harness(config: BattlePayConfigLikeCpp, account: Arc<FakeAccount>) -> Harness {
+    harness_with_catalog(config, account, seed_catalog())
+}
+
+pub(super) fn harness_with_catalog(
+    config: BattlePayConfigLikeCpp,
+    account: Arc<FakeAccount>,
+    catalog: BattlePayCatalogLikeCpp,
+) -> Harness {
     let delivery = Arc::new(FakeDelivery::default());
+    let characters = Arc::new(FakeCharacters::new(Arc::clone(&delivery)));
+    let distributions = Arc::new(FakeDistributions::new(Arc::clone(&account)));
     let service = BattlePayServiceLikeCpp::new(
         config,
-        Arc::new(seed_catalog()),
+        Arc::new(catalog),
         Arc::clone(&account) as Arc<dyn BattlePayAccountPersistencePortLikeCpp>,
         Arc::clone(&delivery) as Arc<dyn BattlePayDeliveryPersistencePortLikeCpp>,
-    );
+    )
+    .with_character_services(
+        Arc::clone(&distributions) as Arc<dyn BattlePayDistributionPersistencePortLikeCpp>,
+        Arc::clone(&characters) as Arc<dyn BattlePayCharacterServicePersistencePortLikeCpp>,
+    )
+    .with_boost_loadouts(boost_loadouts());
     Harness {
         service,
         account,
         delivery,
+        characters,
+        distributions,
         generator: ObjectGuidGenerator::new(HighGuid::Item, 1),
     }
 }

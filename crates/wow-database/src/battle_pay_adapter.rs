@@ -80,6 +80,9 @@ fn purchase_insert_statement_like_cpp(
     stmt.set_string(8, &purchase.currency);
     stmt.set_string(9, &purchase.ip);
     stmt.set_string(10, &purchase.payment_ref);
+    stmt.set_u32(11, purchase.vas_target_account);
+    stmt.set_u32(12, purchase.vas_target_bnet_account);
+    stmt.set_u32(13, purchase.vas_target_realm);
     stmt
 }
 
@@ -114,7 +117,7 @@ pub(crate) fn token_charge_transaction_like_cpp(
     transaction
 }
 
-fn purchase_row_like_cpp(result: &SqlResult) -> BattlePayPurchaseRowLikeCpp {
+pub(crate) fn purchase_row_like_cpp(result: &SqlResult) -> BattlePayPurchaseRowLikeCpp {
     BattlePayPurchaseRowLikeCpp {
         id: column_u64_like_cpp(result, 0),
         external_id: result.read_string(1),
@@ -123,6 +126,9 @@ fn purchase_row_like_cpp(result: &SqlResult) -> BattlePayPurchaseRowLikeCpp {
         character_guid: column_u64_like_cpp(result, 4),
         payment_ref: result.read_string(5),
         web_order_id: result.read_string(6),
+        vas_target_account: column_u64_like_cpp(result, 7) as u32,
+        vas_target_bnet_account: column_u64_like_cpp(result, 8) as u32,
+        vas_target_realm: column_u64_like_cpp(result, 9) as u32,
     }
 }
 
@@ -140,7 +146,7 @@ fn purchase_rows_like_cpp(mut result: SqlResult) -> Vec<BattlePayPurchaseRowLike
     rows
 }
 
-fn outcome_from_commit_like_cpp(
+pub(crate) fn outcome_from_commit_like_cpp(
     result: Result<(), SqlTransactionCommitError>,
 ) -> PersistenceOutcomeLikeCpp {
     match result {
@@ -485,6 +491,7 @@ mod tests {
                 currency: "TOK".into(),
                 ip: "127.0.0.1".into(),
                 payment_ref: "tokens:1".into(),
+                ..Default::default()
             },
         }
     }

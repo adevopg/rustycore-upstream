@@ -196,7 +196,7 @@ fn hidden_price_disables_buy_when_tokens_do_not_cover_it() {
 #[test]
 fn undeliverable_products_are_never_listed() {
     let mut rows = seed_rows();
-    rows.products[1].website_type = 29; // CharacterBoost: not ported
+    rows.products[1].website_type = 31; // GameTime: not ported
     let catalog = BattlePayCatalogLikeCpp::from_rows_like_cpp(rows, |_| true).0;
     let balances = HashMap::new();
     let list = catalog.product_list_like_cpp(&viewer(true, 0, &balances, &|_| false));

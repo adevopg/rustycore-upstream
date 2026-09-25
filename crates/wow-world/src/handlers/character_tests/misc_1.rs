@@ -580,7 +580,7 @@ async fn char_customize_without_character_db_sends_cpp_failure() {
     );
     pkt.skip_opcode();
     assert_eq!(pkt.read_uint8().unwrap(), CHAR_CREATE_ERROR_LIKE_CPP);
-    assert_eq!(pkt.read_guid().unwrap(), guid);
+    assert_eq!(pkt.read_packed_guid().unwrap(), guid);
     assert_eq!(pkt.remaining(), 0);
 }
 #[tokio::test]

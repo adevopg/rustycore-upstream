@@ -104,6 +104,22 @@ impl CharacterIdentityCacheLikeCpp {
         }
     }
 
+    /// C++ `CharacterCache::UpdateCharacterInfoDeleted`: the name changes only
+    /// when a non-empty one is given.
+    pub fn update_deleted(&self, guid_low: u64, deleted: bool, name: &str) {
+        if let Some(entry) = self
+            .entries
+            .write()
+            .expect("character identity cache lock is not poisoned")
+            .get_mut(&guid_low)
+        {
+            entry.is_deleted = deleted;
+            if !name.is_empty() {
+                entry.name = name.to_owned();
+            }
+        }
+    }
+
     pub fn update_identity(
         &self,
         guid_low: u64,

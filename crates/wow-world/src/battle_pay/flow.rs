@@ -11,9 +11,12 @@
 //!    balance covers the price, writes the `account_donate_token_log` row and a
 //!    `battlepay_purchase` row already `Paid` (1). Web mode: the web tier marks the
 //!    `Created` (0) row `Paid`.
-//! 2. Deliver: the items and a `character_battlepay_delivery` receipt keyed by the
-//!    order's `external_id` commit in one Character DB transaction. A receipt that
-//!    already exists means the items were delivered: nothing is granted again.
+//! 2. Deliver: the items (or the at-login flag of a character service, or the
+//!    account move of a transfer) and a `character_battlepay_delivery` receipt
+//!    keyed by the order's `external_id` commit in one Character DB transaction.
+//!    A receipt that already exists means the order was delivered: nothing is
+//!    granted again. Boosts and undelete services live in the Login DB: the
+//!    distribution row (or the cooldown reset) commits with step 3 instead.
 //! 3. Mark: `battlepay_purchase` `Paid -> Delivered` (2).
 //!
 //! A crash after 1 leaves a `Paid` row that the next product-list request of the
@@ -30,26 +33,26 @@ use tracing::{debug, info, warn};
 use wow_core::{ObjectGuid, ObjectGuidGenerator};
 use wow_packet::ServerPacket;
 use wow_packet::packets::battlepay::{
-    BattlePayAckFailed, BattlePayAckFailedResponse, BattlePayCancelOpenCheckout,
-    BattlePayConfirmPurchase, BattlePayConfirmPurchaseResponse, BattlePayDeliveryEnded,
-    BattlePayDeliveryStarted, BattlePayGetDistributionListResponse,
+    BattlePayAckFailed, BattlePayAckFailedResponse, BattlePayConfirmPurchase,
+    BattlePayConfirmPurchaseResponse, BattlePayDeliveryEnded, BattlePayDeliveryStarted,
     BattlePayGetProductListResponse, BattlePayGetPurchaseListResponse, BattlePayMountDelivered,
-    BattlePayOpenCheckout, BattlePayPurchase, BattlePayPurchaseSubmitted, BattlePayPurchaseUpdate,
-    BattlePayStartCheckout, BattlePayStartPurchase, BattlePayStartPurchaseResponse,
-    DisplayPromotion, EnumVasPurchaseStatesResponse, GenerateSsoTokenResponse,
+    BattlePayPurchase, BattlePayPurchaseUpdate, BattlePayStartCheckout, BattlePayStartPurchase,
+    BattlePayStartPurchaseResponse, DisplayPromotion,
 };
 use wow_packet::packets::item::ItemInstance;
 use wow_persistence::{
-    BATTLE_PAY_PURCHASE_STATUS_DELIVERED_LIKE_CPP, BATTLE_PAY_PURCHASE_STATUS_FAILED_LIKE_CPP,
-    BATTLE_PAY_PURCHASE_STATUS_PAID_LIKE_CPP, BattlePayDeliveryReceiptLikeCpp,
-    BattlePayPurchaseInsertLikeCpp, BattlePaySsoTokenIssueLikeCpp, BattlePayTokenChargeLikeCpp,
-    BattlePayTokenChargeOutcomeLikeCpp, PersistenceOutcomeLikeCpp,
+    BattlePayDeliveryReceiptLikeCpp, BattlePayPurchaseInsertLikeCpp, BattlePayPurchaseRowLikeCpp,
+    BattlePayTokenChargeLikeCpp, BattlePayTokenChargeOutcomeLikeCpp, PersistenceOutcomeLikeCpp,
     PlayerInventoryPersistenceRequestLikeCpp,
 };
 
 use super::catalog::{BattlePayProductLikeCpp, ProductListViewerLikeCpp};
 use super::constants::*;
-use super::service::{ActivePurchaseLikeCpp, BattlePayServiceLikeCpp, WebCheckoutLikeCpp};
+use super::product_kind::ProductKindLikeCpp;
+use super::service::{
+    ActivePurchaseLikeCpp, BattlePayServiceLikeCpp, VasTransferTargetLikeCpp, WebCheckoutLikeCpp,
+};
+use super::web::finish_web_purchase;
 
 /// The logged-in character, when the session is in the world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +60,8 @@ pub(crate) struct BattlePayPlayerLikeCpp {
     pub guid: ObjectGuid,
     /// `1 << (class - 1)`.
     pub class_mask: u32,
+    pub class: u8,
+    pub level: u8,
 }
 
 /// Session identity the shop reads (LegionCore `WorldSession` getters).
@@ -67,6 +72,10 @@ pub(crate) struct BattlePayIdentityLikeCpp {
     pub realm_id: u32,
     /// `realm.Id.Region` (`SMSG_BATTLE_PAY_START_CHECKOUT.GameServiceRegionID`).
     pub region_id: u32,
+    /// `realm.Id.GetAddress()` of this realm.
+    pub virtual_realm_address: u32,
+    /// `realm.Name` (the VAS character list is filtered by it).
+    pub realm_name: String,
     pub security: u8,
     /// Numeric `LocaleConstant` of the session locale.
     pub locale: u8,
@@ -94,6 +103,15 @@ pub(crate) trait BattlePaySessionLikeCpp: Send {
         item_guid_generator: &ObjectGuidGenerator,
         items: &[(u32, u32)],
     ) -> impl Future<Output = Option<Vec<PlayerInventoryPersistenceRequestLikeCpp>>> + Send;
+    /// `Player::GetItemCount(item)` of the player in the world.
+    fn battle_pay_item_count(&self, item_id: u32) -> u32;
+    /// At-login flags of the player in the world (0 without one).
+    fn battle_pay_player_at_login_flags(&self) -> u16;
+    /// Mirror a durable at-login change onto the player in the world, so its next
+    /// save keeps it (LegionCore `Player::SetAtLoginFlag` / `RemoveAtLoginFlag`).
+    fn battle_pay_set_player_at_login_flags(&mut self, flags: u16);
+    /// Mirror a durable money change onto the player in the world.
+    fn battle_pay_add_player_money(&mut self, copper: u64);
     /// Disconnect a session whose runtime state diverged from the database.
     fn battle_pay_quarantine(&mut self, reason: &'static str);
 }
@@ -110,7 +128,41 @@ pub(crate) enum DeliveryOutcomeLikeCpp {
     Quarantined,
 }
 
-fn random_hex_32() -> String {
+/// One paid `battlepay_purchase` order and what the client knows it as.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct PaidOrderLikeCpp {
+    pub external_id: String,
+    pub product_id: u32,
+    pub web_order_id: String,
+    /// Client `PurchaseID` of the delivery packets.
+    pub purchase_id: u64,
+    /// `battlepay_purchase.character_guid`: service/transfer target or item receiver.
+    pub character_guid: u64,
+    pub transfer: Option<VasTransferTargetLikeCpp>,
+}
+
+impl PaidOrderLikeCpp {
+    pub(crate) fn from_row(
+        row: &BattlePayPurchaseRowLikeCpp,
+        web_order_id: &str,
+        purchase_id: u64,
+    ) -> Self {
+        Self {
+            external_id: row.external_id.clone(),
+            product_id: row.product_id,
+            web_order_id: web_order_id.to_owned(),
+            purchase_id,
+            character_guid: row.character_guid,
+            transfer: (row.vas_target_account != 0).then_some(VasTransferTargetLikeCpp {
+                account_id: row.vas_target_account,
+                battlenet_account_id: row.vas_target_bnet_account,
+                realm_id: row.vas_target_realm,
+            }),
+        }
+    }
+}
+
+pub(crate) fn random_hex_32() -> String {
     let bytes: [u8; 16] = rand::thread_rng().r#gen();
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -123,7 +175,7 @@ fn product_items(product: &BattlePayProductLikeCpp) -> Vec<(u32, u32)> {
         .collect()
 }
 
-fn send_start_purchase_response<S: BattlePaySessionLikeCpp>(
+pub(crate) fn send_start_purchase_response<S: BattlePaySessionLikeCpp>(
     session: &S,
     purchase: &ActivePurchaseLikeCpp,
     result: u32,
@@ -136,7 +188,7 @@ fn send_start_purchase_response<S: BattlePaySessionLikeCpp>(
 }
 
 /// LegionCore `SendPurchaseUpdate` (`UnkInt` = server token, now the third u64).
-fn send_purchase_update<S: BattlePaySessionLikeCpp>(
+pub(crate) fn send_purchase_update<S: BattlePaySessionLikeCpp>(
     session: &S,
     service: &BattlePayServiceLikeCpp,
     purchase: &ActivePurchaseLikeCpp,
@@ -157,7 +209,7 @@ fn send_purchase_update<S: BattlePaySessionLikeCpp>(
     });
 }
 
-fn send_ack_failed<S: BattlePaySessionLikeCpp>(
+pub(crate) fn send_ack_failed<S: BattlePaySessionLikeCpp>(
     session: &S,
     purchase: &ActivePurchaseLikeCpp,
     result: u32,
@@ -215,26 +267,12 @@ pub(crate) async fn send_product_list<S: BattlePaySessionLikeCpp>(
     true
 }
 
-/// `SMSG_BATTLE_PAY_GET_DISTRIBUTION_LIST_RESPONSE` with no distributions
-/// (LegionCore `BattlepayManager::SendDistributionList`; boosts are not ported).
-///
-/// The 54261 store keeps its "Loading" alert until `C_StoreSecure.HasPurchaseList()`,
-/// `HasProductList()` and `HasDistributionList()` are all true
-/// (`Blizzard_StoreUISecure.lua` `StoreFrame_UpdateActivePanel`), so the client must
-/// receive this list even when it is empty.
-pub(crate) fn send_distribution_list<S: BattlePaySessionLikeCpp>(session: &S) {
-    session.send_battle_pay_packet(&BattlePayGetDistributionListResponse {
-        result: error::OK,
-        distribution_objects: Vec::new(),
-    });
-}
-
 /// LegionCore `WorldSession::SendDisplayPromo`, called from
 /// `InitializeSessionCallback` right after the tutorial flags: `SMSG_DISPLAY_PROMOTION`
 /// (promotion 0) and, when the shop is available, the distribution list. RustyCore
 /// sends both only for an available shop so a disabled shop leaves the login
 /// packet sequence unchanged.
-pub(crate) fn send_session_init<S: BattlePaySessionLikeCpp>(
+pub(crate) async fn send_session_init<S: BattlePaySessionLikeCpp>(
     session: &S,
     service: &BattlePayServiceLikeCpp,
 ) {
@@ -245,7 +283,7 @@ pub(crate) fn send_session_init<S: BattlePaySessionLikeCpp>(
         return;
     }
     session.send_battle_pay_packet(&DisplayPromotion { promotion_id: 0 });
-    send_distribution_list(session);
+    super::boost::send_distribution_list(session, service).await;
 }
 
 /// `CMSG_BATTLE_PAY_GET_PRODUCT_LIST` (LegionCore `HandleGetProductList`).
@@ -259,8 +297,8 @@ pub(crate) async fn handle_get_product_list<S: BattlePaySessionLikeCpp>(
 ) {
     if send_product_list(session, service).await {
         // Safety net for a client that missed the session-init copy (for example a
-        // shop enabled while it sat at character select): an empty list is idempotent.
-        send_distribution_list(session);
+        // shop enabled while it sat at character select).
+        super::boost::send_distribution_list(session, service).await;
         deliver_paid_purchases(session, service, item_guid_generator).await;
     }
 }
@@ -278,10 +316,77 @@ pub(crate) fn handle_get_purchase_list<S: BattlePaySessionLikeCpp>(session: &S) 
     session.send_battle_pay_packet(&BattlePayGetPurchaseListResponse::default());
 }
 
-/// `CMSG_UPDATE_VAS_PURCHASE_STATES`: no VAS services are ported, so the list the
-/// character screen waits for is always empty.
-pub(crate) fn handle_update_vas_purchase_states<S: BattlePaySessionLikeCpp>(session: &S) {
-    session.send_battle_pay_packet(&EnumVasPurchaseStatesResponse::default());
+/// Refusal of a `StartPurchase` (LegionCore `SendStartPurchaseResponse(error)`).
+fn deny_start<S: BattlePaySessionLikeCpp>(
+    session: &S,
+    identity: &BattlePayIdentityLikeCpp,
+    purchase: &ActivePurchaseLikeCpp,
+    result: u32,
+    why: &str,
+) {
+    info!(
+        account = identity.account_id,
+        product = purchase.product_id,
+        result,
+        "BattlePay: purchase refused: {why}"
+    );
+    send_start_purchase_response(session, purchase, result);
+}
+
+/// Purchase checks that depend on what the product delivers. `Ok` carries the
+/// character the order is recorded for.
+fn check_purchase_target<S: BattlePaySessionLikeCpp>(
+    session: &S,
+    identity: &BattlePayIdentityLikeCpp,
+    product: &BattlePayProductLikeCpp,
+    requested_target: ObjectGuid,
+) -> Result<ObjectGuid, (u32, &'static str)> {
+    let in_world = identity.player.map(|player| player.guid);
+    match product.kind_like_cpp() {
+        ProductKindLikeCpp::Items | ProductKindLikeCpp::Service(_) => {
+            // Deliveries go to the character in the world. LegionCore accepted any
+            // character of the account; the 3.4.3 flow never names another one in
+            // game. Services bought outside the VAS flow are LegionCore's in-world
+            // `CharacterService` deliveries (`ProcessDelivery`, `if (player)`).
+            let Some(player) = in_world else {
+                return Err((error::PURCHASE_DENIED, "no character in the world"));
+            };
+            if !requested_target.is_empty() && requested_target != player {
+                return Err((error::PURCHASE_DENIED, "target is not the active character"));
+            }
+            if let ProductKindLikeCpp::Service(kind) = product.kind_like_cpp() {
+                if kind
+                    .already_flagged_error_like_cpp(session.battle_pay_player_at_login_flags())
+                    .is_some()
+                {
+                    return Err((error::PURCHASE_DENIED, "service already pending"));
+                }
+                return Ok(player);
+            }
+            let items = product_items(product);
+            if !session.battle_pay_can_store(&items) {
+                return Err((error::PURCHASE_DENIED, "not enough free bag slots"));
+            }
+            if items
+                .iter()
+                .any(|(item_id, _)| session.battle_pay_item_owned(*item_id))
+            {
+                return Err((error::PURCHASE_DENIED, "already owned"));
+            }
+            Ok(player)
+        }
+        // Account-wide deliveries; LegionCore `CanBuy` of a boost is always true.
+        ProductKindLikeCpp::Boost(_) | ProductKindLikeCpp::RestoreDeletedCharacter => {
+            Ok(in_world.unwrap_or(ObjectGuid::EMPTY))
+        }
+        ProductKindLikeCpp::Transfer { .. } => Err((
+            error::PURCHASE_DENIED,
+            "a transfer is only sold through the VAS flow",
+        )),
+        ProductKindLikeCpp::Unsupported => {
+            Err((error::PURCHASE_DENIED, "product type is not supported"))
+        }
+    }
 }
 
 /// `CMSG_BATTLE_PAY_START_PURCHASE` (LegionCore `MakePurchase`).
@@ -304,48 +409,47 @@ pub(crate) async fn handle_start_purchase<S: BattlePaySessionLikeCpp>(
         target_character: request.target_character,
         lock: false,
         web: None,
+        transfer: None,
     };
-    let deny = |purchase: &ActivePurchaseLikeCpp, result: u32, why: &str| {
-        info!(
-            account = identity.account_id,
-            product = request.product_id,
-            result,
-            "BattlePay: purchase refused: {why}"
-        );
-        send_start_purchase_response(session, purchase, result);
-    };
-
-    // Deliveries go to the character in the world. LegionCore accepted any
-    // character of the account; the 3.4.3 flow never names another one in game.
-    let Some(player) = identity.player else {
-        return deny(
-            &purchase,
-            error::PURCHASE_DENIED,
-            "no character in the world",
-        );
-    };
-    if !request.target_character.is_empty() && request.target_character != player.guid {
-        return deny(
-            &purchase,
-            error::PURCHASE_DENIED,
-            "target is not the active character",
-        );
-    }
     let Some(product) = service.catalog.product(request.product_id) else {
-        return deny(&purchase, error::PURCHASE_DENIED, "unknown product");
+        return deny_start(
+            session,
+            &identity,
+            &purchase,
+            error::PURCHASE_DENIED,
+            "unknown product",
+        );
     };
     let Some(group) = service.catalog.group_for_product(request.product_id) else {
-        return deny(&purchase, error::PURCHASE_DENIED, "product is in no group");
-    };
-    if !product.is_deliverable_like_cpp() {
-        return deny(
+        return deny_start(
+            session,
+            &identity,
             &purchase,
             error::PURCHASE_DENIED,
-            "product type is not supported",
+            "product is in no group",
         );
+    };
+    // LegionCore `MakePurchase`: "a VAS service is not bought here: give the screen
+    // what it expects". The 54261 store waits for STORE_CHARACTER_LIST_RECEIVED and
+    // then sends CMSG_BATTLE_PAY_START_VAS_PURCHASE.
+    if product.is_vas_like_cpp() && product.is_deliverable_like_cpp() {
+        super::vas::send_vas_lists_for_purchase(
+            session,
+            service,
+            &identity,
+            product,
+            request.client_token,
+        )
+        .await;
+        return;
     }
+    let target = match check_purchase_target(session, &identity, product, request.target_character)
+    {
+        Ok(target) => target,
+        Err((result, why)) => return deny_start(session, &identity, &purchase, result, why),
+    };
     purchase.current_price = product.current_price;
-    purchase.target_character = player.guid;
+    purchase.target_character = target;
     service.set_purchase(identity.account_id, purchase.clone());
 
     if !service.config.web_checkout {
@@ -355,28 +459,27 @@ pub(crate) async fn handle_start_purchase<S: BattlePaySessionLikeCpp>(
             .copied()
             .unwrap_or(0);
         if balance < fixed_point_to_tokens_like_cpp(purchase.current_price) {
-            return deny(
+            return deny_start(
+                session,
+                &identity,
                 &purchase,
                 error::INSUFFICIENT_BALANCE,
                 "insufficient balance",
             );
         }
     }
-    let items = product_items(product);
-    if !session.battle_pay_can_store(&items) {
-        return deny(
-            &purchase,
-            error::PURCHASE_DENIED,
-            "not enough free bag slots",
-        );
-    }
-    if items
-        .iter()
-        .any(|(item_id, _)| session.battle_pay_item_owned(*item_id))
-    {
-        return deny(&purchase, error::PURCHASE_DENIED, "already owned");
-    }
+    begin_confirmation(session, service, &identity, purchase).await;
+}
 
+/// Accepted start: purchase ids, `StartPurchaseResponse` + `PurchaseUpdate`, then
+/// the wallet confirmation or the web checkout (LegionCore `MakePurchase` tail and
+/// `HandleBattlePayStartVasPurchaseCallback`).
+pub(crate) async fn begin_confirmation<S: BattlePaySessionLikeCpp>(
+    session: &S,
+    service: &BattlePayServiceLikeCpp,
+    identity: &BattlePayIdentityLikeCpp,
+    mut purchase: ActivePurchaseLikeCpp,
+) {
     purchase.purchase_id = service.next_purchase_id_like_cpp();
     purchase.server_token = rand::thread_rng().gen_range(0..=0x0FFF_FFFF);
     service.set_purchase(identity.account_id, purchase.clone());
@@ -384,13 +487,40 @@ pub(crate) async fn handle_start_purchase<S: BattlePaySessionLikeCpp>(
     send_purchase_update(session, service, &purchase, error::OK);
 
     if service.config.web_checkout {
-        start_web_checkout(session, service, &identity, purchase).await;
+        start_web_checkout(session, service, identity, purchase).await;
         return;
     }
     session.send_battle_pay_packet(&BattlePayConfirmPurchase {
         purchase_id: purchase.purchase_id,
         server_token: purchase.server_token,
     });
+}
+
+fn order_insert_like_cpp(
+    identity: &BattlePayIdentityLikeCpp,
+    purchase: &ActivePurchaseLikeCpp,
+    external_id: String,
+    price: String,
+    currency: String,
+    payment_ref: String,
+) -> BattlePayPurchaseInsertLikeCpp {
+    let transfer = purchase.transfer.unwrap_or_default();
+    BattlePayPurchaseInsertLikeCpp {
+        external_id,
+        signature: random_hex_32(),
+        battlenet_account_id: identity.battlenet_account_id,
+        account_id: identity.account_id,
+        realm_id: identity.realm_id,
+        character_guid: purchase.target_character.counter() as u64,
+        product_id: purchase.product_id,
+        price,
+        currency,
+        ip: identity.ip.clone(),
+        payment_ref,
+        vas_target_account: transfer.account_id,
+        vas_target_bnet_account: transfer.battlenet_account_id,
+        vas_target_realm: transfer.realm_id,
+    }
 }
 
 /// LegionCore `StartWebCheckout`: register the order and open the checkout.
@@ -405,22 +535,16 @@ async fn start_web_checkout<S: BattlePaySessionLikeCpp>(
         signature: random_hex_32(),
         pending: true,
     };
-    let outcome = service
-        .account
-        .insert_web_purchase_like_cpp(BattlePayPurchaseInsertLikeCpp {
-            external_id: web.external_id.clone(),
-            signature: web.signature.clone(),
-            battlenet_account_id: identity.battlenet_account_id,
-            account_id: identity.account_id,
-            realm_id: identity.realm_id,
-            character_guid: purchase.target_character.counter() as u64,
-            product_id: purchase.product_id,
-            price: fixed_point_to_decimal_like_cpp(purchase.current_price),
-            currency: service.config.currency_code.clone(),
-            ip: identity.ip.clone(),
-            payment_ref: String::new(),
-        })
-        .await;
+    let mut insert = order_insert_like_cpp(
+        identity,
+        &purchase,
+        web.external_id.clone(),
+        fixed_point_to_decimal_like_cpp(purchase.current_price),
+        service.config.currency_code.clone(),
+        String::new(),
+    );
+    insert.signature = web.signature.clone();
+    let outcome = service.account.insert_web_purchase_like_cpp(insert).await;
     if !outcome.is_applied() {
         warn!(
             account = identity.account_id,
@@ -494,13 +618,6 @@ pub(crate) async fn handle_confirm_purchase_response<S: BattlePaySessionLikeCpp>
             "token, price or confirmation mismatch",
         );
     }
-    let Some(player) = identity.player else {
-        return deny(
-            &purchase,
-            error::PURCHASE_DENIED,
-            "no character in the world",
-        );
-    };
     let Some(group) = service.catalog.group_for_product(purchase.product_id) else {
         return deny(&purchase, error::PURCHASE_DENIED, "product is in no group");
     };
@@ -511,24 +628,34 @@ pub(crate) async fn handle_confirm_purchase_response<S: BattlePaySessionLikeCpp>
     if service.config.web_checkout || !product.is_deliverable_like_cpp() {
         return deny(&purchase, error::PURCHASE_DENIED, "not a wallet purchase");
     }
+    let kind = product.kind_like_cpp();
 
     purchase.lock = true;
     purchase.status = purchase_status::FINISH;
     service.set_purchase(identity.account_id, purchase.clone());
 
-    let items = product_items(product);
-    if !session.battle_pay_can_store(&items) {
-        return deny(
-            &purchase,
-            error::PURCHASE_DENIED,
-            "not enough free bag slots",
-        );
-    }
-    if items
-        .iter()
-        .any(|(item_id, _)| session.battle_pay_item_owned(*item_id))
-    {
-        return deny(&purchase, error::PURCHASE_DENIED, "already owned");
+    if kind.needs_player_in_world() {
+        let items = product_items(product);
+        if identity.player.is_none() {
+            return deny(
+                &purchase,
+                error::PURCHASE_DENIED,
+                "no character in the world",
+            );
+        }
+        if !session.battle_pay_can_store(&items) {
+            return deny(
+                &purchase,
+                error::PURCHASE_DENIED,
+                "not enough free bag slots",
+            );
+        }
+        if items
+            .iter()
+            .any(|(item_id, _)| session.battle_pay_item_owned(*item_id))
+        {
+            return deny(&purchase, error::PURCHASE_DENIED, "already owned");
+        }
     }
 
     let tokens = fixed_point_to_tokens_like_cpp(purchase.current_price);
@@ -537,19 +664,14 @@ pub(crate) async fn handle_confirm_purchase_response<S: BattlePaySessionLikeCpp>
         token_type,
         amount: tokens,
         buy_type: BUY_TYPE_BATTLE_PAY_SHOP_LIKE_CPP,
-        purchase: BattlePayPurchaseInsertLikeCpp {
-            external_id: external_id.clone(),
-            signature: random_hex_32(),
-            battlenet_account_id: identity.battlenet_account_id,
-            account_id: identity.account_id,
-            realm_id: identity.realm_id,
-            character_guid: player.guid.counter() as u64,
-            product_id: purchase.product_id,
-            price: tokens.to_string(),
-            currency: TOKEN_ORDER_CURRENCY_LIKE_CPP.to_owned(),
-            ip: identity.ip.clone(),
-            payment_ref: format!("tokens:{token_type}"),
-        },
+        purchase: order_insert_like_cpp(
+            &identity,
+            &purchase,
+            external_id.clone(),
+            tokens.to_string(),
+            TOKEN_ORDER_CURRENCY_LIKE_CPP.to_owned(),
+            format!("tokens:{token_type}"),
+        ),
     };
     match service.account.charge_tokens_like_cpp(charge).await {
         BattlePayTokenChargeOutcomeLikeCpp::Charged => {
@@ -588,16 +710,15 @@ pub(crate) async fn handle_confirm_purchase_response<S: BattlePaySessionLikeCpp>
         }
     }
 
-    let outcome = deliver_order_like_cpp(
-        session,
-        service,
-        item_guid_generator,
-        &external_id,
-        purchase.product_id,
-        "",
-        purchase.purchase_id,
-    )
-    .await;
+    let order = PaidOrderLikeCpp {
+        external_id: external_id.clone(),
+        product_id: purchase.product_id,
+        web_order_id: String::new(),
+        purchase_id: purchase.purchase_id,
+        character_guid: purchase.target_character.counter() as u64,
+        transfer: purchase.transfer,
+    };
+    let outcome = deliver_order_like_cpp(session, service, item_guid_generator, &order).await;
     match outcome {
         DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {
             send_purchase_update(session, service, &purchase, error::OK);
@@ -614,38 +735,90 @@ pub(crate) async fn handle_confirm_purchase_response<S: BattlePaySessionLikeCpp>
     }
 }
 
-/// Deliver one `Paid` order into the character in the world, exactly once per realm.
+/// Mark a delivered order (`Paid -> Delivered`); the receipt already prevents a
+/// second delivery if this is lost.
+pub(crate) async fn mark_delivered(service: &BattlePayServiceLikeCpp, order: &PaidOrderLikeCpp) {
+    match service
+        .account
+        .mark_purchase_delivered_like_cpp(order.external_id.clone(), order.web_order_id.clone())
+        .await
+    {
+        PersistenceOutcomeLikeCpp::Applied { .. } => {}
+        outcome => warn!(
+            order = %order.external_id,
+            ?outcome,
+            "BattlePay: order delivered but not marked; the receipt prevents a second delivery"
+        ),
+    }
+}
+
+/// Whether the order's receipt exists in this realm's Character DB.
+pub(crate) async fn receipt_exists(
+    service: &BattlePayServiceLikeCpp,
+    order: &PaidOrderLikeCpp,
+) -> Result<bool, DeliveryOutcomeLikeCpp> {
+    service
+        .delivery
+        .delivery_receipt_exists_like_cpp(order.external_id.clone())
+        .await
+        .map_err(|error| {
+            warn!(order = %order.external_id, %error, "BattlePay: delivery receipt lookup failed");
+            DeliveryOutcomeLikeCpp::Deferred("delivery receipt lookup failed")
+        })
+}
+
+/// Deliver one `Paid` order exactly once per realm (LegionCore `ProcessDelivery`).
 pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
     session: &mut S,
     service: &BattlePayServiceLikeCpp,
     item_guid_generator: &ObjectGuidGenerator,
-    external_id: &str,
-    product_id: u32,
-    web_order_id: &str,
-    purchase_id: u64,
+    order: &PaidOrderLikeCpp,
+) -> DeliveryOutcomeLikeCpp {
+    let Some(product) = service
+        .catalog
+        .product(order.product_id)
+        .filter(|product| product.is_deliverable_like_cpp())
+    else {
+        return DeliveryOutcomeLikeCpp::Deferred("unknown or undeliverable product");
+    };
+    match product.kind_like_cpp() {
+        ProductKindLikeCpp::Items => {
+            deliver_items(session, service, item_guid_generator, order, product).await
+        }
+        ProductKindLikeCpp::Service(kind) => {
+            super::vas::deliver_service(session, service, order, kind).await
+        }
+        ProductKindLikeCpp::Transfer { faction_change } => {
+            super::transfer::deliver_transfer(session, service, order, faction_change).await
+        }
+        ProductKindLikeCpp::Boost(_) => {
+            super::boost::deliver_boost(session, service, order, product).await
+        }
+        ProductKindLikeCpp::RestoreDeletedCharacter => {
+            super::vas::deliver_undelete(session, service, order).await
+        }
+        ProductKindLikeCpp::Unsupported => {
+            DeliveryOutcomeLikeCpp::Deferred("unknown or undeliverable product")
+        }
+    }
+}
+
+/// `WebsiteType::Item` / `ItemMount`: the items go to the character in the world.
+async fn deliver_items<S: BattlePaySessionLikeCpp>(
+    session: &mut S,
+    service: &BattlePayServiceLikeCpp,
+    item_guid_generator: &ObjectGuidGenerator,
+    order: &PaidOrderLikeCpp,
+    product: &BattlePayProductLikeCpp,
 ) -> DeliveryOutcomeLikeCpp {
     let identity = session.battle_pay_identity();
     let Some(player) = identity.player else {
         return DeliveryOutcomeLikeCpp::Deferred("no character in the world");
     };
-    let Some(product) = service
-        .catalog
-        .product(product_id)
-        .filter(|product| product.is_deliverable_like_cpp())
-    else {
-        return DeliveryOutcomeLikeCpp::Deferred("unknown or undeliverable product");
-    };
     let items = product_items(product);
-    let already_delivered = match service
-        .delivery
-        .delivery_receipt_exists_like_cpp(external_id.to_owned())
-        .await
-    {
+    let already_delivered = match receipt_exists(service, order).await {
         Ok(exists) => exists,
-        Err(error) => {
-            warn!(order = %external_id, %error, "BattlePay: delivery receipt lookup failed");
-            return DeliveryOutcomeLikeCpp::Deferred("delivery receipt lookup failed");
-        }
+        Err(outcome) => return outcome,
     };
 
     if !already_delivered {
@@ -654,7 +827,7 @@ pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
         }
         // Ignored by the 54261 client (handler slot is a `ret` stub); sent per spec.
         session.send_battle_pay_packet(&BattlePayDeliveryStarted {
-            distribution_id: purchase_id,
+            distribution_id: order.purchase_id,
         });
         let Some(inventory) = session
             .battle_pay_grant_items(item_guid_generator, &items)
@@ -664,10 +837,10 @@ pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
             return DeliveryOutcomeLikeCpp::Quarantined;
         };
         let receipt = BattlePayDeliveryReceiptLikeCpp {
-            external_id: external_id.to_owned(),
+            external_id: order.external_id.clone(),
             account_id: identity.account_id,
             character_guid: player.guid.counter() as u64,
-            product_id,
+            product_id: order.product_id,
         };
         match service
             .delivery
@@ -678,27 +851,16 @@ pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
             outcome => {
                 // Nothing durable was granted (or it cannot be told): the order
                 // stays Paid and the receipt decides the next attempt.
-                warn!(order = %external_id, ?outcome, "BattlePay: delivery did not commit");
+                warn!(order = %order.external_id, ?outcome, "BattlePay: delivery did not commit");
                 session.battle_pay_quarantine("BattlePay delivery did not commit; relog required");
                 return DeliveryOutcomeLikeCpp::Quarantined;
             }
         }
     }
 
-    match service
-        .account
-        .mark_purchase_delivered_like_cpp(external_id.to_owned(), web_order_id.to_owned())
-        .await
-    {
-        PersistenceOutcomeLikeCpp::Applied { .. } => {}
-        outcome => warn!(
-            order = %external_id,
-            ?outcome,
-            "BattlePay: order delivered but not marked; the receipt prevents a second delivery"
-        ),
-    }
+    mark_delivered(service, order).await;
     if already_delivered {
-        info!(order = %external_id, "BattlePay: order was already delivered; status repaired");
+        info!(order = %order.external_id, "BattlePay: order was already delivered; status repaired");
         return DeliveryOutcomeLikeCpp::AlreadyDelivered;
     }
 
@@ -707,10 +869,12 @@ pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
         .iter()
         .any(|(item_id, _)| session.battle_pay_item_is_mount(*item_id))
     {
-        session.send_battle_pay_packet(&BattlePayMountDelivered { product_id });
+        session.send_battle_pay_packet(&BattlePayMountDelivered {
+            product_id: order.product_id,
+        });
     }
     session.send_battle_pay_packet(&BattlePayDeliveryEnded {
-        distribution_id: purchase_id,
+        distribution_id: order.purchase_id,
         items: items
             .iter()
             .map(|(item_id, _)| ItemInstance {
@@ -721,8 +885,8 @@ pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
     });
     info!(
         account = identity.account_id,
-        product = product_id,
-        order = %external_id,
+        product = order.product_id,
+        order = %order.external_id,
         "BattlePay: order delivered"
     );
     DeliveryOutcomeLikeCpp::Delivered
@@ -730,16 +894,15 @@ pub(crate) async fn deliver_order_like_cpp<S: BattlePaySessionLikeCpp>(
 
 /// LegionCore `DeliverPaidWebPurchases`: deliver every `Paid` order of the account
 /// that this realm created (web payments whose notification was lost, and wallet
-/// charges interrupted before delivery).
+/// charges interrupted before delivery). Item orders wait for a character in the
+/// world; services, transfers, boosts and undeletes are delivered from character
+/// select as well.
 pub(crate) async fn deliver_paid_purchases<S: BattlePaySessionLikeCpp>(
     session: &mut S,
     service: &BattlePayServiceLikeCpp,
     item_guid_generator: &ObjectGuidGenerator,
 ) {
     let identity = session.battle_pay_identity();
-    if identity.player.is_none() {
-        return;
-    }
     let rows = match service
         .account
         .load_paid_purchases_like_cpp(identity.account_id, identity.realm_id)
@@ -752,6 +915,13 @@ pub(crate) async fn deliver_paid_purchases<S: BattlePaySessionLikeCpp>(
         }
     };
     for row in rows {
+        let needs_player = service
+            .catalog
+            .product(row.product_id)
+            .is_none_or(|product| product.kind_like_cpp().needs_player_in_world());
+        if needs_player && identity.player.is_none() {
+            continue;
+        }
         let pending = service.purchase(identity.account_id).filter(|purchase| {
             purchase.pending_web_external_id() == Some(row.external_id.as_str())
         });
@@ -759,16 +929,8 @@ pub(crate) async fn deliver_paid_purchases<S: BattlePaySessionLikeCpp>(
             .as_ref()
             .map(|purchase| purchase.purchase_id)
             .unwrap_or_else(|| service.next_purchase_id_like_cpp());
-        let outcome = deliver_order_like_cpp(
-            session,
-            service,
-            item_guid_generator,
-            &row.external_id,
-            row.product_id,
-            "",
-            purchase_id,
-        )
-        .await;
+        let order = PaidOrderLikeCpp::from_row(&row, "", purchase_id);
+        let outcome = deliver_order_like_cpp(session, service, item_guid_generator, &order).await;
         match outcome {
             DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {
                 if let Some(mut purchase) = pending {
@@ -787,263 +949,6 @@ pub(crate) async fn deliver_paid_purchases<S: BattlePaySessionLikeCpp>(
             DeliveryOutcomeLikeCpp::Quarantined => return,
         }
     }
-}
-
-fn finish_web_purchase<S: BattlePaySessionLikeCpp>(
-    session: &S,
-    service: &BattlePayServiceLikeCpp,
-    account_id: u32,
-    purchase: &mut ActivePurchaseLikeCpp,
-    result: u32,
-) {
-    if let Some(web) = purchase.web.as_mut() {
-        web.pending = false;
-    }
-    purchase.status = purchase_status::FINISH;
-    service.set_purchase(account_id, purchase.clone());
-    send_purchase_update(session, service, purchase, result);
-}
-
-/// `CMSG_BATTLE_PAY_OPEN_CHECKOUT` 0x3714: the 3.4.3 SSO token request. The client
-/// keys the reply by `RequestID`, echoed as `GenerateSsoTokenResponse.Kind`.
-pub(crate) async fn handle_open_checkout<S: BattlePaySessionLikeCpp>(
-    session: &S,
-    service: &BattlePayServiceLikeCpp,
-    request: BattlePayOpenCheckout,
-) {
-    let identity = session.battle_pay_identity();
-    let mut response = GenerateSsoTokenResponse {
-        kind: request.request_id,
-        result: SSO_RESULT_DENIED_LIKE_CPP,
-        ..GenerateSsoTokenResponse::default()
-    };
-    let pending = service
-        .purchase(identity.account_id)
-        .is_some_and(|purchase| purchase.pending_web_external_id().is_some());
-    if !service.config.browser_enabled || !service.config.web_checkout || !pending {
-        debug!(
-            account = identity.account_id,
-            pending, "BattlePay: SSO token refused"
-        );
-        session.send_battle_pay_packet(&response);
-        return;
-    }
-    let issue = BattlePaySsoTokenIssueLikeCpp {
-        battlenet_account_id: identity.battlenet_account_id,
-        account_id: identity.account_id,
-        realm_id: identity.realm_id,
-        character_guid: identity
-            .player
-            .map_or(0, |player| player.guid.counter() as u64),
-        ip: identity.ip.clone(),
-        lifetime_secs: service.config.token_lifetime_secs,
-        random_bytes: rand::thread_rng().r#gen(),
-    };
-    match service.account.issue_sso_token_like_cpp(issue).await {
-        Ok(token) => {
-            response.result = SSO_RESULT_OK_LIKE_CPP;
-            response.token = token;
-        }
-        Err(error) => {
-            warn!(account = identity.account_id, %error, "BattlePay: SSO token not issued")
-        }
-    }
-    session.send_battle_pay_packet(&response);
-}
-
-/// `CMSG_BATTLE_PAY_PURCHASE_SUBMITTED` 0x371a (LegionCore
-/// `HandleBattlePayPurchaseSubmitted` + callback). The web must already have
-/// marked the order `Paid`; the client is not trusted for that.
-pub(crate) async fn handle_purchase_submitted<S: BattlePaySessionLikeCpp>(
-    session: &mut S,
-    service: &BattlePayServiceLikeCpp,
-    item_guid_generator: &ObjectGuidGenerator,
-    request: BattlePayPurchaseSubmitted,
-) {
-    if !service.config.web_checkout {
-        return;
-    }
-    let identity = session.battle_pay_identity();
-    let Some(mut purchase) = service.purchase(identity.account_id).filter(|purchase| {
-        purchase.pending_web_external_id() == Some(request.external_transaction_id.as_str())
-    }) else {
-        warn!(
-            account = identity.account_id,
-            order = %request.external_transaction_id,
-            "BattlePay: submitted order is not the pending checkout"
-        );
-        return;
-    };
-    let row = match service
-        .account
-        .load_purchase_like_cpp(request.external_transaction_id.clone(), identity.account_id)
-        .await
-    {
-        Ok(row) => row,
-        Err(error) => {
-            warn!(account = identity.account_id, %error, "BattlePay: submitted order unreadable");
-            return;
-        }
-    };
-    let Some(row) = row else {
-        warn!(order = %request.external_transaction_id, "BattlePay: submitted order does not exist");
-        fail_web_purchase(session, service, identity.account_id, &mut purchase);
-        return;
-    };
-    match row.status {
-        BATTLE_PAY_PURCHASE_STATUS_PAID_LIKE_CPP if row.product_id == purchase.product_id => {}
-        BATTLE_PAY_PURCHASE_STATUS_FAILED_LIKE_CPP => {
-            fail_web_purchase(session, service, identity.account_id, &mut purchase);
-            return;
-        }
-        BATTLE_PAY_PURCHASE_STATUS_DELIVERED_LIKE_CPP => {
-            finish_web_purchase(
-                session,
-                service,
-                identity.account_id,
-                &mut purchase,
-                error::OK,
-            );
-            return;
-        }
-        status => {
-            // Not paid (yet): the order stays pending; the web can still complete it
-            // and the next store refresh delivers it.
-            info!(
-                order = %request.external_transaction_id,
-                status,
-                product = row.product_id,
-                "BattlePay: submitted order is not paid yet"
-            );
-            return;
-        }
-    }
-    let outcome = deliver_order_like_cpp(
-        session,
-        service,
-        item_guid_generator,
-        &row.external_id,
-        row.product_id,
-        &request.global_order_id,
-        purchase.purchase_id,
-    )
-    .await;
-    match outcome {
-        DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {
-            finish_web_purchase(
-                session,
-                service,
-                identity.account_id,
-                &mut purchase,
-                error::OK,
-            );
-        }
-        DeliveryOutcomeLikeCpp::Deferred(why) => {
-            warn!(order = %row.external_id, "BattlePay: paid order deferred: {why}");
-        }
-        DeliveryOutcomeLikeCpp::Quarantined => {}
-    }
-}
-
-/// LegionCore callback path: `WebCheckoutPending = false; Lock = true;
-/// SendAckFailed(PaymentFailed)`.
-fn fail_web_purchase<S: BattlePaySessionLikeCpp>(
-    session: &S,
-    service: &BattlePayServiceLikeCpp,
-    account_id: u32,
-    purchase: &mut ActivePurchaseLikeCpp,
-) {
-    if let Some(web) = purchase.web.as_mut() {
-        web.pending = false;
-    }
-    purchase.lock = true;
-    service.set_purchase(account_id, purchase.clone());
-    send_ack_failed(session, purchase, error::PAYMENT_FAILED);
-}
-
-/// `CMSG_BATTLE_PAY_CANCEL_OPEN_CHECKOUT` 0x371b (LegionCore
-/// `HandleBattlePayCancelOpenCheckout` + callback).
-pub(crate) async fn handle_cancel_open_checkout<S: BattlePaySessionLikeCpp>(
-    session: &mut S,
-    service: &BattlePayServiceLikeCpp,
-    item_guid_generator: &ObjectGuidGenerator,
-    request: BattlePayCancelOpenCheckout,
-) {
-    if !service.config.web_checkout {
-        return;
-    }
-    let identity = session.battle_pay_identity();
-    // The client resends this on every later close: only the pending order counts.
-    let Some(mut purchase) = service.purchase(identity.account_id).filter(|purchase| {
-        purchase.pending_web_external_id() == Some(request.external_transaction_id.as_str())
-            && !purchase.lock
-    }) else {
-        debug!(order = %request.external_transaction_id, "BattlePay: cancel of a non-pending checkout");
-        return;
-    };
-    let row = match service
-        .account
-        .load_purchase_like_cpp(request.external_transaction_id.clone(), identity.account_id)
-        .await
-    {
-        Ok(row) => row,
-        Err(error) => {
-            warn!(account = identity.account_id, %error, "BattlePay: cancelled order unreadable");
-            return;
-        }
-    };
-    if let Some(row) = row
-        .as_ref()
-        .filter(|row| row.status == BATTLE_PAY_PURCHASE_STATUS_PAID_LIKE_CPP)
-    {
-        // The web confirmed the payment right before the window closed.
-        let outcome = deliver_order_like_cpp(
-            session,
-            service,
-            item_guid_generator,
-            &row.external_id,
-            row.product_id,
-            "",
-            purchase.purchase_id,
-        )
-        .await;
-        if matches!(
-            outcome,
-            DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered
-        ) {
-            finish_web_purchase(
-                session,
-                service,
-                identity.account_id,
-                &mut purchase,
-                error::OK,
-            );
-        }
-        return;
-    }
-    // bnet-shop appends ";failed" to payment_ref when the provider rejected it.
-    let result = if row
-        .as_ref()
-        .is_some_and(|row| row.payment_ref.ends_with(";failed"))
-    {
-        error::PAYMENT_FAILED
-    } else {
-        error::OK
-    };
-    let failed = service
-        .account
-        .mark_purchase_failed_like_cpp(request.external_transaction_id.clone(), identity.account_id)
-        .await;
-    if !failed.is_applied() {
-        warn!(order = %request.external_transaction_id, ?failed, "BattlePay: cancelled order not marked failed");
-    }
-    info!(
-        account = identity.account_id,
-        order = %request.external_transaction_id,
-        result,
-        "BattlePay: web checkout closed without payment"
-    );
-    finish_web_purchase(session, service, identity.account_id, &mut purchase, result);
 }
 
 /// `CMSG_BATTLE_PAY_ACK_FAILED_RESPONSE` (LegionCore `HandleBattlePayAckFailedResponse`).

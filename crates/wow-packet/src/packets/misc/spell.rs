@@ -9,10 +9,15 @@ use super::*;
 
 /// Response to GetUndeleteCharacterCooldownStatus.
 /// Tells the client whether character undelete is on cooldown.
+///
+/// C++ `WorldPackets::Character::UndeleteCooldownStatusResponse::Write`
+/// (`CharacterPackets.cpp:507-513`): bit OnCooldown, uint32 MaxCooldown,
+/// uint32 CurrentCooldown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UndeleteCooldownStatusResponse {
     pub on_cooldown: bool,
-    pub max_cooldown: i32,
-    pub current_cooldown: i32,
+    pub max_cooldown: u32,
+    pub current_cooldown: u32,
 }
 
 impl UndeleteCooldownStatusResponse {
@@ -31,8 +36,8 @@ impl ServerPacket for UndeleteCooldownStatusResponse {
 
     fn write(&self, pkt: &mut WorldPacket) {
         pkt.write_bit(self.on_cooldown);
-        pkt.write_int32(self.max_cooldown);
-        pkt.write_int32(self.current_cooldown);
+        pkt.write_uint32(self.max_cooldown);
+        pkt.write_uint32(self.current_cooldown);
     }
 }
 

@@ -5522,6 +5522,12 @@
           "source_class": "production"
         },
         {
+          "module": "crate::handlers::character::race_faction_change",
+          "trait_path": null,
+          "cfg": [],
+          "source_class": "production"
+        },
+        {
           "module": "crate::handlers::character::session_state",
           "trait_path": null,
           "cfg": [],
@@ -5529,6 +5535,12 @@
         },
         {
           "module": "crate::handlers::character::stats",
+          "trait_path": null,
+          "cfg": [],
+          "source_class": "production"
+        },
+        {
+          "module": "crate::handlers::character::undelete",
           "trait_path": null,
           "cfg": [],
           "source_class": "production"
@@ -5585,6 +5597,12 @@
         },
         {
           "module": "crate::handlers::group::commands",
+          "trait_path": null,
+          "cfg": [],
+          "source_class": "production"
+        },
+        {
+          "module": "crate::handlers::group::offline_removal",
           "trait_path": null,
           "cfg": [],
           "source_class": "production"
@@ -5917,6 +5935,20 @@
           "module": "crate::battle_pay::session_port",
           "trait_path": "BattlePaySessionLikeCpp",
           "kind": "method",
+          "name": "battle_pay_add_player_money",
+          "visibility": "private",
+          "signature": "fn battle_pay_add_player_money (& mut self , copper : u64)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
           "name": "battle_pay_can_store",
           "visibility": "private",
           "signature": "fn battle_pay_can_store (& self , items : & [(u32 , u32)]) -> bool",
@@ -5933,7 +5965,7 @@
           "kind": "method",
           "name": "battle_pay_grant_items",
           "visibility": "private",
-          "signature": "fn battle_pay_grant_items (& mut self , item_guid_generator : & ObjectGuidGenerator , items : & [(u32 , u32)] ,) -> impl Future < Output = Option < Vec < PlayerInventoryPersistenceRequestLikeCpp > > > + Send",
+          "signature": "async fn battle_pay_grant_items (& mut self , item_guid_generator : & ObjectGuidGenerator , items : & [(u32 , u32)] ,) -> Option < Vec < PlayerInventoryPersistenceRequestLikeCpp > >",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -5973,6 +6005,20 @@
           "module": "crate::battle_pay::session_port",
           "trait_path": "BattlePaySessionLikeCpp",
           "kind": "method",
+          "name": "battle_pay_item_count",
+          "visibility": "private",
+          "signature": "fn battle_pay_item_count (& self , item_id : u32) -> u32",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
           "name": "battle_pay_item_is_mount",
           "visibility": "private",
           "signature": "fn battle_pay_item_is_mount (& self , item_id : u32) -> bool",
@@ -6001,9 +6047,37 @@
           "module": "crate::battle_pay::session_port",
           "trait_path": "BattlePaySessionLikeCpp",
           "kind": "method",
+          "name": "battle_pay_player_at_login_flags",
+          "visibility": "private",
+          "signature": "fn battle_pay_player_at_login_flags (& self) -> u16",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
           "name": "battle_pay_quarantine",
           "visibility": "private",
           "signature": "fn battle_pay_quarantine (& mut self , reason : & 'static str)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_set_player_at_login_flags",
+          "visibility": "private",
+          "signature": "fn battle_pay_set_player_at_login_flags (& mut self , flags : u16)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -6176,6 +6250,20 @@
           "name": "handle_change_realm_ticket",
           "visibility": "pub",
           "signature": "async fn handle_change_realm_ticket (& mut self , ticket : ChangeRealmTicket)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::account",
+          "trait_path": null,
+          "kind": "method",
+          "name": "enum_characters_like_cpp",
+          "visibility": "pub (super)",
+          "signature": "async fn enum_characters_like_cpp (& mut self , policy : & crate :: session :: SupportFeaturePolicyLikeCpp , deleted_characters : bool ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -7289,7 +7377,7 @@
           "kind": "method",
           "name": "handle_char_delete",
           "visibility": "pub",
-          "signature": "async fn handle_char_delete (& mut self , pkt : CharDelete)",
+          "signature": "async fn handle_char_delete (& mut self , deletion : & crate :: character_undelete :: CharacterDeletionServiceLikeCpp , pkt : CharDelete ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -7348,20 +7436,6 @@
           "name": "handle_create_character_with_generator_like_cpp",
           "visibility": "pub",
           "signature": "async fn handle_create_character_with_generator_like_cpp (& mut self , generator : & wow_core :: ObjectGuidGenerator , pkt : CreateCharacter ,)",
-          "cfg": [],
-          "source_class": "production",
-          "guards": [
-            "external_impl",
-            "visible"
-          ]
-        },
-        {
-          "module": "crate::handlers::character::lifecycle",
-          "trait_path": null,
-          "kind": "method",
-          "name": "handle_get_undelete_cooldown_status",
-          "visibility": "pub",
-          "signature": "async fn handle_get_undelete_cooldown_status (& mut self)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -7782,6 +7856,33 @@
           "guards": [
             "external_impl",
             "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::race_faction_change",
+          "trait_path": null,
+          "kind": "method",
+          "name": "handle_char_race_or_faction_change_like_cpp",
+          "visibility": "pub",
+          "signature": "async fn handle_char_race_or_faction_change_like_cpp (& mut self , catalog : & RaceFactionChangeCatalogLikeCpp , create_info : & wow_data :: PlayerCreateInfoStoreLikeCpp , request : CharRaceOrFactionChange ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::race_faction_change",
+          "trait_path": null,
+          "kind": "method",
+          "name": "send_char_faction_change_like_cpp",
+          "visibility": "private",
+          "signature": "fn send_char_faction_change_like_cpp (& self , result : u8 , request : & CharRaceOrFactionChange , name : & str ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl"
           ]
         },
         {
@@ -8735,6 +8836,76 @@
           "name": "sync_represented_shapeshift_form_like_cpp",
           "visibility": "pub (crate)",
           "signature": "fn sync_represented_shapeshift_form_like_cpp (& mut self , mutation : crate :: session :: RepresentedShapeshiftMutationLikeCpp ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::undelete",
+          "trait_path": null,
+          "kind": "method",
+          "name": "handle_enum_characters_deleted_by_client_like_cpp",
+          "visibility": "pub",
+          "signature": "async fn handle_enum_characters_deleted_by_client_like_cpp (& mut self , policy : & crate :: session :: SupportFeaturePolicyLikeCpp ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::undelete",
+          "trait_path": null,
+          "kind": "method",
+          "name": "handle_get_undelete_cooldown_status",
+          "visibility": "pub",
+          "signature": "async fn handle_get_undelete_cooldown_status (& mut self , deletion : & CharacterDeletionServiceLikeCpp ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::undelete",
+          "trait_path": null,
+          "kind": "method",
+          "name": "handle_undelete_character_like_cpp",
+          "visibility": "pub",
+          "signature": "async fn handle_undelete_character_like_cpp (& mut self , deletion : & CharacterDeletionServiceLikeCpp , policy : & crate :: session :: SupportFeaturePolicyLikeCpp , request : UndeleteCharacter ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::undelete",
+          "trait_path": null,
+          "kind": "method",
+          "name": "select_char_delete_method_like_cpp",
+          "visibility": "pub (super)",
+          "signature": "async fn select_char_delete_method_like_cpp (& self , deletion : & CharacterDeletionServiceLikeCpp , guid_low : u64 ,) -> (u32 , Option < Arc < dyn CharacterUndeletePersistencePortLikeCpp > > ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::character::undelete",
+          "trait_path": null,
+          "kind": "method",
+          "name": "send_enum_characters_result_like_cpp",
+          "visibility": "pub (super)",
+          "signature": "fn send_enum_characters_result_like_cpp (& self , deleted_characters : bool , result : EnumCharactersResult ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -10014,6 +10185,20 @@
           "name": "handle_send_party_update_command_like_cpp",
           "visibility": "pub (crate)",
           "signature": "fn handle_send_party_update_command_like_cpp (& mut self , mut command : SendPartyUpdateLikeCppCommand ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::handlers::group::offline_removal",
+          "trait_path": null,
+          "kind": "method",
+          "name": "remove_offline_group_member_like_cpp",
+          "visibility": "pub (crate)",
+          "signature": "async fn remove_offline_group_member_like_cpp (& self , db_store_id : u32 , member_guid : ObjectGuid ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -23490,19 +23675,6 @@
           "module": "crate::session",
           "trait_path": null,
           "kind": "method",
-          "name": "apply_taunt_effect_like_cpp",
-          "visibility": "pub (in crate :: session)",
-          "signature": "fn apply_taunt_effect_like_cpp (& mut self , spell_id : i32 , target_guid : ObjectGuid , enforce_effect_taunt_current_victim_gate : bool ,) -> Result < () , & 'static str >",
-          "cfg": [],
-          "source_class": "production",
-          "guards": [
-            "visible"
-          ]
-        },
-        {
-          "module": "crate::session",
-          "trait_path": null,
-          "kind": "method",
           "name": "apply_threat_effect_like_cpp",
           "visibility": "pub (in crate :: session)",
           "signature": "fn apply_threat_effect_like_cpp (& mut self , damage : i32 , target_guid : ObjectGuid ,) -> Result < () , & 'static str >",
@@ -29735,17 +29907,6 @@
           "guards": [
             "visible"
           ]
-        },
-        {
-          "module": "crate::session",
-          "trait_path": null,
-          "kind": "method",
-          "name": "insert_canonical_creature_map_object_like_cpp",
-          "visibility": "private",
-          "signature": "fn insert_canonical_creature_map_object_like_cpp (& mut self , map_id : u16 , creature : wow_entities :: Creature ,) -> Option < OwnedLootAuthority >",
-          "cfg": [],
-          "source_class": "production",
-          "guards": []
         },
         {
           "module": "crate::session",
@@ -59475,6 +59636,30 @@
             "external_impl",
             "trait_impl"
           ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "apply_taunt_effect_like_cpp",
+          "visibility": "pub (in crate :: session)",
+          "signature": "fn apply_taunt_effect_like_cpp (& mut self , spell_id : i32 , target_guid : ObjectGuid , enforce_effect_taunt_current_victim_gate : bool ,) -> Result < () , & 'static str >",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "insert_canonical_creature_map_object_like_cpp",
+          "visibility": "private",
+          "signature": "fn insert_canonical_creature_map_object_like_cpp (& mut self , map_id : u16 , creature : wow_entities :: Creature ,) -> Option < OwnedLootAuthority >",
+          "cfg": [],
+          "source_class": "production",
+          "guards": []
         }
       ]
     },
@@ -59570,7 +59755,7 @@
           "module": "crate::session_factory",
           "name": "run_world_session_until_disconnect_like_cpp",
           "signature": "async fn run_world_session_until_disconnect_like_cpp (session : & mut WorldSession , handler_catalogs : & wow_world :: session :: SessionHandlerCatalogsLikeCpp , account_id : u32 , active_session_registry : & ActiveWorldSessionRegistryLikeCpp , cancellation : & ActiveWorldSessionCancellationLikeCpp , ready_for_phases_like_cpp : & AtomicBool ,) -> WorldSessionRunOutcomeLikeCpp",
-          "body_fingerprint": "fnv1a64x2:f4f3b58f66418dd23983802e3eb62b01:len=972",
+          "body_fingerprint": "fnv1a64x2:6d553be399ac10b269745a199a8dc0d9:len=1218",
           "cfg": [],
           "source_class": "production"
         },
@@ -59636,6 +59821,16 @@
         },
         {
           "module": "crate::handlers::battlenet::tests",
+          "callee": "WorldSession::new",
+          "argument_count": 10,
+          "cfg": [
+            "cfg (test)"
+          ],
+          "source_class": "test_fixture",
+          "count": 1
+        },
+        {
+          "module": "crate::handlers::character::race_faction_change::tests",
           "callee": "WorldSession::new",
           "argument_count": 10,
           "cfg": [
@@ -65805,6 +66000,123 @@
           "visibility": "",
           "cfg": [],
           "fingerprint": "wow_social::group::{AcceptGroupInviteResultLikeCpp,CreateGroupInviteResultLikeCpp,GroupAuthorityErrorLikeCpp,GroupInfo,GroupMemberRemovalKindLikeCpp,GroupPersistenceIntentLikeCpp,GroupRegistry,MEMBER_FLAG_ASSISTANT_LIKE_CPP,ReadyCheckEventLikeCpp}",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "PlayerRegistry",
+          "operation": "accessor",
+          "symbol": "player_registry",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "player_registry()",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "PlayerRegistry",
+          "operation": "local_alias",
+          "symbol": "group_reg",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "group_reg:PlayerRegistry",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "PlayerRegistry",
+          "operation": "local_alias",
+          "symbol": "registry",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "registry:PlayerRegistry",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "PlayerRegistry",
+          "operation": "argument_escape",
+          "symbol": "connected_group_members_like_cpp",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "& registry",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "PlayerRegistry",
+          "operation": "argument_escape",
+          "symbol": "send_party_update",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "& registry",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "GroupRegistry",
+          "operation": "accessor",
+          "symbol": "group_registry",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "group_registry()",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "GroupRegistry",
+          "operation": "local_alias",
+          "symbol": "group_reg",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "group_reg:GroupRegistry",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "GroupRegistry",
+          "operation": "local_alias",
+          "symbol": "registry",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "registry:GroupRegistry",
+          "count": 1
+        },
+        {
+          "package": "wow-world",
+          "module": "crate::handlers::group::offline_removal",
+          "source": "crates/wow-world/src/handlers/group/offline_removal.rs",
+          "enclosing": "impl WorldSession::remove_offline_group_member_like_cpp",
+          "registry": "GroupRegistry",
+          "operation": "argument_escape",
+          "symbol": "get_group_by_db_store_id_like_cpp",
+          "visibility": "pub (crate)",
+          "cfg": [],
+          "fingerprint": "& group_reg",
           "count": 1
         },
         {

@@ -38,6 +38,121 @@ pub(crate) const SSO_RESULT_DENIED_LIKE_CPP: u32 = 1;
 /// LegionCore `Battlepay::WebsiteType` values RustyCore can deliver.
 pub(crate) const WEBSITE_TYPE_ITEM_LIKE_CPP: u8 = 3;
 pub(crate) const WEBSITE_TYPE_ITEM_MOUNT_LIKE_CPP: u8 = 21;
+pub(crate) const WEBSITE_TYPE_RENAME_LIKE_CPP: u8 = 5;
+pub(crate) const WEBSITE_TYPE_FACTION_LIKE_CPP: u8 = 9;
+pub(crate) const WEBSITE_TYPE_RACE_LIKE_CPP: u8 = 10;
+pub(crate) const WEBSITE_TYPE_DELETED_CHARACTER_LIKE_CPP: u8 = 15;
+pub(crate) const WEBSITE_TYPE_CUSTOMIZATION_LIKE_CPP: u8 = 22;
+pub(crate) const WEBSITE_TYPE_CHARACTER_BOOST_LIKE_CPP: u8 = 29;
+
+/// LegionCore `Battlepay::ProductChoiceTypeVas` (`BattlePayMgr.h:547`). The 54261
+/// store treats a product info whose ChoiceType is one of these as a VAS product
+/// (client `0x141a49440`) and maps it to `Enum.VasServiceType` (`0x141a45845`:
+/// 7 -> NameChange 0, 8 -> FactionChange 1, 9 -> AppearanceChange 2,
+/// 10 -> RaceChange 3, 15 -> CharacterTransfer 4, 16 -> FactionTransfer 5).
+pub(crate) const CHOICE_TYPE_VAS_NAME_CHANGE_LIKE_CPP: u8 = 7;
+pub(crate) const CHOICE_TYPE_VAS_FACTION_CHANGE_LIKE_CPP: u8 = 8;
+pub(crate) const CHOICE_TYPE_VAS_APPEARANCE_CHANGE_LIKE_CPP: u8 = 9;
+pub(crate) const CHOICE_TYPE_VAS_RACE_CHANGE_LIKE_CPP: u8 = 10;
+pub(crate) const CHOICE_TYPE_VAS_CHARACTER_TRANSFER_LIKE_CPP: u8 = 15;
+pub(crate) const CHOICE_TYPE_VAS_FACTION_TRANSFER_LIKE_CPP: u8 = 16;
+
+/// `JamBattlePayProduct.Type` of a character upgrade: the 54261 client counts a
+/// distribution as a boost only when its product has Type 1 and reads the boost
+/// type from the u32 after ItemId (`0x14169aaa0`, `0x1416989c0`, `0x141a45786`).
+pub(crate) const PRODUCT_TYPE_CHARACTER_UPGRADE_LIKE_CPP: u8 = 1;
+
+/// Player `AtLoginFlags` (TC 3.4.3 `Player.h:533-542`; 0x400 and 0x800 are the
+/// LegionCore `AT_LOGIN_CHARACTER_BOOST` / `AT_LOGIN_BOOST_REVOKED` extensions,
+/// `Player.h:577-591`, unused by TrinityCore 3.4.3).
+pub(crate) mod at_login {
+    pub(crate) const RENAME: u16 = 0x001;
+    pub(crate) const CUSTOMIZE: u16 = 0x008;
+    pub(crate) const CHANGE_FACTION: u16 = 0x040;
+    pub(crate) const CHANGE_RACE: u16 = 0x080;
+    pub(crate) const CHARACTER_BOOST: u16 = 0x400;
+}
+
+/// A character boost of WoW Classic 3.4.3: the `CharacterServiceInfo.db2` row
+/// (54261 build, rows 119/131/145: BoostType 5/7/9 with levels 58/70/80) and the
+/// `CharacterLoadout.db2` purpose holding its gear (purpose 10/12/15: item level
+/// 52/125/187 sets, one loadout per class; inferred from the item levels, the
+/// client exposes no purpose name).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BoostDefinitionLikeCpp {
+    pub boost_type: u32,
+    pub level: u8,
+    pub loadout_purpose: i32,
+}
+
+pub(crate) const BOOST_DEFINITIONS_LIKE_CPP: [BoostDefinitionLikeCpp; 3] = [
+    BoostDefinitionLikeCpp {
+        boost_type: 5,
+        level: 58,
+        loadout_purpose: 10,
+    },
+    BoostDefinitionLikeCpp {
+        boost_type: 7,
+        level: 70,
+        loadout_purpose: 12,
+    },
+    BoostDefinitionLikeCpp {
+        boost_type: 9,
+        level: 80,
+        loadout_purpose: 15,
+    },
+];
+
+/// LegionCore `BattlepayManager::GetBoostLevel` adapted: the level is read from the
+/// product's ScriptName ("80", "70" or "58"); a boost product without one of them
+/// is the WotLK Classic level-70 upgrade.
+pub(crate) fn boost_definition_for_script_like_cpp(script_name: &str) -> BoostDefinitionLikeCpp {
+    let pick = |level| {
+        BOOST_DEFINITIONS_LIKE_CPP
+            .iter()
+            .copied()
+            .find(|definition| definition.level == level)
+            .expect("boost level table")
+    };
+    if script_name.contains("80") {
+        pick(80)
+    } else if script_name.contains("58") {
+        pick(58)
+    } else {
+        pick(70)
+    }
+}
+
+/// `Enum.VasError` values of the 54261 client (Lua enum table registered at
+/// `0x140e6ce91..`, values read from the registration code).
+pub(crate) mod vas_error {
+    pub(crate) const CHARACTER_HAS_VAS_PENDING: u32 = 4;
+    pub(crate) const INVALID_DESTINATION_ACCOUNT: u32 = 6;
+    pub(crate) const INVALID_SOURCE_ACCOUNT: u32 = 7;
+    pub(crate) const CANNOT_MOVE_GUILD_MASTER: u32 = 20012;
+    pub(crate) const MAX_CHARACTERS_ON_SERVER: u32 = 20013;
+    pub(crate) const UNDER_MIN_LEVEL_REQ: u32 = 20021;
+    pub(crate) const INELIGIBLE_TARGET_REALM: u32 = 20022;
+    pub(crate) const CHAR_LOCKED: u32 = 20026;
+    pub(crate) const ALREADY_RENAME_FLAGGED: u32 = 20055;
+    pub(crate) const CUSTOMIZE_ALREADY_REQUESTED: u32 = 20057;
+    pub(crate) const BATTLEPAY_DELIVERY_PENDING: u32 = 20078;
+}
+
+/// `Enum.VasPurchaseProgress` of the 54261 client (same registration block).
+pub(crate) mod vas_progress {
+    pub(crate) const INVALID: u32 = 0;
+}
+
+/// `Enum.VasQueueStatus.UnderAnHour` (transfers are applied immediately).
+pub(crate) const VAS_QUEUE_UNDER_AN_HOUR_LIKE_CPP: u8 = 0;
+
+/// Minimum character level of every VAS service in the 54261 glue/store UI
+/// (`CheckAddVASErrorCode(Enum.VasError.UnderMinLevelReq)` for level < 10).
+pub(crate) const VAS_MIN_CHARACTER_LEVEL_LIKE_CPP: u8 = 10;
+
+/// `CONFIG_CHARACTERS_PER_REALM` default (TC `CharactersPerRealm = 10`).
+pub(crate) const CHARACTERS_PER_REALM_LIKE_CPP: usize = 10;
 /// LegionCore `Battlepay::MaxWebsiteType` (GameTime = 31 is the last value).
 pub(crate) const WEBSITE_TYPE_MAX_LIKE_CPP: u8 = 32;
 /// LegionCore `PRODUCT_TYPE_WOW_TOKEN` / `WOW_TOKEN_GROUP_ID`.
@@ -141,6 +256,11 @@ pub struct BattlePayConfigLikeCpp {
     pub browser_enabled: bool,
     /// `Browser.TokenLifetime` in seconds.
     pub token_lifetime_secs: u32,
+    /// `Bpay.Boost.Money`: copper added by a boost (LegionCore `ApplyBoost`
+    /// `ModifyMoney(5000000)`).
+    pub boost_money: u64,
+    /// `CharactersPerRealm` (transfer destination capacity).
+    pub characters_per_realm: usize,
 }
 
 impl Default for BattlePayConfigLikeCpp {
@@ -153,6 +273,8 @@ impl Default for BattlePayConfigLikeCpp {
             wallet_name: "Donation points".to_owned(),
             browser_enabled: false,
             token_lifetime_secs: 3600,
+            boost_money: 5_000_000,
+            characters_per_realm: CHARACTERS_PER_REALM_LIKE_CPP,
         }
     }
 }

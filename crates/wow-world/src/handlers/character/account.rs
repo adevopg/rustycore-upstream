@@ -63,10 +63,14 @@ inventory::submit! {
         status: SessionStatus::Authed,
         processing: PacketProcessing::ThreadUnsafe,
         handler_name: "handle_char_delete",
-        handler: |session, _catalogs, mut pkt| {
+        handler: |session, catalogs, mut pkt| {
             Box::pin(async move {
                 match wow_packet::packets::character::CharDelete::read(&mut pkt) {
-                    Ok(del) => session.handle_char_delete(del).await,
+                    Ok(del) => {
+                        session
+                            .handle_char_delete(catalogs.character_deletion.as_ref(), del)
+                            .await
+                    }
                     Err(e) => tracing::warn!("Failed to read CharDelete: {e}"),
                 }
             })
@@ -114,10 +118,19 @@ inventory::submit! {
         status: SessionStatus::Authed,
         processing: PacketProcessing::ThreadUnsafe,
         handler_name: "handle_player_login",
-        handler: |session, _catalogs, mut pkt| {
+        handler: |session, catalogs, mut pkt| {
             Box::pin(async move {
                 match wow_packet::packets::character::PlayerLogin::read(&mut pkt) {
-                    Ok(login) => session.handle_player_login(login).await,
+                    Ok(login) => {
+                        session.handle_player_login(login).await;
+                        // LegionCore `CharacterHandler.cpp:1031`: assigned boost.
+                        crate::battle_pay::after_player_login_like_cpp(
+                            session,
+                            &catalogs.battle_pay,
+                            &catalogs.id_generators.item,
+                        )
+                        .await;
+                    }
                     Err(e) => tracing::warn!("Failed to read PlayerLogin: {e}"),
                 }
             })
@@ -160,8 +173,12 @@ inventory::submit! {
         status: SessionStatus::Authed,
         processing: PacketProcessing::ThreadUnsafe,
         handler_name: "handle_get_undelete_cooldown_status",
-        handler: |session, _catalogs, _pkt| {
-            Box::pin(async move { session.handle_get_undelete_cooldown_status().await })
+        handler: |session, catalogs, _pkt| {
+            Box::pin(async move {
+                session
+                    .handle_get_undelete_cooldown_status(catalogs.character_deletion.as_ref())
+                    .await
+            })
         },
     }
 }
@@ -1210,6 +1227,18 @@ impl WorldSession {
         &mut self,
         policy: &crate::session::SupportFeaturePolicyLikeCpp,
     ) {
+        self.enum_characters_like_cpp(policy, false).await;
+    }
+
+    /// C++ `HandleCharEnum` shared by `HandleCharEnumOpcode` and
+    /// `HandleCharUndeleteEnumOpcode` (`deleted_characters`): the deleted
+    /// enumeration leaves `_legitCharacters` untouched and sets
+    /// `IsDeletedCharacters`.
+    pub(super) async fn enum_characters_like_cpp(
+        &mut self,
+        policy: &crate::session::SupportFeaturePolicyLikeCpp,
+        deleted_characters: bool,
+    ) {
         let port = match self.character_enumeration_persistence_port_like_cpp() {
             Some(port) => port,
             None => {
@@ -1217,11 +1246,14 @@ impl WorldSession {
                     "No character enumeration persistence port for account {}",
                     self.account_id
                 );
-                self.send_packet(&EnumCharactersResult {
-                    success: false,
-                    characters: vec![],
-                    race_unlock_data: vec![],
-                });
+                self.send_enum_characters_result_like_cpp(
+                    deleted_characters,
+                    EnumCharactersResult {
+                        success: false,
+                        characters: vec![],
+                        race_unlock_data: vec![],
+                    },
+                );
                 return;
             }
         };
@@ -1229,6 +1261,7 @@ impl WorldSession {
         let request = CharacterEnumerationRequestLikeCpp {
             account_id: self.account_id,
             declined_names_used: policy.declined_names_used,
+            deleted_characters,
         };
         let (rows, cleanup_error) = match port.load_character_enumeration_like_cpp(request).await {
             CharacterEnumerationLoadOutcomeLikeCpp::Loaded {
@@ -1249,11 +1282,14 @@ impl WorldSession {
                     "Failed to query characters for account {}: {reason}",
                     self.account_id
                 );
-                self.send_packet(&EnumCharactersResult {
-                    success: false,
-                    characters: vec![],
-                    race_unlock_data: vec![],
-                });
+                self.send_enum_characters_result_like_cpp(
+                    deleted_characters,
+                    EnumCharactersResult {
+                        success: false,
+                        characters: vec![],
+                        race_unlock_data: vec![],
+                    },
+                );
                 return;
             }
         };
@@ -1290,10 +1326,11 @@ impl WorldSession {
             );
 
             // Only add to legit list if not locked
-            if (enum_flags.flags
-                & (CHARACTER_FLAG_LOCKED_FOR_TRANSFER_LIKE_CPP
-                    | CHARACTER_FLAG_LOCKED_BY_BILLING_LIKE_CPP))
-                == 0
+            if !deleted_characters
+                && (enum_flags.flags
+                    & (CHARACTER_FLAG_LOCKED_FOR_TRANSFER_LIKE_CPP
+                        | CHARACTER_FLAG_LOCKED_BY_BILLING_LIKE_CPP))
+                    == 0
             {
                 legit_guids.push(guid);
             }
@@ -1334,7 +1371,9 @@ impl WorldSession {
             characters.push(char_info);
         }
 
-        self.set_legit_characters(legit_guids);
+        if !deleted_characters {
+            self.set_legit_characters(legit_guids);
+        }
 
         debug!(
             "Sending {} characters to account {}",
@@ -1368,11 +1407,14 @@ impl WorldSession {
         })
         .collect();
 
-        self.send_packet(&EnumCharactersResult {
-            success: true,
-            characters,
-            race_unlock_data,
-        });
+        self.send_enum_characters_result_like_cpp(
+            deleted_characters,
+            EnumCharactersResult {
+                success: true,
+                characters,
+                race_unlock_data,
+            },
+        );
     }
 
     #[cfg(test)]

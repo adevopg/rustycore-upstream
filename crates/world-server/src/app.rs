@@ -3028,7 +3028,7 @@ async fn run_inner(
         faction_change_outcome.store.title_len(),
         faction_change_outcome.report.validation_errors.len()
     );
-    let _faction_change_store = Arc::new(faction_change_outcome.store);
+    let faction_change_store = Arc::new(faction_change_outcome.store);
 
     // Load player_xp_for_level table
     let player_xp_table = {
@@ -4648,6 +4648,8 @@ async fn run_inner(
         &char_db,
         &item_store,
         &world_configs,
+        &data_dir,
+        &locale,
     )
     .await?;
     let session_resources = SessionResources {
@@ -4879,6 +4881,24 @@ async fn run_inner(
                     void_storage_item: Arc::clone(&void_storage_item_id_generator),
                 }),
                 battle_pay,
+                race_faction_change: catalogs::race_faction_change::build_catalog_like_cpp(
+                    catalogs::race_faction_change::RaceFactionChangeInputsLikeCpp {
+                        faction_change: faction_change_store,
+                        chr_races: &chr_races_store,
+                        quests: &quest_store,
+                        factions: &progression_faction_store,
+                        reserved_names: &reserved_name_store,
+                        data_dir: &data_dir,
+                        locale: &locale,
+                        world_configs: &world_configs,
+                    },
+                ),
+                character_deletion: catalogs::character_deletion::service_like_cpp(
+                    &char_db,
+                    &login_db,
+                    &character_identity_cache,
+                    &world_configs,
+                ),
             }),
             gameobject_template_lifecycle_store: Arc::clone(&gameobject_template_lifecycle_store),
             persistence,

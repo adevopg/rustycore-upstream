@@ -16,11 +16,15 @@ use wow_persistence::{
 
 use crate::{CharStatements, CharacterDatabase, SqlResult};
 
-fn character_enumeration_select_statement_like_cpp(declined_names_used: bool) -> CharStatements {
-    if declined_names_used {
-        CharStatements::SEL_ENUM_DECLINED_NAME
-    } else {
-        CharStatements::SEL_ENUM
+fn character_enumeration_select_statement_like_cpp(
+    declined_names_used: bool,
+    deleted_characters: bool,
+) -> CharStatements {
+    match (deleted_characters, declined_names_used) {
+        (false, true) => CharStatements::SEL_ENUM_DECLINED_NAME,
+        (false, false) => CharStatements::SEL_ENUM,
+        (true, true) => CharStatements::SEL_UNDELETE_ENUM_DECLINED_NAME,
+        (true, false) => CharStatements::SEL_UNDELETE_ENUM,
     }
 }
 
@@ -77,18 +81,24 @@ impl CharacterEnumerationPersistencePortLikeCpp
         request: CharacterEnumerationRequestLikeCpp,
     ) -> PersistenceFutureLikeCpp<'a, CharacterEnumerationLoadOutcomeLikeCpp> {
         Box::pin(async move {
-            let cleanup = self.character_db.prepare(CharStatements::DEL_EXPIRED_BANS);
-            let expired_ban_cleanup_error = self
-                .character_db
-                .execute(&cleanup)
-                .await
-                .err()
-                .map(|error| error.to_string());
+            // Only `HandleCharEnumOpcode` expires bans; the deleted-character
+            // enumeration (`HandleCharUndeleteEnumOpcode`) goes straight to the holder.
+            let expired_ban_cleanup_error = if request.deleted_characters {
+                None
+            } else {
+                let cleanup = self.character_db.prepare(CharStatements::DEL_EXPIRED_BANS);
+                self.character_db
+                    .execute(&cleanup)
+                    .await
+                    .err()
+                    .map(|error| error.to_string())
+            };
 
             let mut statement =
                 self.character_db
                     .prepare(character_enumeration_select_statement_like_cpp(
                         request.declined_names_used,
+                        request.deleted_characters,
                     ));
             statement.set_u32(0, request.account_id);
 
@@ -127,16 +137,40 @@ impl CharacterEnumerationPersistencePortLikeCpp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::StatementDef;
 
     #[test]
     fn declined_name_configuration_selects_the_exact_cpp_projection() {
         assert_eq!(
-            character_enumeration_select_statement_like_cpp(false),
+            character_enumeration_select_statement_like_cpp(false, false),
             CharStatements::SEL_ENUM
         );
         assert_eq!(
-            character_enumeration_select_statement_like_cpp(true),
+            character_enumeration_select_statement_like_cpp(true, false),
             CharStatements::SEL_ENUM_DECLINED_NAME
+        );
+    }
+
+    #[test]
+    fn deleted_character_enumeration_selects_the_undelete_projection() {
+        assert_eq!(
+            character_enumeration_select_statement_like_cpp(false, true),
+            CharStatements::SEL_UNDELETE_ENUM
+        );
+        assert_eq!(
+            character_enumeration_select_statement_like_cpp(true, true),
+            CharStatements::SEL_UNDELETE_ENUM_DECLINED_NAME
+        );
+        // Same column order as SEL_ENUM with deleteInfos_Name as the name column.
+        assert!(
+            CharStatements::SEL_UNDELETE_ENUM
+                .sql()
+                .starts_with("SELECT c.guid, c.deleteInfos_Name, c.race")
+        );
+        assert!(
+            CharStatements::SEL_UNDELETE_ENUM
+                .sql()
+                .ends_with("WHERE c.deleteInfos_Account = ? AND c.deleteInfos_Name IS NOT NULL")
         );
     }
 }

@@ -1531,6 +1531,10 @@ impl ClientPacket for CharacterUpgradeManualUnrevokeRequest {
     }
 }
 
+#[path = "battlepay/vas.rs"]
+mod vas;
+pub use vas::*;
+
 // ── Tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]

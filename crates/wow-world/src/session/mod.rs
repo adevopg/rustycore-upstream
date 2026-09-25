@@ -703,6 +703,12 @@ pub struct SessionHandlerCatalogsLikeCpp {
     pub id_generators: Arc<SessionIdGeneratorsLikeCpp>,
     /// In-game shop: catalog, persistence ports and each account's open purchase.
     pub battle_pay: Arc<crate::battle_pay::BattlePayServiceLikeCpp>,
+    /// C++ `sObjectMgr`/`sDB2Manager`/`sWorld` data of `HandleCharRaceOrFactionChangeCallback`.
+    pub race_faction_change:
+        Arc<crate::character_race_faction_change::RaceFactionChangeCatalogLikeCpp>,
+    /// `CharDelete.*` / `FeatureSystem.CharacterUndelete.Cooldown` and the
+    /// unlink/undelete persistence port.
+    pub character_deletion: Arc<crate::character_undelete::CharacterDeletionServiceLikeCpp>,
 }
 
 #[cfg(any(test, feature = "test-fixtures"))]
@@ -740,6 +746,10 @@ impl Default for SessionHandlerCatalogsLikeCpp {
             modules: Arc::new(wow_module_api::ModuleRegistry::new()),
             id_generators: Arc::new(SessionIdGeneratorsLikeCpp::default()),
             battle_pay: Arc::new(crate::battle_pay::BattlePayServiceLikeCpp::disabled()),
+            race_faction_change: Arc::default(),
+            character_deletion: Arc::new(
+                crate::character_undelete::CharacterDeletionServiceLikeCpp::disabled(),
+            ),
         }
     }
 }

@@ -34,10 +34,12 @@
 //! - Statement enums: [`LoginStatements`], [`WorldStatements`], [`CharStatements`], [`HotfixStatements`]
 
 pub mod battle_pay_adapter;
+pub mod battle_pay_services_adapter;
 pub mod battle_pet;
 pub mod catalogs;
 pub mod character_administration_adapter;
 pub mod character_enumeration_adapter;
+pub mod character_undelete_adapter;
 pub mod database;
 pub mod error;
 pub mod game;
@@ -77,6 +79,10 @@ pub use battle_pay_adapter::{
     MariaDbBattlePayAccountPersistenceAdapterLikeCpp,
     MariaDbBattlePayDeliveryPersistenceAdapterLikeCpp,
 };
+pub use battle_pay_services_adapter::{
+    MariaDbBattlePayCharacterServicePersistenceAdapterLikeCpp,
+    MariaDbBattlePayDistributionPersistenceAdapterLikeCpp,
+};
 pub use battle_pet::CharacterBattlePetPurchasePersistenceAdapterLikeCpp;
 pub use battle_pet::LoginBattlePetPersistenceLikeCpp;
 pub use battle_pet::MariaDbBattlePetSelectionCatalogPersistenceAdapterLikeCpp;
@@ -107,6 +113,7 @@ pub use catalogs::{
 };
 pub use character_administration_adapter::MariaDbCharacterAdministrationPersistenceAdapterLikeCpp;
 pub use character_enumeration_adapter::MariaDbCharacterEnumerationPersistenceAdapterLikeCpp;
+pub use character_undelete_adapter::MariaDbCharacterUndeletePersistenceAdapterLikeCpp;
 pub use database::{
     Database, build_connection_string, build_connection_string_with_ssl_like_cpp,
     escape_string_like_cpp, warn_about_sync_queries_enabled_like_cpp,

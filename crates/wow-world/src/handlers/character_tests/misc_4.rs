@@ -24,6 +24,7 @@ async fn character_enumeration_uses_typed_rows_and_keeps_cleanup_best_effort_lik
         vec![CharacterEnumerationRequestLikeCpp {
             account_id: 1,
             declined_names_used: true,
+            deleted_characters: false,
         }]
     );
     assert!(session.is_legit_character(&ObjectGuid::create_player(1, 42)));

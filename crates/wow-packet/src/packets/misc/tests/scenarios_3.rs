@@ -429,6 +429,20 @@ fn feature_system_status_uses_cpp_config_flags() {
 }
 
 #[test]
+fn feature_system_status_glue_screen_boost_bit_follows_the_available_shop() {
+    let config = FeatureSystemConfigLikeCpp {
+        bpay_store_available: true,
+        ..FeatureSystemConfigLikeCpp::default()
+    };
+    let bytes = FeatureSystemStatusGlueScreen::from_config_like_cpp(config, 10, 2).to_bytes();
+    let mut payload = WorldPacket::from_bytes(&bytes[2..]);
+    let flags: Vec<bool> = (0..27).map(|_| payload.read_bit().unwrap()).collect();
+    assert!(flags[1]); // BpayStoreAvailable
+    assert!(flags[10]); // C_CharacterServices.IsBoostEnabled
+    assert!(!flags[11]); // TrialBoostEnabled
+}
+
+#[test]
 fn feature_system_status_glue_screen_serializes() {
     let pkt = FeatureSystemStatusGlueScreen::default_wotlk();
     let bytes = pkt.to_bytes();
@@ -458,6 +472,7 @@ fn feature_system_status_glue_screen_uses_cpp_config_fields() {
     assert!(flags[0]); // BpayStoreEnabled
     assert!(!flags[1]); // BpayStoreAvailable
     assert!(flags[3]); // CharUndeleteEnabled
+    assert!(!flags[10]); // IsBoostEnabled (54261 reader +0x35) follows BpayStoreAvailable
     assert!(flags[19]); // EuropaTicketSystemStatus.HasValue
 
     payload.reset_bits();

@@ -5,6 +5,9 @@
 //! prepared statements, row decoding and the rename/customize transactions.
 
 use crate::PersistenceFutureLikeCpp;
+use crate::{
+    CharacterRaceOrFactionChangeCandidateLikeCpp, CharacterRaceOrFactionChangeCommitLikeCpp,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CharacterCustomizationPersistenceLikeCpp {
@@ -114,4 +117,50 @@ pub trait CharacterAdministrationPersistencePortLikeCpp: Send + Sync {
         at_login_flags: u16,
         customizations: Vec<CharacterCustomizationPersistenceLikeCpp>,
     ) -> PersistenceFutureLikeCpp<'_, CharacterAdministrationMutationOutcomeLikeCpp>;
+
+    /// C++ `CHAR_SEL_CHAR_RACE_OR_FACTION_CHANGE_INFOS` plus the `CharacterCache`
+    /// entry read by `HandleCharRaceOrFactionChangeCallback`. Adapters without the
+    /// capability answer `Failed` (the handler then sends `CHAR_CREATE_ERROR`).
+    fn load_race_or_faction_change_candidate_like_cpp(
+        &self,
+        guid: u64,
+    ) -> PersistenceFutureLikeCpp<
+        '_,
+        CharacterAdministrationLoadOutcomeLikeCpp<CharacterRaceOrFactionChangeCandidateLikeCpp>,
+    > {
+        let _ = guid;
+        Box::pin(async {
+            CharacterAdministrationLoadOutcomeLikeCpp::Failed {
+                reason: "race/faction change is not supported by this adapter".to_owned(),
+            }
+        })
+    }
+
+    /// C++ `CHAR_SEL_CHAR_REP_BY_FACTION` (synchronous in C++, read before the
+    /// transaction is built). `NotFound` when the character has no row.
+    fn load_reputation_standing_like_cpp(
+        &self,
+        guid: u64,
+        faction_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, CharacterAdministrationLoadOutcomeLikeCpp<i32>> {
+        let _ = (guid, faction_id);
+        Box::pin(async {
+            CharacterAdministrationLoadOutcomeLikeCpp::Failed {
+                reason: "reputation reads are not supported by this adapter".to_owned(),
+            }
+        })
+    }
+
+    /// The single race/faction change transaction of C++.
+    fn commit_race_or_faction_change_like_cpp(
+        &self,
+        request: CharacterRaceOrFactionChangeCommitLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'_, CharacterAdministrationMutationOutcomeLikeCpp> {
+        let _ = request;
+        Box::pin(async {
+            CharacterAdministrationMutationOutcomeLikeCpp::Failed {
+                reason: "race/faction change is not supported by this adapter".to_owned(),
+            }
+        })
+    }
 }

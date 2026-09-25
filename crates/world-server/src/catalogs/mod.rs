@@ -2,6 +2,7 @@
 
 pub(crate) mod battle_pay;
 pub(crate) mod battle_pet_selection;
+pub(crate) mod character_deletion;
 pub(crate) mod condition_disable;
 pub(crate) mod exploration_base_xp;
 pub(crate) mod game_tele;
@@ -15,6 +16,7 @@ pub(crate) mod phase_hotfix;
 pub(crate) mod phase_world;
 pub(crate) mod quest;
 pub(crate) mod quest_item;
+pub(crate) mod race_faction_change;
 pub(crate) mod reputation;
 pub(crate) mod reserved_name;
 pub(crate) mod trainer;

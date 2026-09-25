@@ -336,6 +336,13 @@
   "handler": "handle_battle_pay_confirm_purchase_response"
  },
  {
+  "opcode": "BattlePayDistributionAssignToTarget",
+  "value": 14027,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_distribution_assign_to_target"
+ },
+ {
   "opcode": "BattlePayGetProductList",
   "value": 14020,
   "status": "Authed",
@@ -376,6 +383,13 @@
   "status": "Authed",
   "processing": "ThreadUnsafe",
   "handler": "handle_battle_pay_start_purchase"
+ },
+ {
+  "opcode": "BattlePayStartVasPurchase",
+  "value": 14074,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_start_vas_purchase"
  },
  {
   "opcode": "BattlePetClearFanfare",
@@ -770,11 +784,25 @@
   "handler": "handle_char_delete"
  },
  {
+  "opcode": "CharRaceOrFactionChange",
+  "value": 13970,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_char_race_or_faction_change"
+ },
+ {
   "opcode": "CharacterRenameRequest",
   "value": 14025,
   "status": "Authed",
   "processing": "ThreadUnsafe",
   "handler": "handle_character_rename_request"
+ },
+ {
+  "opcode": "CharacterUpgradeManualUnrevokeRequest",
+  "value": 14028,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_character_upgrade_manual_unrevoke_request"
  },
  {
   "opcode": "ChatAddonMessage",
@@ -1239,6 +1267,13 @@
   "handler": "handle_enum_characters"
  },
  {
+  "opcode": "EnumCharactersDeletedByClient",
+  "value": 14053,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_enum_characters_deleted_by_client"
+ },
+ {
   "opcode": "FarSight",
   "value": 13544,
   "status": "LoggedIn",
@@ -1286,6 +1321,20 @@
   "status": "Authed",
   "processing": "ThreadUnsafe",
   "handler": "handle_get_undelete_cooldown_status"
+ },
+ {
+  "opcode": "GetVasAccountCharacterList",
+  "value": 14072,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_get_vas_account_character_list"
+ },
+ {
+  "opcode": "GetVasTransferTargetRealmList",
+  "value": 14073,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_get_vas_transfer_target_realm_list"
  },
  {
   "opcode": "GmTicketAcknowledgeSurvey",
@@ -3297,6 +3346,13 @@
   "handler": "handle_unaccept_trade"
  },
  {
+  "opcode": "UndeleteCharacter",
+  "value": 14054,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_undelete_character"
+ },
+ {
   "opcode": "UnlockVoidStorage",
   "value": 12706,
   "status": "LoggedIn",
@@ -3372,6 +3428,20 @@
   "status": "Authed",
   "processing": "Inplace",
   "handler": "handle_used_follow"
+ },
+ {
+  "opcode": "VasCheckTransferOk",
+  "value": 14099,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_vas_check_transfer_ok"
+ },
+ {
+  "opcode": "VasGetServiceStatus",
+  "value": 14097,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_vas_get_service_status"
  },
  {
   "opcode": "ViolenceLevel",

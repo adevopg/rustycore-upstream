@@ -1360,8 +1360,8 @@
       "coverage_source": {
         "snapshot": "tools/architecture/world-handler-contract.tsv",
         "logical_owner_source": "tools/architecture/handler-contract-check module graph",
-        "audited_entry_count": 485,
-        "coverage_rule": "Every linked production PacketHandlerEntry and its registered thunk is assigned by logical module path; the sole dispatcher calls the thunk, with no second opcode match arm. The historical audited_entry_count is not refreshed by this metadata reconciliation. The BattlePay shop adds seven registrations (StartPurchase, ConfirmPurchaseResponse, AckFailedResponse, RequestPriceInfo, OpenCheckout, PurchaseSubmitted, CancelOpenCheckout) in crate::handlers::misc::battle_pay, 478 -> 485."
+        "audited_entry_count": 495,
+        "coverage_rule": "Every linked production PacketHandlerEntry and its registered thunk is assigned by logical module path; the sole dispatcher calls the thunk, with no second opcode match arm. The historical audited_entry_count is not refreshed by this metadata reconciliation. The BattlePay shop adds seven registrations (StartPurchase, ConfirmPurchaseResponse, AckFailedResponse, RequestPriceInfo, OpenCheckout, PurchaseSubmitted, CancelOpenCheckout) in crate::handlers::misc::battle_pay, 478 -> 485. The character services add ten: CharRaceOrFactionChange (crate::handlers::character::race_faction_change), EnumCharactersDeletedByClient and UndeleteCharacter (crate::handlers::character::undelete), and BattlePayDistributionAssignToTarget, BattlePayStartVasPurchase, CharacterUpgradeManualUnrevokeRequest, GetVasAccountCharacterList, GetVasTransferTargetRealmList, VasCheckTransferOk and VasGetServiceStatus in crate::handlers::misc::battle_pay, 485 -> 495."
       },
       "entries": [
         {

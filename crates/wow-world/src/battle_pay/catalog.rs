@@ -14,6 +14,7 @@ use wow_packet::packets::battlepay::{
 use wow_persistence::BattlePayCatalogRowsLikeCpp;
 
 use super::constants::*;
+use super::product_kind::ProductKindLikeCpp;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BattlePayProductItemLikeCpp {
@@ -41,18 +42,11 @@ pub struct BattlePayProductLikeCpp {
 }
 
 impl BattlePayProductLikeCpp {
-    /// Products RustyCore can deliver: LegionCore `ProcessDelivery` `WebsiteType::Item`
-    /// plus `ItemMount`, whose item is delivered the same way (the LegionCore switch
-    /// had no `ItemMount` arm). Every other type (boosts, services, game time, pets,
-    /// WoW Token) is dropped from the 3.4.3 port.
+    /// Products RustyCore can deliver: LegionCore `ProcessDelivery` arms
+    /// (`product_kind.rs`); WoW Token, game time, pets and script products are
+    /// dropped from the 3.4.3 port.
     pub(crate) fn is_deliverable_like_cpp(&self) -> bool {
-        self.product_type != PRODUCT_TYPE_WOW_TOKEN_LIKE_CPP
-            && self.script_name.is_empty()
-            && !self.items.is_empty()
-            && matches!(
-                self.website_type,
-                WEBSITE_TYPE_ITEM_LIKE_CPP | WEBSITE_TYPE_ITEM_MOUNT_LIKE_CPP
-            )
+        self.kind_like_cpp() != ProductKindLikeCpp::Unsupported
     }
 }
 
@@ -375,8 +369,8 @@ impl BattlePayCatalogLikeCpp {
             return false;
         }
         if !viewer.in_world {
-            // Glue store: of the deliverable types LegionCore only lists ItemMount there.
-            return product.website_type == WEBSITE_TYPE_ITEM_MOUNT_LIKE_CPP;
+            // LegionCore `ProductFilter` without a player: services, boosts, mounts.
+            return product.listed_at_glue_like_cpp();
         }
         if product.class_mask != 0 && product.class_mask & viewer.class_mask == 0 {
             return false;
@@ -395,10 +389,17 @@ impl BattlePayCatalogLikeCpp {
         disable_buy: bool,
     ) -> BattlePayProduct {
         let pack = product.items.len() > 1;
+        let (product_type, boost_type) = match product.kind_like_cpp() {
+            ProductKindLikeCpp::Boost(boost) => {
+                (PRODUCT_TYPE_CHARACTER_UPGRADE_LIKE_CPP, boost.boost_type)
+            }
+            _ => (product.product_type, 0),
+        };
         BattlePayProduct {
             product_id: product.product_id,
-            product_type: product.product_type,
+            product_type,
             flags: product.flags,
+            unk4: boost_type,
             items: product
                 .items
                 .iter()
@@ -417,6 +418,29 @@ impl BattlePayCatalogLikeCpp {
             display_info: self.display_info_like_cpp(product.display_info_id, viewer.locale),
             ..BattlePayProduct::default()
         }
+    }
+
+    /// LegionCore `WriteDistribution` product: the client needs it to count a
+    /// distribution as a boost (`JamBattlePayProduct.Type` 1 + boost type).
+    pub(crate) fn distribution_product_like_cpp(
+        &self,
+        product: &BattlePayProductLikeCpp,
+        locale: u8,
+    ) -> BattlePayProduct {
+        let balances = HashMap::new();
+        let never = |_| false;
+        let always = |_| true;
+        let viewer = ProductListViewerLikeCpp {
+            in_world: false,
+            locale,
+            class_mask: 0,
+            web_checkout: false,
+            currency_id: 0,
+            token_balances: &balances,
+            owned: &never,
+            item_allowed: &always,
+        };
+        self.product_packet(product, &viewer, false)
     }
 
     /// LegionCore `BattlepayManager::SendProductList` for an available shop.

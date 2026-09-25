@@ -121,10 +121,10 @@ fn player_login_read_roundtrip() {
 }
 
 #[test]
-fn character_rename_request_reads_cpp_full_guid_then_name_bits() {
+fn character_rename_request_reads_cpp_packed_guid_then_name_bits() {
     let guid = ObjectGuid::create_player(1, 42);
     let mut pkt = WorldPacket::new_empty();
-    pkt.write_guid(&guid);
+    pkt.write_packed_guid(&guid);
     pkt.write_bits(7, 6);
     pkt.write_string("Newname");
     pkt.reset_read();
@@ -155,7 +155,7 @@ fn character_rename_result_writes_cpp_result_guid_bit_name_len_and_payload() {
     assert_eq!(pkt.read_uint8().unwrap(), 0);
     assert!(pkt.read_bit().unwrap());
     assert_eq!(pkt.read_bits(6).unwrap(), 7);
-    assert_eq!(pkt.read_guid().unwrap(), guid);
+    assert_eq!(pkt.read_packed_guid().unwrap(), guid);
     assert_eq!(pkt.read_string(7).unwrap(), "Newname");
     assert_eq!(pkt.remaining(), 0);
 }
@@ -164,7 +164,7 @@ fn character_rename_result_writes_cpp_result_guid_bit_name_len_and_payload() {
 fn char_customize_reads_cpp_guid_sex_customizations_then_name_bits() {
     let guid = ObjectGuid::create_player(1, 42);
     let mut pkt = WorldPacket::new_empty();
-    pkt.write_guid(&guid);
+    pkt.write_packed_guid(&guid);
     pkt.write_uint8(1);
     pkt.write_uint32(2);
     pkt.write_int32(20);
@@ -216,7 +216,7 @@ fn char_customize_success_writes_cpp_guid_sex_customizations_name() {
         Some(ServerOpcodes::CharCustomizeSuccess)
     );
     pkt.skip_opcode();
-    assert_eq!(pkt.read_guid().unwrap(), guid);
+    assert_eq!(pkt.read_packed_guid().unwrap(), guid);
     assert_eq!(pkt.read_uint8().unwrap(), 1);
     assert_eq!(pkt.read_uint32().unwrap(), 1);
     assert_eq!(pkt.read_int32().unwrap(), 10);
@@ -238,7 +238,7 @@ fn char_customize_failure_writes_cpp_result_then_guid() {
     );
     pkt.skip_opcode();
     assert_eq!(pkt.read_uint8().unwrap(), 25);
-    assert_eq!(pkt.read_guid().unwrap(), guid);
+    assert_eq!(pkt.read_packed_guid().unwrap(), guid);
     assert_eq!(pkt.remaining(), 0);
 }
 
@@ -369,7 +369,7 @@ fn set_player_declined_names_reads_cpp_guid_lengths_then_strings() {
     let guid = ObjectGuid::create_player(1, 42);
     let names = ["Gen", "Dat", "Acc", "Inst", "Prep"];
     let mut pkt = WorldPacket::new_empty();
-    pkt.write_guid(&guid);
+    pkt.write_packed_guid(&guid);
     for name in names {
         pkt.write_bits(name.len() as u32, 7);
     }
@@ -403,7 +403,7 @@ fn set_player_declined_names_result_writes_cpp_result_then_guid() {
         payload.read_int32().unwrap(),
         DECLINED_NAMES_RESULT_ERROR_LIKE_CPP
     );
-    assert_eq!(payload.read_guid().unwrap(), guid);
+    assert_eq!(payload.read_packed_guid().unwrap(), guid);
     assert_eq!(payload.remaining(), 0);
 }
 

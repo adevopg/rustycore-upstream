@@ -170,10 +170,15 @@ pub(super) async fn run_world_session_until_disconnect_like_cpp(
         handler_catalogs.support_feature_policy.as_ref(),
         handler_catalogs.hotfixes.as_ref(),
     );
-    wow_world::battle_pay::send_session_init_packets_like_cpp(
-        session,
-        &handler_catalogs.battle_pay,
-    );
+    tokio::select! {
+        _ = cancellation.cancelled_like_cpp() => {
+            return WorldSessionRunOutcomeLikeCpp::ForceCancelled;
+        }
+        _ = wow_world::battle_pay::send_session_init_packets_like_cpp(
+            session,
+            &handler_catalogs.battle_pay,
+        ) => {}
+    }
 
     info!("Session ready for account {account_id}");
 

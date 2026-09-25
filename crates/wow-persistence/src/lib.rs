@@ -20,6 +20,7 @@
 
 mod catalogs;
 mod character_administration;
+mod character_race_faction_change;
 mod hotfix;
 mod hotfix_delivery_metadata;
 mod instance_lock;
@@ -160,6 +161,10 @@ pub use character_administration::{
     CharacterAdministrationPersistencePortLikeCpp, CharacterCreatePersistenceRequestLikeCpp,
     CharacterCustomizationPersistenceLikeCpp, CharacterCustomizeCandidateLikeCpp,
     CharacterRenameCandidateLikeCpp,
+};
+pub use character_race_faction_change::{
+    CharacterFactionChangeCommitLikeCpp, CharacterGuildRemovalLikeCpp,
+    CharacterRaceOrFactionChangeCandidateLikeCpp, CharacterRaceOrFactionChangeCommitLikeCpp,
 };
 pub use hotfix::{
     ChrSpecializationHotfixLoadOutcomeLikeCpp, ChrSpecializationHotfixPersistencePortLikeCpp,
@@ -328,6 +333,7 @@ pub use world::{
 };
 
 mod battle_pay;
+mod battle_pay_services;
 pub use battle_pay::{
     BATTLE_PAY_PURCHASE_STATUS_CREATED_LIKE_CPP, BATTLE_PAY_PURCHASE_STATUS_DELIVERED_LIKE_CPP,
     BATTLE_PAY_PURCHASE_STATUS_FAILED_LIKE_CPP, BATTLE_PAY_PURCHASE_STATUS_PAID_LIKE_CPP,
@@ -340,6 +346,15 @@ pub use battle_pay::{
     BattlePayPurchaseInsertLikeCpp, BattlePayPurchaseRowLikeCpp, BattlePayShopEntryRowLikeCpp,
     BattlePaySsoTokenIssueLikeCpp, BattlePayTokenChargeLikeCpp, BattlePayTokenChargeOutcomeLikeCpp,
     BattlePayTokenTypeRowLikeCpp,
+};
+pub use battle_pay_services::{
+    BATTLE_PAY_DISTRIBUTION_STATUS_ASSIGNED_LIKE_CPP,
+    BATTLE_PAY_DISTRIBUTION_STATUS_AVAILABLE_LIKE_CPP,
+    BATTLE_PAY_DISTRIBUTION_STATUS_FINISHED_LIKE_CPP, BattlePayBnetGameAccountsLikeCpp,
+    BattlePayBoostCompletionLikeCpp, BattlePayCharacterRowLikeCpp,
+    BattlePayCharacterServicePersistencePortLikeCpp, BattlePayCharacterTransferLikeCpp,
+    BattlePayDistributionAssignLikeCpp, BattlePayDistributionGrantLikeCpp,
+    BattlePayDistributionPersistencePortLikeCpp, BattlePayDistributionRowLikeCpp,
 };
 
 mod battle_pet;
@@ -472,6 +487,12 @@ pub use player::{
     PlayerTalentResetSaveRowLikeCpp, PlayerTalentSaveLikeCpp, PlayerTutorialsSaveLikeCpp,
     PlayerVoidStorageSaveLikeCpp, PlayerVoidStorageSlotSaveLikeCpp,
     PlayerXpPersistenceRequestLikeCpp, PlayerXpRestStateSaveLikeCpp,
+};
+
+mod character_undelete;
+pub use character_undelete::{
+    CharacterDeleteCandidateLikeCpp, CharacterUndeletePersistencePortLikeCpp,
+    DeletedCharacterInfoLikeCpp,
 };
 
 mod character_enumeration;

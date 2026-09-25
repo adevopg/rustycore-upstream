@@ -486,11 +486,11 @@ async fn open_shop_answers_every_list_the_store_ui_waits_for() {
     assert_eq!(sent[2].len(), 2 + 4 + 2);
 }
 
-#[test]
-fn session_init_sends_promotion_and_empty_distributions_only_for_an_open_shop() {
+#[tokio::test]
+async fn session_init_sends_promotion_and_empty_distributions_only_for_an_open_shop() {
     let h = harness(token_config(), FakeAccount::with_balance(0));
     let session = FakeSession::in_world();
-    send_session_init(&session, &h.service);
+    send_session_init(&session, &h.service).await;
     let sent = session.take_sent();
     assert_eq!(opcodes(&sent), [DISPLAY_PROMOTION, DISTRIBUTION_LIST]);
     assert_eq!(payload(&sent[0]).read_uint32().unwrap(), 0);
@@ -499,7 +499,7 @@ fn session_init_sends_promotion_and_empty_distributions_only_for_an_open_shop() 
         BattlePayConfigLikeCpp::default(),
         FakeAccount::with_balance(0),
     );
-    send_session_init(&session, &closed.service);
+    send_session_init(&session, &closed.service).await;
     assert!(
         session.take_sent().is_empty(),
         "disabled shop keeps the login burst unchanged"
@@ -507,7 +507,7 @@ fn session_init_sends_promotion_and_empty_distributions_only_for_an_open_shop() 
 
     let mut glue = FakeSession::in_world();
     glue.identity.player = None;
-    send_session_init(&glue, &h.service);
+    send_session_init(&glue, &h.service).await;
     assert_eq!(
         opcodes(&glue.take_sent()),
         [DISPLAY_PROMOTION, DISTRIBUTION_LIST]

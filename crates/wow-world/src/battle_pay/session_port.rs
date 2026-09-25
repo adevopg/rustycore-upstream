@@ -68,9 +68,16 @@ impl BattlePaySessionLikeCpp for WorldSession {
                 .remote_address_like_cpp()
                 .unwrap_or_default()
                 .to_owned(),
+            virtual_realm_address: self.virtual_realm_address(),
+            realm_name: self
+                .realm_names_for_address_like_cpp(self.virtual_realm_address())
+                .map(|(name, _)| name.to_owned())
+                .unwrap_or_default(),
             player: self.player_guid().map(|guid| BattlePayPlayerLikeCpp {
                 guid,
                 class_mask: self.battle_pay_class_mask_like_cpp(),
+                class: self.player_class_like_cpp(),
+                level: self.player_level_like_cpp(),
             }),
         }
     }
@@ -165,6 +172,36 @@ impl BattlePaySessionLikeCpp for WorldSession {
             ));
         }
         Some(rows)
+    }
+
+    fn battle_pay_item_count(&self, item_id: u32) -> u32 {
+        self.represented_inventory_item_counts_like_cpp()
+            .and_then(|counts| counts.get(&item_id).copied())
+            .unwrap_or(0)
+    }
+
+    fn battle_pay_player_at_login_flags(&self) -> u16 {
+        if self.player_guid().is_none() {
+            return 0;
+        }
+        self.resolved_represented_at_login_flags_like_cpp()
+            .unwrap_or(0)
+    }
+
+    fn battle_pay_set_player_at_login_flags(&mut self, flags: u16) {
+        if self.player_guid().is_some() && !self.set_represented_at_login_flags_like_cpp(flags) {
+            tracing::warn!("BattlePay: player at-login flags could not be mirrored");
+        }
+    }
+
+    fn battle_pay_add_player_money(&mut self, copper: u64) {
+        let Some(old_money) = self.resolved_player_money_like_cpp() else {
+            return;
+        };
+        let new_money = old_money.saturating_add(copper);
+        if !self.stage_player_money_change_like_cpp(old_money, new_money) {
+            tracing::warn!("BattlePay: player money could not be mirrored");
+        }
     }
 
     fn battle_pay_quarantine(&mut self, reason: &'static str) {

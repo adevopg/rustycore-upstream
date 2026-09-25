@@ -163,6 +163,12 @@ pub struct BattlePayPurchaseInsertLikeCpp {
     pub ip: String,
     /// `payment_ref`: empty for web orders, `tokens:<type>` for wallet orders.
     pub payment_ref: String,
+    /// `vas_target_account`: destination game account of a character transfer
+    /// (0 = not a transfer), kept until the order is delivered.
+    pub vas_target_account: u32,
+    pub vas_target_bnet_account: u32,
+    /// `vas_target_realm`: destination `realmlist.id`.
+    pub vas_target_realm: u32,
 }
 
 /// One token-wallet purchase: the balance decrement, the
@@ -201,6 +207,9 @@ pub struct BattlePayPurchaseRowLikeCpp {
     pub character_guid: u64,
     pub payment_ref: String,
     pub web_order_id: String,
+    pub vas_target_account: u32,
+    pub vas_target_bnet_account: u32,
+    pub vas_target_realm: u32,
 }
 
 /// Kind 1 (SSO) `battlenet_account_web_token` row for the checkout browser.

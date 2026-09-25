@@ -582,7 +582,7 @@ pub(super) fn read_barber_shop_result(encoded: Vec<u8>) -> i32 {
 
 pub(super) fn declined_names_packet(player: ObjectGuid, names: [&str; 5]) -> WorldPacket {
     let mut pkt = WorldPacket::new_empty();
-    pkt.write_guid(&player);
+    pkt.write_packed_guid(&player);
     for name in names {
         pkt.write_bits(name.len() as u32, 7);
     }
@@ -600,7 +600,7 @@ pub(super) fn read_declined_names_result(encoded: Vec<u8>) -> (i32, ObjectGuid) 
     );
     packet.skip_opcode();
     let result = packet.read_int32().unwrap();
-    let player = packet.read_guid().unwrap();
+    let player = packet.read_packed_guid().unwrap();
     assert_eq!(packet.remaining(), 0);
     (result, player)
 }

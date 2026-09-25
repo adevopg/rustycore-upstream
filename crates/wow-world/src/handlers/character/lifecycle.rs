@@ -168,7 +168,15 @@ impl WorldSession {
     }
 
     /// Handle CMSG_CHAR_DELETE — delete a character.
-    pub async fn handle_char_delete(&mut self, pkt: CharDelete) {
+    ///
+    /// The C++ `Player::DeleteFromDB` method selection (`CharDelete.Method`,
+    /// class minimum levels) picks between the RustyCore remove path and the
+    /// `CHAR_DELETE_UNLINK` path that keeps the rows for undelete.
+    pub async fn handle_char_delete(
+        &mut self,
+        deletion: &crate::character_undelete::CharacterDeletionServiceLikeCpp,
+        pkt: CharDelete,
+    ) {
         let port = match self.character_administration_persistence_port_like_cpp() {
             Some(port) => port,
             None => {
@@ -191,10 +199,25 @@ impl WorldSession {
             return;
         }
 
-        match port
-            .delete_owned_character_like_cpp(pkt.guid.counter() as u64, self.account_id)
+        let guid_low = pkt.guid.counter() as u64;
+        let outcome = match self
+            .select_char_delete_method_like_cpp(deletion, guid_low)
             .await
         {
+            (crate::character_undelete::CHAR_DELETE_REMOVE_LIKE_CPP, _) => {
+                port.delete_owned_character_like_cpp(guid_low, self.account_id)
+                    .await
+            }
+            (crate::character_undelete::CHAR_DELETE_UNLINK_LIKE_CPP, Some(unlink)) => {
+                unlink
+                    .unlink_owned_character_like_cpp(guid_low, self.account_id)
+                    .await
+            }
+            (method, _) => wow_persistence::CharacterAdministrationMutationOutcomeLikeCpp::Failed {
+                reason: format!("unsupported delete method ({method})"),
+            },
+        };
+        match outcome {
             wow_persistence::CharacterAdministrationMutationOutcomeLikeCpp::Applied => {
                 info!(
                     "Character {:?} deleted for account {}",
@@ -430,14 +453,6 @@ impl WorldSession {
             self.account_id, request.guid, old_name, request.name
         );
         self.send_char_customize_success_like_cpp(&request);
-    }
-
-    /// Handle CMSG_GET_UNDELETE_CHARACTER_COOLDOWN_STATUS.
-    ///
-    /// The client sends this when it wants to know if character undelete is
-    /// available. We always respond with "no cooldown" (undelete available).
-    pub async fn handle_get_undelete_cooldown_status(&mut self) {
-        self.send_packet(&wow_packet::packets::misc::UndeleteCooldownStatusResponse::no_cooldown());
     }
 
     /// Handle CMSG_ALTER_APPEARANCE.

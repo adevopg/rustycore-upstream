@@ -129,10 +129,18 @@ impl ServerPacket for EnumCharactersResult {
     const OPCODE: ServerOpcodes = ServerOpcodes::EnumCharactersResult;
 
     fn write(&self, pkt: &mut WorldPacket) {
+        self.write_like_cpp(pkt, false);
+    }
+}
+
+impl EnumCharactersResult {
+    /// Shared body of the regular and deleted-character (`IsDeletedCharacters`)
+    /// enumeration results.
+    pub(crate) fn write_like_cpp(&self, pkt: &mut WorldPacket, is_deleted_characters: bool) {
         // C++ `WorldPackets::Character::EnumCharactersResult::Write`
         // writes these presence/status bits before the fixed count block.
         pkt.write_bit(self.success);
-        pkt.write_bit(false); // IsDeletedCharacters
+        pkt.write_bit(is_deleted_characters); // IsDeletedCharacters
         pkt.write_bit(false); // IsNewPlayerRestrictionSkipped
         pkt.write_bit(false); // IsNewPlayerRestricted
         pkt.write_bit(false); // IsNewPlayer
@@ -445,7 +453,7 @@ impl ClientPacket for SetPlayerDeclinedNames {
     const OPCODE: ClientOpcodes = ClientOpcodes::SetPlayerDeclinedNames;
 
     fn read(pkt: &mut WorldPacket) -> Result<Self, PacketError> {
-        let player = pkt.read_guid()?;
+        let player = pkt.read_packed_guid()?;
         let mut lengths = [0usize; MAX_DECLINED_NAME_CASES_LIKE_CPP];
         for length in &mut lengths {
             *length = pkt.read_bits(7)? as usize;
@@ -477,7 +485,7 @@ impl ServerPacket for SetPlayerDeclinedNamesResult {
 
     fn write(&self, pkt: &mut WorldPacket) {
         pkt.write_int32(self.result_code);
-        pkt.write_guid(&self.player);
+        pkt.write_packed_guid(&self.player);
     }
 }
 
@@ -583,7 +591,8 @@ impl ClientPacket for CharacterRenameRequest {
     const OPCODE: ClientOpcodes = ClientOpcodes::CharacterRenameRequest;
 
     fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
-        let guid = packet.read_guid()?;
+        // TC `>> ObjectGuid` (ObjectGuid.cpp:779) is the packed form.
+        let guid = packet.read_packed_guid()?;
         let new_name_len = packet.read_bits(6)? as usize;
         let new_name = packet.read_string(new_name_len)?;
         Ok(Self { guid, new_name })
@@ -608,7 +617,8 @@ impl ServerPacket for CharacterRenameResult {
         pkt.flush_bits();
 
         if let Some(guid) = self.guid {
-            pkt.write_guid(&guid);
+            // TC `<< ObjectGuid` (ObjectGuid.cpp:758) is the packed form.
+            pkt.write_packed_guid(&guid);
         }
 
         pkt.write_string(&self.name);
@@ -628,7 +638,7 @@ impl ClientPacket for CharCustomize {
     const OPCODE: ClientOpcodes = ClientOpcodes::CharCustomize;
 
     fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
-        let guid = packet.read_guid()?;
+        let guid = packet.read_packed_guid()?;
         let sex_id = packet.read_uint8()?;
         let customization_count = packet.read_uint32()? as usize;
         let mut customizations = Vec::with_capacity(customization_count);
@@ -664,7 +674,7 @@ impl ServerPacket for CharCustomizeSuccess {
     const OPCODE: ServerOpcodes = ServerOpcodes::CharCustomizeSuccess;
 
     fn write(&self, pkt: &mut WorldPacket) {
-        pkt.write_guid(&self.guid);
+        pkt.write_packed_guid(&self.guid);
         pkt.write_uint8(self.sex_id);
         pkt.write_uint32(self.customizations.len() as u32);
         for customization in &self.customizations {
@@ -689,7 +699,92 @@ impl ServerPacket for CharCustomizeFailure {
 
     fn write(&self, pkt: &mut WorldPacket) {
         pkt.write_uint8(self.result);
-        pkt.write_guid(&self.guid);
+        pkt.write_packed_guid(&self.guid);
+    }
+}
+
+/// C++ `WorldPackets::Character::CharRaceOrFactionChange`
+/// (`CharacterPackets.cpp` `CharRaceOrFactionChange::Read`, TDB343.24081).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharRaceOrFactionChange {
+    pub faction_change: bool,
+    pub guid: ObjectGuid,
+    pub sex_id: u8,
+    pub race_id: u8,
+    pub initial_race_id: u8,
+    pub name: String,
+    /// Sorted by option id like C++ `SortCustomizations`.
+    pub customizations: Vec<ChrCustomizationChoice>,
+}
+
+impl ClientPacket for CharRaceOrFactionChange {
+    const OPCODE: ClientOpcodes = ClientOpcodes::CharRaceOrFactionChange;
+
+    fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
+        let faction_change = packet.read_bit()?;
+        let name_len = packet.read_bits(6)? as usize;
+        let guid = packet.read_packed_guid()?;
+        let sex_id = packet.read_uint8()?;
+        let race_id = packet.read_uint8()?;
+        let initial_race_id = packet.read_uint8()?;
+        let customization_count = packet.read_uint32()? as usize;
+        let name = packet.read_string(name_len)?;
+        let mut customizations = Vec::with_capacity(customization_count.min(256));
+        for _ in 0..customization_count {
+            customizations.push(ChrCustomizationChoice {
+                option_id: packet.read_int32()?,
+                choice_id: packet.read_int32()?,
+            });
+        }
+        customizations.sort_by_key(|choice| choice.option_id);
+        Ok(Self {
+            faction_change,
+            guid,
+            sex_id,
+            race_id,
+            initial_race_id,
+            name,
+            customizations,
+        })
+    }
+}
+
+/// Display block of [`CharFactionChangeResult`] (C++ `CharFactionChangeDisplayInfo`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharFactionChangeDisplayInfo {
+    pub name: String,
+    pub sex_id: u8,
+    pub race_id: u8,
+    pub customizations: Vec<ChrCustomizationChoice>,
+}
+
+/// C++ `WorldPackets::Character::CharFactionChangeResult` (SMSG 0x27ac).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CharFactionChangeResult {
+    pub result: u8,
+    pub guid: ObjectGuid,
+    pub display: Option<CharFactionChangeDisplayInfo>,
+}
+
+impl ServerPacket for CharFactionChangeResult {
+    const OPCODE: ServerOpcodes = ServerOpcodes::CharFactionChangeResult;
+
+    fn write(&self, pkt: &mut WorldPacket) {
+        pkt.write_uint8(self.result);
+        pkt.write_packed_guid(&self.guid);
+        pkt.write_bit(self.display.is_some());
+        pkt.flush_bits();
+        if let Some(display) = &self.display {
+            pkt.write_bits(display.name.len() as u32, 6);
+            pkt.write_uint8(display.sex_id);
+            pkt.write_uint8(display.race_id);
+            pkt.write_uint32(display.customizations.len() as u32);
+            pkt.write_string(&display.name);
+            for customization in &display.customizations {
+                pkt.write_int32(customization.option_id);
+                pkt.write_int32(customization.choice_id);
+            }
+        }
     }
 }
 
@@ -728,6 +823,10 @@ pub mod response_codes {
     pub const CHAR_LOGIN_LOCKED_FOR_TRANSFER: u8 = 20;
     pub const CHAR_LOGIN_LOCKED_BY_BILLING: u8 = 21;
 }
+
+#[path = "character/undelete.rs"]
+mod undelete;
+pub use undelete::*;
 
 #[cfg(test)]
 #[path = "character/tests/mod.rs"]

@@ -6,8 +6,11 @@
 //! C++ 3.4.3 only registers `CMSG_BATTLE_PAY_GET_PRODUCT_LIST` (Authed,
 //! ThreadUnsafe); every other shop opcode is `Handle_NULL` there. The shop works
 //! from the character screen and in game, so every registration is `Authed`
-//! (`ThreadUnsafe`, like LegionCore); `UpdateVasPurchaseStates` keeps the C++
-//! `PROCESS_INPLACE`. The logic lives in `crate::battle_pay`.
+//! (`ThreadUnsafe`, like LegionCore `Opcodes.cpp:246-264`); `UpdateVasPurchaseStates`
+//! keeps the C++ `PROCESS_INPLACE`. The VAS character/realm lists, service status,
+//! transfer validation, VAS purchase, boost assignment and unrevoke opcodes are
+//! LegionCore's VAS handlers on their 54261 opcodes. The logic lives in
+//! `crate::battle_pay`.
 
 use tracing::warn;
 use wow_constants::ClientOpcodes;
@@ -15,8 +18,10 @@ use wow_handler::{PacketProcessing, SessionStatus};
 use wow_packet::ClientPacket;
 use wow_packet::packets::battlepay::{
     BattlePayAckFailedResponse, BattlePayCancelOpenCheckout, BattlePayConfirmPurchaseResponse,
-    BattlePayOpenCheckout, BattlePayPurchaseSubmitted, BattlePayRequestPriceInfo,
-    BattlePayStartPurchase,
+    BattlePayDistributionAssignToTarget, BattlePayOpenCheckout, BattlePayPurchaseSubmitted,
+    BattlePayRequestPriceInfo, BattlePayStartPurchase, BattlePayStartVasPurchase,
+    CharacterUpgradeManualUnrevokeRequest, GetVasAccountCharacterList,
+    GetVasTransferTargetRealmList, VasCheckTransferOk,
 };
 
 use crate::battle_pay;
@@ -72,8 +77,10 @@ inventory::submit! {
         status: SessionStatus::Authed,
         processing: PacketProcessing::Inplace,
         handler_name: "handle_update_vas_purchase_states",
-        handler: |session, _catalogs, _pkt| {
-            Box::pin(async move { battle_pay::handle_update_vas_purchase_states(session) })
+        handler: |session, catalogs, _pkt| {
+            Box::pin(async move {
+                battle_pay::handle_update_vas_purchase_states(session, &catalogs.battle_pay)
+            })
         },
     }
 }
@@ -225,6 +232,147 @@ inventory::submit! {
                 .is_some()
                 {
                     battle_pay::handle_request_price_info(session, &catalogs.battle_pay).await;
+                }
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::GetVasAccountCharacterList,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_get_vas_account_character_list",
+        handler: |session, catalogs, mut pkt| {
+            Box::pin(async move {
+                if let Some(request) = read_or_warn::<GetVasAccountCharacterList>(
+                    ClientOpcodes::GetVasAccountCharacterList,
+                    &mut pkt,
+                ) {
+                    battle_pay::handle_get_vas_account_character_list(
+                        session,
+                        &catalogs.battle_pay,
+                        request,
+                    )
+                    .await;
+                }
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::GetVasTransferTargetRealmList,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_get_vas_transfer_target_realm_list",
+        handler: |session, catalogs, mut pkt| {
+            Box::pin(async move {
+                if let Some(request) = read_or_warn::<GetVasTransferTargetRealmList>(
+                    ClientOpcodes::GetVasTransferTargetRealmList,
+                    &mut pkt,
+                ) {
+                    battle_pay::handle_get_vas_transfer_target_realm_list(
+                        session,
+                        &catalogs.battle_pay,
+                        request,
+                    );
+                }
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::VasGetServiceStatus,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_vas_get_service_status",
+        handler: |session, _catalogs, _pkt| {
+            Box::pin(async move { battle_pay::handle_vas_get_service_status(session) })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::VasCheckTransferOk,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_vas_check_transfer_ok",
+        handler: |session, catalogs, mut pkt| {
+            Box::pin(async move {
+                if let Some(request) =
+                    read_or_warn::<VasCheckTransferOk>(ClientOpcodes::VasCheckTransferOk, &mut pkt)
+                {
+                    battle_pay::handle_vas_check_transfer_ok(session, &catalogs.battle_pay, request)
+                        .await;
+                }
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::BattlePayStartVasPurchase,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_battle_pay_start_vas_purchase",
+        handler: |session, catalogs, mut pkt| {
+            Box::pin(async move {
+                if let Some(request) = read_or_warn::<BattlePayStartVasPurchase>(
+                    ClientOpcodes::BattlePayStartVasPurchase,
+                    &mut pkt,
+                ) {
+                    battle_pay::handle_start_vas_purchase(session, &catalogs.battle_pay, request)
+                        .await;
+                }
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::BattlePayDistributionAssignToTarget,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_battle_pay_distribution_assign_to_target",
+        handler: |session, catalogs, mut pkt| {
+            Box::pin(async move {
+                if let Some(request) = read_or_warn::<BattlePayDistributionAssignToTarget>(
+                    ClientOpcodes::BattlePayDistributionAssignToTarget,
+                    &mut pkt,
+                ) {
+                    battle_pay::handle_distribution_assign_to_target(
+                        session,
+                        &catalogs.battle_pay,
+                        request,
+                    )
+                    .await;
+                }
+            })
+        },
+    }
+}
+
+inventory::submit! {
+    PacketHandlerEntry {
+        opcode: ClientOpcodes::CharacterUpgradeManualUnrevokeRequest,
+        status: SessionStatus::Authed,
+        processing: PacketProcessing::ThreadUnsafe,
+        handler_name: "handle_character_upgrade_manual_unrevoke_request",
+        handler: |session, _catalogs, mut pkt| {
+            Box::pin(async move {
+                if let Some(request) = read_or_warn::<CharacterUpgradeManualUnrevokeRequest>(
+                    ClientOpcodes::CharacterUpgradeManualUnrevokeRequest,
+                    &mut pkt,
+                ) {
+                    battle_pay::handle_character_upgrade_manual_unrevoke_request(session, request);
                 }
             })
         },

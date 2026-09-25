@@ -13,6 +13,8 @@ use super::fakes::*;
 use super::flow_token::{purchase_update, start_request, start_response};
 use crate::battle_pay::constants::{BattlePayConfigLikeCpp, error, purchase_status};
 use crate::battle_pay::flow::*;
+use crate::battle_pay::vas::handle_update_vas_purchase_states;
+use crate::battle_pay::web::*;
 
 const START_RESPONSE: u16 = ServerOpcodes::BattlePayStartPurchaseResponse as u16;
 const PURCHASE_UPDATE: u16 = ServerOpcodes::BattlePayPurchaseUpdate as u16;
@@ -346,8 +348,9 @@ async fn cancel_racing_a_confirmed_payment_delivers_instead() {
 #[tokio::test]
 async fn purchase_and_vas_lists_are_empty() {
     let session = FakeSession::in_world();
+    let h = harness(token_config(), FakeAccount::with_balance(0));
     handle_get_purchase_list(&session);
-    handle_update_vas_purchase_states(&session);
+    handle_update_vas_purchase_states(&session, &h.service);
     let sent = session.take_sent();
     assert_eq!(
         opcodes(&sent),

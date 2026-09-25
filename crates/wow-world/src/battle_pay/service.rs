@@ -13,10 +13,15 @@ use std::sync::{Arc, Mutex};
 
 use wow_core::ObjectGuid;
 use wow_persistence::{
-    BattlePayAccountPersistencePortLikeCpp, BattlePayDeliveryPersistencePortLikeCpp,
-    BattlePayDeliveryReceiptLikeCpp, BattlePayPurchaseInsertLikeCpp, BattlePayPurchaseRowLikeCpp,
-    BattlePaySsoTokenIssueLikeCpp, BattlePayTokenChargeLikeCpp, BattlePayTokenChargeOutcomeLikeCpp,
-    PersistenceFutureLikeCpp, PersistenceOutcomeLikeCpp, PlayerInventoryPersistenceRequestLikeCpp,
+    BattlePayAccountPersistencePortLikeCpp, BattlePayBnetGameAccountsLikeCpp,
+    BattlePayBoostCompletionLikeCpp, BattlePayCharacterRowLikeCpp,
+    BattlePayCharacterServicePersistencePortLikeCpp, BattlePayCharacterTransferLikeCpp,
+    BattlePayDeliveryPersistencePortLikeCpp, BattlePayDeliveryReceiptLikeCpp,
+    BattlePayDistributionAssignLikeCpp, BattlePayDistributionGrantLikeCpp,
+    BattlePayDistributionPersistencePortLikeCpp, BattlePayDistributionRowLikeCpp,
+    BattlePayPurchaseInsertLikeCpp, BattlePayPurchaseRowLikeCpp, BattlePaySsoTokenIssueLikeCpp,
+    BattlePayTokenChargeLikeCpp, BattlePayTokenChargeOutcomeLikeCpp, PersistenceFutureLikeCpp,
+    PersistenceOutcomeLikeCpp, PlayerInventoryPersistenceRequestLikeCpp,
 };
 
 use super::catalog::BattlePayCatalogLikeCpp;
@@ -29,6 +34,14 @@ pub(crate) struct WebCheckoutLikeCpp {
     pub signature: String,
     /// LegionCore `Purchase::WebCheckoutPending`.
     pub pending: bool,
+}
+
+/// Destination of a character transfer (LegionCore `Purchase::VasTarget*`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct VasTransferTargetLikeCpp {
+    pub account_id: u32,
+    pub battlenet_account_id: u32,
+    pub realm_id: u32,
 }
 
 /// LegionCore `Battlepay::Purchase` (the fields this port uses).
@@ -45,6 +58,8 @@ pub(crate) struct ActivePurchaseLikeCpp {
     /// not be confirmed again until a new `StartPurchase`.
     pub lock: bool,
     pub web: Option<WebCheckoutLikeCpp>,
+    /// Character transfer destination (`StartVasPurchase` of a transfer product).
+    pub transfer: Option<VasTransferTargetLikeCpp>,
 }
 
 impl ActivePurchaseLikeCpp {
@@ -62,8 +77,14 @@ pub struct BattlePayServiceLikeCpp {
     pub(crate) catalog: Arc<BattlePayCatalogLikeCpp>,
     pub(crate) account: Arc<dyn BattlePayAccountPersistencePortLikeCpp>,
     pub(crate) delivery: Arc<dyn BattlePayDeliveryPersistencePortLikeCpp>,
+    pub(crate) distributions: Arc<dyn BattlePayDistributionPersistencePortLikeCpp>,
+    pub(crate) characters: Arc<dyn BattlePayCharacterServicePersistencePortLikeCpp>,
+    /// `CharacterLoadout.db2` + `CharacterLoadoutItem.db2`: `(class, purpose)` ->
+    /// item ids of the lowest loadout id (LegionCore `GetItemLoadOutIdsBy`).
+    boost_loadouts: HashMap<(u8, i32), Vec<u32>>,
     purchases: Mutex<HashMap<u32, ActivePurchaseLikeCpp>>,
     purchase_counter: AtomicU64,
+    distribution_counter: AtomicU64,
 }
 
 impl BattlePayServiceLikeCpp {
@@ -78,9 +99,25 @@ impl BattlePayServiceLikeCpp {
             catalog,
             account,
             delivery,
+            distributions: Arc::new(UnavailableBattlePayPersistenceLikeCpp),
+            characters: Arc::new(UnavailableBattlePayPersistenceLikeCpp),
+            boost_loadouts: HashMap::new(),
             purchases: Mutex::new(HashMap::new()),
             purchase_counter: AtomicU64::new(0),
+            distribution_counter: AtomicU64::new(0),
         }
+    }
+
+    /// Attach the character-service ports (distributions in the Login DB,
+    /// character rows in the Character DB).
+    pub fn with_character_services(
+        mut self,
+        distributions: Arc<dyn BattlePayDistributionPersistencePortLikeCpp>,
+        characters: Arc<dyn BattlePayCharacterServicePersistencePortLikeCpp>,
+    ) -> Self {
+        self.distributions = distributions;
+        self.characters = characters;
+        self
     }
 
     /// Disabled service with no database: every request answers "shop locked".
@@ -100,6 +137,28 @@ impl BattlePayServiceLikeCpp {
     /// LegionCore `BattlepayManager::GenerateNewPurchaseID`.
     pub(crate) fn next_purchase_id_like_cpp(&self) -> u64 {
         0x1E77_8000_0000_0000 | (self.purchase_counter.fetch_add(1, Ordering::Relaxed) + 1)
+    }
+
+    /// Attach the boost gear table (`(class, purpose)` -> item ids).
+    pub fn with_boost_loadouts(mut self, loadouts: HashMap<(u8, i32), Vec<u32>>) -> Self {
+        self.boost_loadouts = loadouts;
+        self
+    }
+
+    pub(crate) fn boost_loadout_like_cpp(&self, class: u8, purpose: i32) -> Option<&[u32]> {
+        self.boost_loadouts
+            .get(&(class, purpose))
+            .map(Vec::as_slice)
+    }
+
+    /// LegionCore `BattlepayManager::GenerateNewDistributionId`:
+    /// `(time << 20) | (++seq & 0xFFFFF)`.
+    pub(crate) fn next_distribution_id_like_cpp(&self) -> u64 {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs());
+        let sequence = self.distribution_counter.fetch_add(1, Ordering::Relaxed) + 1;
+        (now << 20) | (sequence & 0xF_FFFF)
     }
 
     pub(crate) fn purchase(&self, account_id: u32) -> Option<ActivePurchaseLikeCpp> {
@@ -213,6 +272,127 @@ impl BattlePayDeliveryPersistencePortLikeCpp for UnavailableBattlePayPersistence
     fn persist_delivery_like_cpp(
         &self,
         _receipt: BattlePayDeliveryReceiptLikeCpp,
+        _inventory: Vec<PlayerInventoryPersistenceRequestLikeCpp>,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+}
+
+impl BattlePayDistributionPersistencePortLikeCpp for UnavailableBattlePayPersistenceLikeCpp {
+    fn load_distributions_like_cpp(
+        &self,
+        _account_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, Result<Vec<BattlePayDistributionRowLikeCpp>, String>> {
+        Box::pin(async { Err(UNAVAILABLE.to_owned()) })
+    }
+
+    fn grant_distribution_like_cpp(
+        &self,
+        _grant: BattlePayDistributionGrantLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn assign_distribution_like_cpp(
+        &self,
+        _assign: BattlePayDistributionAssignLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn unassign_distribution_like_cpp(
+        &self,
+        _distribution_id: u64,
+        _account_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn load_pending_distribution_like_cpp(
+        &self,
+        _character_guid: u64,
+        _realm_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, Result<Option<BattlePayDistributionRowLikeCpp>, String>> {
+        Box::pin(async { Err(UNAVAILABLE.to_owned()) })
+    }
+
+    fn finish_distribution_like_cpp(
+        &self,
+        _distribution_id: u64,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn grant_undelete_like_cpp(
+        &self,
+        _battlenet_account_id: u32,
+        _external_id: String,
+        _web_order_id: String,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn load_account_battlenet_like_cpp(
+        &self,
+        _account_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, Result<Option<u32>, String>> {
+        Box::pin(async { Err(UNAVAILABLE.to_owned()) })
+    }
+
+    fn load_bnet_game_accounts_like_cpp(
+        &self,
+        _email: String,
+    ) -> PersistenceFutureLikeCpp<'_, Result<Option<BattlePayBnetGameAccountsLikeCpp>, String>>
+    {
+        Box::pin(async { Err(UNAVAILABLE.to_owned()) })
+    }
+}
+
+impl BattlePayCharacterServicePersistencePortLikeCpp for UnavailableBattlePayPersistenceLikeCpp {
+    fn load_account_characters_like_cpp(
+        &self,
+        _account_id: u32,
+    ) -> PersistenceFutureLikeCpp<'_, Result<Vec<BattlePayCharacterRowLikeCpp>, String>> {
+        Box::pin(async { Err(UNAVAILABLE.to_owned()) })
+    }
+
+    fn load_character_like_cpp(
+        &self,
+        _character_guid: u64,
+    ) -> PersistenceFutureLikeCpp<'_, Result<Option<BattlePayCharacterRowLikeCpp>, String>> {
+        Box::pin(async { Err(UNAVAILABLE.to_owned()) })
+    }
+
+    fn persist_service_delivery_like_cpp(
+        &self,
+        _receipt: BattlePayDeliveryReceiptLikeCpp,
+        _at_login_flags: u16,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn persist_transfer_delivery_like_cpp(
+        &self,
+        _receipt: BattlePayDeliveryReceiptLikeCpp,
+        _transfer: BattlePayCharacterTransferLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn queue_character_boost_like_cpp(
+        &self,
+        _character_guid: u64,
+        _account_id: u32,
+        _level: u8,
+        _at_login_flags: u16,
+    ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+        Box::pin(async { unavailable_outcome() })
+    }
+
+    fn persist_boost_completion_like_cpp(
+        &self,
+        _receipt: BattlePayDeliveryReceiptLikeCpp,
+        _completion: BattlePayBoostCompletionLikeCpp,
         _inventory: Vec<PlayerInventoryPersistenceRequestLikeCpp>,
     ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
         Box::pin(async { unavailable_outcome() })

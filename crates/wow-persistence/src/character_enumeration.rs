@@ -8,6 +8,10 @@ use crate::PersistenceFutureLikeCpp;
 pub struct CharacterEnumerationRequestLikeCpp {
     pub account_id: u32,
     pub declined_names_used: bool,
+    /// C++ `EnumCharactersQueryHolder::Initialize(..., isDeletedCharacters)`:
+    /// `CMSG_ENUM_CHARACTERS_DELETED_BY_CLIENT` selects the unlinked rows and
+    /// skips `CHAR_DEL_EXPIRED_BANS` (`HandleCharUndeleteEnumOpcode`).
+    pub deleted_characters: bool,
 }
 
 /// One Characters-database row consumed by the character-select application

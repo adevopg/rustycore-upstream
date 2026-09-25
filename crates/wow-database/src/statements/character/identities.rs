@@ -1420,6 +1420,19 @@ pub enum CharStatements {
     /// DELETE FROM guild_member WHERE guid = ?
     DEL_GUILD_MEMBER,
 
+    /// RustyCore `CharacterCache` projection read by `HandleCharRaceOrFactionChangeCallback`
+    /// (name, race, class, level, sex, guild id and that guild's leader).
+    SEL_CHAR_RACE_OR_FACTION_CHANGE_CACHE,
+
+    /// `Guild::DeleteMember` new-leader choice (lowest rank id) for an offline leader.
+    SEL_GUILD_NEW_LEADER_CANDIDATE,
+
+    /// `Guild::_DeleteBankItems` -> `Item::DeleteFromDB` for every bank item of a guild.
+    DEL_GUILD_BANK_ITEM_INSTANCES,
+    DEL_GUILD_BANK_ITEM_INSTANCE_GEMS,
+    DEL_GUILD_BANK_ITEM_INSTANCE_TRANSMOG,
+    DEL_GUILD_BANK_ITEM_GIFTS,
+
     /// DELETE FROM guild_member WHERE guildid = ?
     DEL_GUILD_MEMBERS,
 
@@ -1782,6 +1795,27 @@ pub enum CharStatements {
 
     /// BattlePay delivery receipt, committed with the delivered item rows.
     INS_BATTLEPAY_DELIVERY,
+
+    /// BattlePay VAS character list (the account's characters that are not deleted).
+    SEL_BATTLEPAY_ACCOUNT_CHARACTERS,
+
+    /// BattlePay service target lookup by guid.
+    SEL_BATTLEPAY_CHARACTER,
+
+    /// LegionCore `CHAR_UPD_ADD_AT_LOGIN_FLAG` guarded by the owning account.
+    UPD_BATTLEPAY_ADD_AT_LOGIN_FLAG,
+
+    /// Same-realm character transfer of `CompleteVasCharacterTransfer`.
+    UPD_BATTLEPAY_TRANSFER_ACCOUNT,
+
+    /// Guild membership removal of a transferred character.
+    DEL_BATTLEPAY_TRANSFER_GUILD_MEMBER,
+
+    /// LegionCore `CHAR_UPD_CHARACTER_BOOST_QUEUED`.
+    UPD_BATTLEPAY_CHARACTER_BOOST_QUEUED,
+
+    /// Boost applied at login: money and at-login flag removal.
+    UPD_BATTLEPAY_CHARACTER_BOOST_FINISHED,
 
     /// Generated C++ `CharacterDatabase` prepared statement.
     GENERATED_CPP {

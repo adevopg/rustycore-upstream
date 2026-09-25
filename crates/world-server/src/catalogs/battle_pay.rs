@@ -1,6 +1,7 @@
 //! Composition boundary for the in-game shop (LegionCore
 //! `BattlePayDataStoreMgr::Initialize` + the `Bpay.*` / `Browser.*` settings).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
@@ -8,7 +9,9 @@ use tracing::{info, warn};
 use wow_database::{
     CharacterDatabase, LoginDatabase, MariaDbBattlePayAccountPersistenceAdapterLikeCpp,
     MariaDbBattlePayCatalogPersistenceAdapterLikeCpp,
-    MariaDbBattlePayDeliveryPersistenceAdapterLikeCpp, WorldDatabase,
+    MariaDbBattlePayCharacterServicePersistenceAdapterLikeCpp,
+    MariaDbBattlePayDeliveryPersistenceAdapterLikeCpp,
+    MariaDbBattlePayDistributionPersistenceAdapterLikeCpp, WorldDatabase,
 };
 use wow_persistence::{BattlePayCatalogLoadOutcomeLikeCpp, BattlePayCatalogPersistencePortLikeCpp};
 use wow_world::battle_pay::{
@@ -29,7 +32,51 @@ fn battle_pay_config_like_cpp(store_enabled_for_players: bool) -> BattlePayConfi
             "Browser.TokenLifetime",
             defaults.token_lifetime_secs,
         ),
+        boost_money: wow_config::get_value_default("Bpay.Boost.Money", defaults.boost_money),
+        characters_per_realm: wow_config::get_value_default(
+            "CharactersPerRealm",
+            defaults.characters_per_realm,
+        ),
     }
+}
+
+/// `CharacterLoadout.db2` + `CharacterLoadoutItem.db2` as `(class, purpose)` ->
+/// item ids (LegionCore `DB2Manager::GetItemLoadOutIdsBy`, lowest loadout id first;
+/// the WotLK Classic boost purposes carry one loadout per class and all races).
+fn boost_loadouts_like_cpp(data_dir: &str, locale: &str) -> HashMap<(u8, i32), Vec<u32>> {
+    let (loadouts, items) = match (
+        wow_data::character_progression::CharacterLoadoutStore::load(data_dir, locale),
+        wow_data::character_progression::CharacterLoadoutItemStore::load(data_dir, locale),
+    ) {
+        (Ok(loadouts), Ok(items)) => (loadouts, items),
+        (Err(error), _) | (_, Err(error)) => {
+            warn!("BattlePay boost loadouts not loaded: {error:#}");
+            return HashMap::new();
+        }
+    };
+    let mut by_loadout: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+    for item in items.iter() {
+        by_loadout
+            .entry(item.character_loadout_id)
+            .or_default()
+            .push((item.id, item.item_id));
+    }
+    let mut ordered: Vec<_> = loadouts.iter().collect();
+    ordered.sort_by_key(|loadout| loadout.id);
+    let mut table: HashMap<(u8, i32), Vec<u32>> = HashMap::new();
+    for loadout in ordered {
+        let Ok(class) = u8::try_from(loadout.chr_class_id) else {
+            continue;
+        };
+        let Some(mut entries) = by_loadout.get(&loadout.id).cloned() else {
+            continue;
+        };
+        entries.sort_unstable();
+        table
+            .entry((class, loadout.purpose))
+            .or_insert_with(|| entries.into_iter().map(|(_, item)| item).collect());
+    }
+    table
 }
 
 pub(crate) async fn load_battle_pay_catalog_like_cpp(
@@ -63,6 +110,8 @@ pub(crate) async fn load_service_like_cpp(
     char_db: &Arc<CharacterDatabase>,
     item_store: &wow_data::ItemStore,
     world_configs: &wow_config::WorldConfigSet,
+    data_dir: &str,
+    locale: &str,
 ) -> Result<Arc<BattlePayServiceLikeCpp>> {
     let config = battle_pay_config_like_cpp(crate::bootstrap::world_config_bool(
         world_configs,
@@ -90,16 +139,32 @@ pub(crate) async fn load_service_like_cpp(
         catalog.group_count(),
         catalog.shop_entry_count()
     );
-    Ok(Arc::new(BattlePayServiceLikeCpp::new(
-        config,
-        Arc::new(catalog),
-        Arc::new(MariaDbBattlePayAccountPersistenceAdapterLikeCpp::new(
-            Arc::clone(login_db),
-        )),
-        Arc::new(MariaDbBattlePayDeliveryPersistenceAdapterLikeCpp::new(
-            Arc::clone(char_db),
-        )),
-    )))
+    let boost_loadouts = boost_loadouts_like_cpp(data_dir, locale);
+    info!(
+        "Loaded {} BattlePay boost loadouts (class, purpose)",
+        boost_loadouts.len()
+    );
+    Ok(Arc::new(
+        BattlePayServiceLikeCpp::new(
+            config,
+            Arc::new(catalog),
+            Arc::new(MariaDbBattlePayAccountPersistenceAdapterLikeCpp::new(
+                Arc::clone(login_db),
+            )),
+            Arc::new(MariaDbBattlePayDeliveryPersistenceAdapterLikeCpp::new(
+                Arc::clone(char_db),
+            )),
+        )
+        .with_character_services(
+            Arc::new(MariaDbBattlePayDistributionPersistenceAdapterLikeCpp::new(
+                Arc::clone(login_db),
+            )),
+            Arc::new(
+                MariaDbBattlePayCharacterServicePersistenceAdapterLikeCpp::new(Arc::clone(char_db)),
+            ),
+        )
+        .with_boost_loadouts(boost_loadouts),
+    ))
 }
 
 #[cfg(test)]

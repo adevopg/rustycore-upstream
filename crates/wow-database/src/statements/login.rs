@@ -127,6 +127,9 @@ pub enum LoginStatements {
     UPD_BNET_RESET_FAILED_LOGINS,
     SEL_LAST_CHAR_UNDELETE,
     UPD_LAST_CHAR_UNDELETE,
+    /// RustyCore shop "restore deleted character" service: clears the
+    /// `FeatureSystem.CharacterUndelete.Cooldown` timestamp of the Battle.net account.
+    RES_LAST_CHAR_UNDELETE,
     SEL_ACCOUNT_TOYS,
     REP_ACCOUNT_TOYS,
     SEL_BATTLE_PETS,
@@ -185,6 +188,26 @@ pub enum LoginStatements {
     UPD_BPAY_PURCHASE_DELIVERED,
     /// LegionCore `LOGIN_UPD_BPAY_PURCHASE_FAILED`.
     UPD_BPAY_PURCHASE_FAILED,
+    /// LegionCore `LOGIN_SEL_BPAY_DISTRIBUTIONS` (+ realm column).
+    SEL_BPAY_DISTRIBUTIONS,
+    /// LegionCore `LOGIN_INS_BPAY_DISTRIBUTION`, created from the paid order row.
+    INS_BPAY_DISTRIBUTION_FROM_PURCHASE,
+    /// LegionCore `LOGIN_UPD_BPAY_DISTRIBUTION_ASSIGNED`.
+    UPD_BPAY_DISTRIBUTION_ASSIGNED,
+    /// Compensation of `UPD_BPAY_DISTRIBUTION_ASSIGNED` (`status 2 -> 1`).
+    UPD_BPAY_DISTRIBUTION_UNASSIGN,
+    /// LegionCore `LOGIN_SEL_BPAY_DISTRIBUTION_PENDING_BY_CHAR`, scoped to the realm.
+    SEL_BPAY_DISTRIBUTION_PENDING_BY_CHAR,
+    /// LegionCore `LOGIN_UPD_BPAY_DISTRIBUTION_FINISHED`.
+    UPD_BPAY_DISTRIBUTION_FINISHED,
+    /// "Restore deleted character" service: TC `battlenet_accounts.LastCharacterUndelete` cleared.
+    UPD_BPAY_RESET_UNDELETE_COOLDOWN,
+    /// LegionCore `LOGIN_SEL_BNET_VAS_TRANSFER_TARGET_ACCOUNT`.
+    SEL_BPAY_VAS_TRANSFER_TARGET_ACCOUNT,
+    /// LegionCore `LOGIN_SEL_BNET_VAS_TRANSFER_TARGET_BY_EMAIL`.
+    SEL_BPAY_VAS_TRANSFER_TARGET_BY_EMAIL,
+    /// Order status witness of the distribution/undelete order transactions.
+    SEL_BPAY_PURCHASE_STATUS,
 }
 
 impl StatementDef for LoginStatements {
@@ -486,6 +509,9 @@ impl StatementDef for LoginStatements {
             Self::UPD_LAST_CHAR_UNDELETE => {
                 "UPDATE battlenet_accounts SET LastCharacterUndelete = UNIX_TIMESTAMP() WHERE Id = ?"
             }
+            Self::RES_LAST_CHAR_UNDELETE => {
+                "UPDATE battlenet_accounts SET LastCharacterUndelete = 0 WHERE Id = ?"
+            }
             Self::SEL_ACCOUNT_TOYS => {
                 "SELECT itemId, isFavourite, hasFanfare FROM battlenet_account_toys WHERE accountId = ?"
             }
@@ -598,20 +624,24 @@ impl StatementDef for LoginStatements {
             ),
             Self::INS_BPAY_PURCHASE => concat!(
                 "INSERT INTO battlepay_purchase (external_id, signature, battlenet_account, account, realm, character_guid, ",
-                "product_id, price, currency, ip, payment_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "product_id, price, currency, ip, payment_ref, vas_target_account, vas_target_bnet_account, vas_target_realm) ",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ),
             Self::INS_BPAY_PURCHASE_PAID => concat!(
                 "INSERT INTO battlepay_purchase (external_id, signature, battlenet_account, account, realm, character_guid, ",
-                "product_id, price, currency, ip, payment_ref, status, paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+                "product_id, price, currency, ip, payment_ref, vas_target_account, vas_target_bnet_account, vas_target_realm, ",
+                "status, paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
             ),
             Self::SEL_BPAY_PURCHASE_BY_EXTERNAL_ID => concat!(
-                "SELECT id, external_id, product_id, status, character_guid, payment_ref, web_order_id ",
+                "SELECT id, external_id, product_id, status, character_guid, payment_ref, web_order_id, ",
+                "vas_target_account, vas_target_bnet_account, vas_target_realm ",
                 "FROM battlepay_purchase WHERE external_id = ? AND account = ?",
             ),
             Self::SEL_BPAY_PURCHASES_PAID => concat!(
-                "SELECT id, external_id, product_id, status, character_guid, payment_ref, web_order_id ",
+                "SELECT id, external_id, product_id, status, character_guid, payment_ref, web_order_id, ",
+                "vas_target_account, vas_target_bnet_account, vas_target_realm ",
                 "FROM battlepay_purchase WHERE account = ? AND realm = ? AND status = 1 AND rmah_auction = 0 ",
-                "AND vas_target_account = 0 ORDER BY id",
+                "ORDER BY id",
             ),
             Self::UPD_BPAY_PURCHASE_DELIVERED => concat!(
                 "UPDATE battlepay_purchase SET status = 2, delivered = NOW(), ",
@@ -620,6 +650,45 @@ impl StatementDef for LoginStatements {
             Self::UPD_BPAY_PURCHASE_FAILED => {
                 "UPDATE battlepay_purchase SET status = 3 WHERE external_id = ? AND account = ? AND status = 0"
             }
+            Self::SEL_BPAY_DISTRIBUTIONS => concat!(
+                "SELECT id, product_id, status, revoked, character_guid, specialization_id, realm ",
+                "FROM battlepay_distribution WHERE account = ? AND (status < 4 OR revoked = 1) ORDER BY id",
+            ),
+            Self::INS_BPAY_DISTRIBUTION_FROM_PURCHASE => concat!(
+                "INSERT INTO battlepay_distribution (id, account, battlenet_account, product_id, purchase_id, status) ",
+                "SELECT ?, account, battlenet_account, product_id, id, 1 FROM battlepay_purchase ",
+                "WHERE external_id = ? AND status = 1",
+            ),
+            Self::UPD_BPAY_DISTRIBUTION_ASSIGNED => concat!(
+                "UPDATE battlepay_distribution SET status = 2, realm = ?, character_guid = ?, specialization_id = ?, ",
+                "choice_id = ?, assigned = NOW() WHERE id = ? AND account = ? AND status = 1 AND revoked = 0",
+            ),
+            Self::UPD_BPAY_DISTRIBUTION_UNASSIGN => concat!(
+                "UPDATE battlepay_distribution SET status = 1, realm = 0, character_guid = 0, specialization_id = 0, ",
+                "choice_id = 0, assigned = NULL WHERE id = ? AND account = ? AND status = 2",
+            ),
+            Self::SEL_BPAY_DISTRIBUTION_PENDING_BY_CHAR => concat!(
+                "SELECT id, product_id, status, revoked, character_guid, specialization_id, realm ",
+                "FROM battlepay_distribution WHERE character_guid = ? AND realm = ? AND status = 2 ",
+                "ORDER BY assigned LIMIT 1",
+            ),
+            Self::UPD_BPAY_DISTRIBUTION_FINISHED => {
+                "UPDATE battlepay_distribution SET status = 4, finished = NOW() WHERE id = ? AND status = 2"
+            }
+            Self::UPD_BPAY_RESET_UNDELETE_COOLDOWN => {
+                "UPDATE battlenet_accounts SET LastCharacterUndelete = 0 WHERE id = ?"
+            }
+            Self::SEL_BPAY_VAS_TRANSFER_TARGET_ACCOUNT => {
+                "SELECT battlenet_account FROM account WHERE id = ?"
+            }
+            Self::SEL_BPAY_PURCHASE_STATUS => {
+                "SELECT status FROM battlepay_purchase WHERE external_id = ?"
+            }
+            Self::SEL_BPAY_VAS_TRANSFER_TARGET_BY_EMAIL => concat!(
+                "SELECT ba.id, a.id, a.username FROM battlenet_accounts ba ",
+                "LEFT JOIN account a ON a.battlenet_account = ba.id WHERE ba.email = ? ",
+                "ORDER BY a.battlenet_index ASC",
+            ),
         }
     }
 }
