@@ -14,6 +14,13 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 wow-casc = { path = "../../crates/wow-casc" }
+flate2 = "1.1"
+md-5 = "0.10"
+tiny_http = "0.12"
+ureq = { version = "3.4", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+tempfile = "3.25"
 
 [lints]
 workspace = true
