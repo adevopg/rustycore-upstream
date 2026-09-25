@@ -185,3 +185,37 @@ fn directory_checks() {
     std::fs::remove_file(dir.join("vmaps/0002.vmtree")).unwrap();
     assert!(check_directories(&dir, false).is_none());
 }
+
+/// Real Map.db2: bitpacked signed parent ids must be sign-extended like
+/// `DB2FileLoader::RecordGetVarInt` (an 11-bit CosmeticParentMapID of -1 once
+/// read as 2047 made every map a child of map 2047 with `maxTiles = 0`, so
+/// `dtNavMesh::addTile` failed for every tile). `MMAPS_REAL_DATA` is a data
+/// directory holding `dbc/<locale>/Map.db2`.
+#[test]
+#[ignore = "needs extracted client data (MMAPS_REAL_DATA)"]
+fn real_map_db2_parent_ids() {
+    let base = std::path::PathBuf::from(std::env::var("MMAPS_REAL_DATA").expect("MMAPS_REAL_DATA"));
+    let locale = std::fs::read_dir(base.join("dbc"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .into_owned();
+    let mut store = HashMap::new();
+    let map_data = load_map(&base, &locale, &mut store).unwrap();
+    assert_eq!(store[&0].parent_map_id, -1);
+    assert_eq!(store[&1].parent_map_id, -1);
+    assert!(!map_data.contains_key(&2047));
+    let children: Vec<u32> = store
+        .iter()
+        .filter(|(_, e)| e.parent_map_id != -1)
+        .map(|(id, _)| *id)
+        .collect();
+    assert!(
+        children.iter().all(|id| store[id].parent_map_id == 571),
+        "{children:?}"
+    );
+    assert!(!load_liquid(&base, &locale).unwrap().is_empty());
+}

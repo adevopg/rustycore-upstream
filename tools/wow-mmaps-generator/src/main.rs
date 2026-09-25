@@ -338,10 +338,14 @@ pub fn load_map(
         let record = MapRecord {
             id: db2.record_id(idx),
             map_type: db2.get_field_u8(idx, 6),
-            instance_type: db2.get_field_u8(idx, 7),
-            parent_map_id: db2.get_field_u16(idx, 12),
-            cosmetic_parent_map_id: db2.get_field_u16(idx, 13),
-            flags1: db2.get_field_u32(idx, 21) as i32,
+            // Signed meta fields: `DB2FileLoader::RecordGetVarInt` sign-extends
+            // `SignedImmediate` (bitpacked signed) columns before the
+            // `GetUInt*` truncation, so e.g. an 11-bit CosmeticParentMapID of
+            // -1 reads as 0xFFFF, not 0x7FF.
+            instance_type: db2.get_field_i8(idx, 7) as u8,
+            parent_map_id: db2.get_field_i16(idx, 12) as u16,
+            cosmetic_parent_map_id: db2.get_field_i16(idx, 13) as u16,
+            flags1: db2.get_field_i32(idx, 21),
         };
         apply_map_record(&record, &mut map_data, map_store);
     }
