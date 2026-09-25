@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use crate::casc::{Casc, FileRead};
+use crate::casc::{CASC_LOCALE_NONE, Casc, FileRead, FileRef, OpenFlags};
 
 /// `CreateDir`: create one directory level unless it exists; failure is fatal
 /// (the C++ throws an uncaught `std::runtime_error`).
@@ -28,7 +28,7 @@ pub(crate) fn open_and_extract(
 ) -> Result<bool, &'static str> {
     // `OpenFile` succeeds without reading; use the root lookup so an existing output
     // file does not require decoding the CASC file.
-    if !casc.has_file_id(file_data_id, casc.locale_mask()) {
+    if !casc.has_file_id(file_data_id, CASC_LOCALE_NONE) {
         return Err("FILE_NOT_FOUND");
     }
     if file_path.exists() {
@@ -36,9 +36,9 @@ pub(crate) fn open_and_extract(
     }
     let filename = file_path.display();
     match casc.read(
-        crate::casc::FileRef::Id(file_data_id),
-        casc.locale_mask(),
-        false,
+        FileRef::Id(file_data_id),
+        CASC_LOCALE_NONE,
+        OpenFlags::default(),
     ) {
         FileRead::Data(bytes) => {
             if std::fs::write(file_path, bytes).is_err() {

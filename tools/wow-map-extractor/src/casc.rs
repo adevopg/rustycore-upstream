@@ -81,12 +81,22 @@ pub(crate) enum FileRef<'a> {
     Name(&'a str),
 }
 
+/// CascLib `CASC_LOCALE_NONE`. `wow-casc` treats a per-call mask of 0 like CascLib:
+/// the entry selected with the storage's open mask.
+pub(crate) const CASC_LOCALE_NONE: u32 = 0;
+
+/// `CASC::Storage::OpenFile` flags.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct OpenFlags {
+    /// `printErrors`.
+    pub(crate) print_errors: bool,
+    /// `zerofillEncryptedParts` (`CASC_OVERCOME_ENCRYPTED`).
+    pub(crate) zerofill_encrypted: bool,
+}
+
 /// `CASC::Storage` opened for one locale mask.
 pub(crate) struct Casc {
     storage: wow_casc::Storage,
-    /// Locale mask the storage was opened with. CascLib applies it when a file is
-    /// opened with `CASC_LOCALE_NONE`, so those opens pass it explicitly here.
-    locale_mask: u32,
 }
 
 /// `LoadOnlineTactKeys`: the list is downloaded once per process (`static` in C++).
@@ -138,10 +148,7 @@ impl Casc {
             ),
         }
 
-        Some(Self {
-            storage,
-            locale_mask,
-        })
+        Some(Self { storage })
     }
 
     /// `GetBuildNumber`.
@@ -154,9 +161,9 @@ impl Casc {
         self.storage.installed_locales_mask()
     }
 
-    /// The mask used for `CASC_LOCALE_NONE` opens (the storage's own locale mask).
-    pub(crate) fn locale_mask(&self) -> u32 {
-        self.locale_mask
+    /// `HasTactKey` (`CascFindEncryptionKey`).
+    pub(crate) fn has_tact_key(&self, key_name: u64) -> bool {
+        self.storage.has_tact_key(key_name)
     }
 
     /// Whether `OpenFile(fileDataId, localeMask)` would succeed.
@@ -164,12 +171,20 @@ impl Casc {
         self.storage.has_file_id(file_data_id, locale_mask)
     }
 
-    /// `OpenFile(file, localeMask, printErrors)` + `ReadFile` of the whole file.
+    /// `OpenFile(file, localeMask, printErrors, zerofillEncryptedParts)` + `ReadFile` of
+    /// the whole file. `locale_mask` is the value the C++ passes (`CASC_LOCALE_NONE` or
+    /// `CASC_LOCALE_ALL_WOW`); CascLib ignores it, and `wow-casc` only narrows the
+    /// open-time selection with it, which is a no-op for both values.
     /// With `print_errors` an open failure is reported on stderr like `CASC::Storage::OpenFile`.
-    pub(crate) fn read(&self, file: FileRef<'_>, locale_mask: u32, print_errors: bool) -> FileRead {
-        let result = match file {
-            FileRef::Id(id) => self.storage.read_file_by_id(id, locale_mask),
-            FileRef::Name(name) => self.storage.read_file_by_name(name, locale_mask),
+    pub(crate) fn read(&self, file: FileRef<'_>, locale_mask: u32, flags: OpenFlags) -> FileRead {
+        let s = &self.storage;
+        let result = match (file, flags.zerofill_encrypted) {
+            (FileRef::Id(id), false) => s.read_file_by_id(id, locale_mask),
+            (FileRef::Id(id), true) => s.read_file_by_id_zerofill_encrypted(id, locale_mask),
+            (FileRef::Name(name), false) => s.read_file_by_name(name, locale_mask),
+            (FileRef::Name(name), true) => {
+                s.read_file_by_name_zerofill_encrypted(name, locale_mask)
+            }
         };
         let outcome = match result {
             Ok(Some(data)) => return FileRead::Data(data),
@@ -179,7 +194,9 @@ impl Casc {
             }
             Err(e) => FileRead::OpenFailed(human_readable_error(&e)),
         };
-        if print_errors && let FileRead::OpenFailed(error) = outcome {
+        if flags.print_errors
+            && let FileRead::OpenFailed(error) = outcome
+        {
             match file {
                 FileRef::Id(id) => {
                     eprintln!("Failed to open 'FileDataId {id}' in CASC storage: {error}");

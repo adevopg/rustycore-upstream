@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::adt::{WDT_MAP_SIZE, maid_root_adt, main_flag, mphd_flags};
-use crate::casc::{CASC_LOCALE_ALL_WOW, Casc, FileRead, FileRef};
+use crate::casc::{CASC_LOCALE_ALL_WOW, Casc, FileRead, FileRef, OpenFlags};
 use crate::convert::{AdtConverter, MAP_MAGIC, MAP_VERSION_MAGIC, TileInfo};
 use crate::fsutil::create_dir;
 use crate::loadlib::ChunkedFile;
@@ -39,7 +39,14 @@ pub(crate) fn load_chunked_file(
     description: &str,
     log: bool,
 ) -> Option<ChunkedFile> {
-    let FileRead::Data(bytes) = casc.read(file, CASC_LOCALE_ALL_WOW, log) else {
+    let FileRead::Data(bytes) = casc.read(
+        file,
+        CASC_LOCALE_ALL_WOW,
+        OpenFlags {
+            print_errors: log,
+            zerofill_encrypted: false,
+        },
+    ) else {
         return None;
     };
     let chunked = ChunkedFile::from_bytes(bytes);

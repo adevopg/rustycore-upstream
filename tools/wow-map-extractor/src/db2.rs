@@ -13,11 +13,8 @@
 //!   `DB2FileLoaderRegularImpl::RecordGetString`. Numeric fields and record ids come from
 //!   `wow_data::wdc4::Wdc4Reader`.
 //!
-//! Known-key detection: CascLib's `HasTactKey` is not part of the `wow-casc` API. A
-//! section is treated as having a known key when its `TactId` is 0 or when its data
-//! region is not entirely zero — CascLib (and TrinityCore's `zerofillEncryptedParts`)
-//! zero-fills encrypted blocks whose key is missing, and a decrypted section always
-//! carries a non-zero id table or record data.
+//! Key checks use `wow_casc::Storage::has_tact_key` (`CASC::Storage::HasTactKey`),
+//! passed in as a predicate so parsing stays independent of the storage.
 
 use wow_data::wdc4::Wdc4Reader;
 
@@ -83,7 +80,6 @@ pub(crate) struct Section {
     pub(crate) file_offset: u32,
     pub(crate) record_count: u32,
     pub(crate) string_table_size: u32,
-    pub(crate) catalog_data_offset: u32,
     pub(crate) id_table_size: u32,
     pub(crate) parent_lookup_data_size: u32,
     pub(crate) copy_table_count: u32,
@@ -242,49 +238,33 @@ fn parse_section(bytes: &[u8], at: usize) -> Section {
         file_offset: rd_u32(bytes, at + 8),
         record_count: rd_u32(bytes, at + 12),
         string_table_size: rd_u32(bytes, at + 16),
-        catalog_data_offset: rd_u32(bytes, at + 20),
         id_table_size: rd_u32(bytes, at + 24),
         parent_lookup_data_size: rd_u32(bytes, at + 28),
         copy_table_count: rd_u32(bytes, at + 36),
     }
 }
 
-/// Byte range of a section's records, strings and id table.
-fn section_data_range(header: &Header, section: &Section, len: usize) -> std::ops::Range<usize> {
-    let start = section.file_offset as usize;
-    let records_end = if header.flags & 0x1 == 0 {
-        start
-            + section.record_count as usize * header.record_size as usize
-            + section.string_table_size as usize
-    } else {
-        section.catalog_data_offset as usize
-    };
-    let end = records_end + section.id_table_size as usize;
-    start.min(len)..end.min(len)
-}
-
-/// Stand-in for `CascStorage->HasTactKey(section.TactId)` (see module docs).
-pub(crate) fn section_key_known(bytes: &[u8], header: &Header, section: &Section) -> bool {
-    if section.tact_id == 0 {
-        return true;
-    }
-    bytes[section_data_range(header, section, bytes.len())]
-        .iter()
-        .any(|b| *b != 0)
-}
-
 /// Port of the output half of `ExtractDB2File`: header + section headers (with
 /// `TactId` replaced by `DUMMY_KNOWN_TACT_ID` when the key is known) + the rest of the
 /// file copied verbatim from `posAfterHeaders`.
-pub(crate) fn rewrite_known_tact_ids(bytes: &[u8], headers: &Headers) -> Vec<u8> {
+pub(crate) fn rewrite_known_tact_ids(
+    bytes: &[u8],
+    headers: &Headers,
+    has_tact_key: impl Fn(u64) -> bool,
+) -> Vec<u8> {
     let mut out = bytes.to_vec();
     for (i, section) in headers.sections.iter().enumerate() {
-        if section.tact_id != 0 && section_key_known(bytes, &headers.header, section) {
+        if section.tact_id != 0 && has_tact_key(section.tact_id) {
             let at = HEADER_SIZE + i * SECTION_HEADER_SIZE;
             out[at..at + 8].copy_from_slice(&DUMMY_KNOWN_TACT_ID.to_le_bytes());
         }
     }
     out
+}
+
+/// `IsKnownTactId` (DB2FileLoader.cpp).
+fn is_known_tact_id(tact_id: u64) -> bool {
+    tact_id == 0 || tact_id == DUMMY_KNOWN_TACT_ID
 }
 
 /// A loaded extractor table (`DB2FileLoader` after `TryLoadDB2`).
@@ -302,7 +282,13 @@ pub(crate) struct Db2Table {
 impl Db2Table {
     /// `DB2FileLoader::Load(source, loadInfo)` for a regular (non-sparse) table.
     /// Errors carry the exception text for `TryLoadDB2`'s fatal message.
-    pub(crate) fn load(bytes: Vec<u8>, meta: &Db2Meta) -> Result<Self, String> {
+    /// Sections whose key is unknown are skipped (`IsKnownTactId` false and
+    /// `HandleEncryptedSection` -> `Skip`); `has_tact_key` is `CascStorage->HasTactKey`.
+    pub(crate) fn load(
+        bytes: Vec<u8>,
+        meta: &Db2Meta,
+        has_tact_key: impl Fn(u64) -> bool,
+    ) -> Result<Self, String> {
         let file_name = format!("FileDataId: {}", meta.file_data_id);
         let headers = check_headers(&bytes, &file_name, Some(meta))?;
         let header = headers.header;
@@ -351,7 +337,7 @@ impl Db2Table {
         let known: Vec<bool> = headers
             .sections
             .iter()
-            .map(|s| section_key_known(&bytes, &header, s))
+            .map(|s| is_known_tact_id(s.tact_id) || has_tact_key(s.tact_id))
             .collect();
 
         let mut copies = Vec::new();
@@ -633,7 +619,7 @@ mod tests {
 
     #[test]
     fn loads_ids_numeric_fields_strings_and_copies() {
-        let table = Db2Table::load(two_record_file(), &META).expect("valid table");
+        let table = Db2Table::load(two_record_file(), &META, |_| false).expect("valid table");
         let records: Vec<_> = table.records().collect();
         assert_eq!(records, vec![(0, 0), (1, 1)]);
         assert_eq!(table.get_string(0, 0), "Azeroth");
@@ -649,7 +635,9 @@ mod tests {
             layout_hash: 1,
             ..META
         };
-        let err = Db2Table::load(bytes.clone(), &wrong_hash).err().unwrap();
+        let err = Db2Table::load(bytes.clone(), &wrong_hash, |_| false)
+            .err()
+            .unwrap();
         assert!(
             err.starts_with("Incorrect layout hash in FileDataId: 42"),
             "{err}"
@@ -658,14 +646,16 @@ mod tests {
             field_count: 3,
             ..META
         };
-        let err = Db2Table::load(bytes.clone(), &wrong_fields).err().unwrap();
+        let err = Db2Table::load(bytes.clone(), &wrong_fields, |_| false)
+            .err()
+            .unwrap();
         assert_eq!(
             err,
             "Incorrect number of fields in FileDataId: 42, expected 3, got 2"
         );
         let mut longer = bytes;
         longer.push(0);
-        let err = Db2Table::load(longer, &META).err().unwrap();
+        let err = Db2Table::load(longer, &META, |_| false).err().unwrap();
         assert!(err.contains("failed size consistency check"), "{err}");
     }
 
@@ -705,16 +695,19 @@ mod tests {
         .build()
     }
 
+    const KEY: u64 = 0x1122_3344_5566_7788;
+
     #[test]
-    fn zero_filled_encrypted_section_is_skipped() {
-        let table = Db2Table::load(encrypted_file(true), &META).unwrap();
+    fn unknown_key_section_is_skipped() {
+        // Zero-filled like CascLib `CASC_OVERCOME_ENCRYPTED` output for a missing key.
+        let table = Db2Table::load(encrypted_file(true), &META, |_| false).unwrap();
         assert_eq!(table.records().collect::<Vec<_>>(), vec![(5, 0)]);
         assert!(table.copies().is_empty());
     }
 
     #[test]
-    fn decrypted_section_is_processed() {
-        let table = Db2Table::load(encrypted_file(false), &META).unwrap();
+    fn known_key_section_is_processed() {
+        let table = Db2Table::load(encrypted_file(false), &META, |k| k == KEY).unwrap();
         let ids: Vec<_> = table.records().map(|(id, _)| id).collect();
         assert_eq!(ids, vec![5, 6]);
         assert_eq!(table.reader.get_field_u32(1, 1), 60);
@@ -723,10 +716,10 @@ mod tests {
 
     #[test]
     fn extraction_rewrites_only_known_tact_ids() {
-        for (zero, expected) in [(false, DUMMY_KNOWN_TACT_ID), (true, 0x1122_3344_5566_7788)] {
-            let bytes = encrypted_file(zero);
+        for (known, expected) in [(true, DUMMY_KNOWN_TACT_ID), (false, KEY)] {
+            let bytes = encrypted_file(!known);
             let headers = check_headers(&bytes, "FileDataId: 42", None).unwrap();
-            let out = rewrite_known_tact_ids(&bytes, &headers);
+            let out = rewrite_known_tact_ids(&bytes, &headers, |k| known && k == KEY);
             assert_eq!(out.len(), bytes.len());
             let second = HEADER_SIZE + SECTION_HEADER_SIZE;
             assert_eq!(rd_u64(&out, second), expected);

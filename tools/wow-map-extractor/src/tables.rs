@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::casc::{Casc, FileRead, FileRef};
+use crate::casc::{CASC_LOCALE_NONE, Casc, FileRead, FileRef, OpenFlags};
 use crate::db2::{Db2Meta, Db2Table};
 
 pub(crate) const MAP_META: Db2Meta = Db2Meta {
@@ -79,10 +79,13 @@ pub(crate) fn try_load_db2(casc: &Casc, meta: &Db2Meta) -> Result<Db2Table, CppF
             meta.name
         ))
     };
-    match casc.read(FileRef::Id(meta.file_data_id), casc.locale_mask(), true) {
-        FileRead::Data(bytes) => {
-            Db2Table::load(bytes, meta).map_err(|what| fatal("SUCCESS", &what))
-        }
+    let flags = OpenFlags {
+        print_errors: true,
+        zerofill_encrypted: true,
+    };
+    match casc.read(FileRef::Id(meta.file_data_id), CASC_LOCALE_NONE, flags) {
+        FileRead::Data(bytes) => Db2Table::load(bytes, meta, |tact_id| casc.has_tact_key(tact_id))
+            .map_err(|what| fatal("SUCCESS", &what)),
         FileRead::OpenFailed(error) => Err(fatal(error, "No such file or directory")),
         FileRead::ReadFailed(error) => Err(fatal(error, "Failed to read header")),
     }
@@ -251,7 +254,7 @@ mod tests {
             }],
         }
         .build();
-        let db2 = Db2Table::load(bytes, &MAP_META).unwrap();
+        let db2 = Db2Table::load(bytes, &MAP_META, |_| false).unwrap();
         let maps = map_entries(&db2);
         let expect = |id: u32, name: &str, directory: &str| MapEntry {
             id,
@@ -291,7 +294,7 @@ mod tests {
             }],
         }
         .build();
-        let db2 = Db2Table::load(bytes, &LIQUID_TYPE_META).unwrap();
+        let db2 = Db2Table::load(bytes, &LIQUID_TYPE_META, |_| false).unwrap();
         let mut tables = LiquidTables::default();
         tables.load_types(&db2);
         assert_eq!(

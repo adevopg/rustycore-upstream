@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use crate::casc::{Casc, FileRead, FileRef, LOCALE_NAMES};
+use crate::casc::{CASC_LOCALE_NONE, Casc, FileRead, FileRef, LOCALE_NAMES, OpenFlags};
 use crate::db_files_client_list::DB_FILES_CLIENT_LIST;
 use crate::db2::{check_headers, rewrite_known_tact_ids};
 use crate::fsutil::create_dir;
@@ -19,7 +19,11 @@ pub(crate) fn extract_db2_file(
 ) -> bool {
     // DB2CascFileSource(CascStorage, fileDataId, false): CASC_LOCALE_NONE, zero-filled
     // encrypted parts.
-    let bytes = match casc.read(FileRef::Id(file_data_id), casc.locale_mask(), false) {
+    let flags = OpenFlags {
+        print_errors: false,
+        zerofill_encrypted: true,
+    };
+    let bytes = match casc.read(FileRef::Id(file_data_id), CASC_LOCALE_NONE, flags) {
         FileRead::Data(bytes) => bytes,
         FileRead::OpenFailed(error) => {
             println!(
@@ -29,8 +33,7 @@ pub(crate) fn extract_db2_file(
             return false;
         }
         FileRead::ReadFailed(_) => {
-            // The C++ source zero-fills undecryptable blocks; wow-casc cannot return a
-            // partially decrypted file, so this is reported as a read failure.
+            // `ReadFile` failure (encrypted parts are zero-filled, so only corrupt data).
             println!("Can't read file '{}'", output_path.display());
             return false;
         }
@@ -44,7 +47,12 @@ pub(crate) fn extract_db2_file(
         }
     };
 
-    if std::fs::write(output_path, rewrite_known_tact_ids(&bytes, &headers)).is_err() {
+    if std::fs::write(
+        output_path,
+        rewrite_known_tact_ids(&bytes, &headers, |tact_id| casc.has_tact_key(tact_id)),
+    )
+    .is_err()
+    {
         println!("Can't create the output file '{}'", output_path.display());
         let _ = std::fs::remove_file(output_path);
         return false;
