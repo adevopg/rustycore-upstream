@@ -126,7 +126,7 @@ pub(crate) fn set_dynamic_update_mask_index(mask: &mut Option<Vec<u32>>, index: 
 
 #[cfg(test)]
 mod tests {
-    use super::xp_in_group_rate_like_cpp;
+    use super::*;
 
     #[test]
     fn group_xp_rate_matches_cpp_table() {
