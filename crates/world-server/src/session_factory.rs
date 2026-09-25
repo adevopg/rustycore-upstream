@@ -430,7 +430,15 @@ pub(super) async fn create_session(
 
     // Configure C++ `SMSG_CONNECT_TO` flow — real clients enter the world on
     // the instance socket after `AuthContinuedSession`.
-    session.set_session_mgr(Arc::clone(&session_mgr));
+    //
+    // Intentional departure from C++ (operator opt-in, default off):
+    // `Network.DirectLoginWithoutConnectTo = 1` leaves the session without a
+    // SessionManager, so `send_connect_to` takes `fallback_direct_login` and the
+    // player enters the world on the realm socket. For clients that reject the
+    // server's ConnectTo signature.
+    if !direct_login_without_connect_to_like_cpp() {
+        session.set_session_mgr(Arc::clone(&session_mgr));
+    }
     session.set_instance_endpoint(connect_ip, instance_port);
 
     let outcome = run_world_session_until_disconnect_like_cpp(
@@ -452,6 +460,11 @@ pub(super) async fn create_session(
         WORLD_SESSION_FINALIZE_STEP_TIMEOUT_LIKE_CPP,
     )
     .await;
+}
+
+/// Operator opt-in (not in C++): skip `SMSG_CONNECT_TO` and log in on the realm socket.
+fn direct_login_without_connect_to_like_cpp() -> bool {
+    wow_config::get_value_default("Network.DirectLoginWithoutConnectTo", 0i32) != 0
 }
 
 /// Select the correct realm IP for a client, matching C++ `Realm::GetAddressForClient`.
