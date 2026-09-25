@@ -76,6 +76,11 @@ pub enum ClientOpcodes {
     BattlePayGetProductList = 0x36c4,
     BattlePayGetPurchaseList = 0x36c5,
     BattlePayOpenCheckout = 0x3714,
+    /// Not in the TrinityCore 3.4.3 table. Found by RE of client 3.4.3.54261
+    /// (JAM Write at image offset 0x766fe0: bits(6) len, bits(7) len, bit, flush,
+    /// two strings; sent by the Store module). Name provisional, after the 7.3.5
+    /// analogue CMSG_BATTLE_PAY_PURCHASE_SUBMITTED. See docs/migration/battlepay-343-protocol.md.
+    BattlePayPurchaseSubmitted = 0x371a,
     BattlePayRequestPriceInfo = 0x3710,
     BattlePayStartPurchase = 0x36d3,
     BattlePayStartVasPurchase = 0x36fa,

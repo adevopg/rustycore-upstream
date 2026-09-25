@@ -8,6 +8,7 @@
 pub mod aura;
 pub mod auth;
 pub mod battlenet;
+pub mod battlepay;
 pub mod character;
 pub mod chat;
 pub mod collection;
