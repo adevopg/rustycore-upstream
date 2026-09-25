@@ -1,10 +1,10 @@
 //! Catalog-to-entity rule composition; no Session fixture or clock needed.
 
 use super::*;
+use crate::quest::QUEST_FLAGS_DAILY_LIKE_CPP;
 use wow_constants::quest::{
-    QUEST_FLAGS_COMPLETION_EVENT_LIKE_CPP, QUEST_FLAGS_DAILY_LIKE_CPP,
-    QUEST_FLAGS_EX_IS_WORLD_QUEST_LIKE_CPP, QUEST_FLAGS_EX_REWARDS_IGNORE_CAPS_LIKE_CPP,
-    QUEST_STATUS_INCOMPLETE_LIKE_CPP,
+    QUEST_FLAGS_COMPLETION_EVENT_LIKE_CPP, QUEST_FLAGS_EX_IS_WORLD_QUEST_LIKE_CPP,
+    QUEST_FLAGS_EX_REWARDS_IGNORE_CAPS_LIKE_CPP, QUEST_STATUS_INCOMPLETE_LIKE_CPP,
 };
 use wow_entities::{
     PlayerQuestStatusRecord, represented_can_complete_quest_after_objective_like_cpp,
