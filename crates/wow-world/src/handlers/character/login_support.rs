@@ -8,8 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    BindPointUpdate, PlayerCreateInfoLikeCpp, WORLDSTATE_ANY_MAP_LIKE_CPP,
-    player_team_for_race_cpp,
+    BindPointUpdate, PlayerCreateInfoLikeCpp, WORLDSTATE_ANY_MAP_LIKE_CPP, player_team_for_race_cpp,
 };
 use wow_core::Position;
 

@@ -98,7 +98,9 @@ impl WorldSession {
             .is_some();
         #[cfg(test)]
         if !_canonical && self.player_handle_like_cpp.is_none() {
-            self.quest_test_fixture_like_cpp.represented_known_titles_like_cpp.insert(title_id);
+            self.quest_test_fixture_like_cpp
+                .represented_known_titles_like_cpp
+                .insert(title_id);
         }
     }
 
@@ -107,7 +109,10 @@ impl WorldSession {
             self.with_owned_player_like_cpp(|player| player.has_title_like_cpp(title_id));
         #[cfg(test)]
         if canonical.is_none() && self.player_handle_like_cpp.is_none() {
-            return self.quest_test_fixture_like_cpp.represented_known_titles_like_cpp.contains(&title_id);
+            return self
+                .quest_test_fixture_like_cpp
+                .represented_known_titles_like_cpp
+                .contains(&title_id);
         }
         canonical.unwrap_or(false)
     }
@@ -118,7 +123,8 @@ impl WorldSession {
             .is_some();
         #[cfg(test)]
         if !_canonical && self.player_handle_like_cpp.is_none() {
-            self.quest_test_fixture_like_cpp.represented_chosen_title_like_cpp = title_id;
+            self.quest_test_fixture_like_cpp
+                .represented_chosen_title_like_cpp = title_id;
         }
     }
 
@@ -126,7 +132,9 @@ impl WorldSession {
     pub(crate) fn represented_chosen_title_like_cpp(&self) -> i32 {
         let canonical = self.with_owned_player_like_cpp(|player| player.data().player_title);
         if canonical.is_none() && self.player_handle_like_cpp.is_none() {
-            return self.quest_test_fixture_like_cpp.represented_chosen_title_like_cpp;
+            return self
+                .quest_test_fixture_like_cpp
+                .represented_chosen_title_like_cpp;
         }
         canonical.expect("test Player title owner must resolve")
     }

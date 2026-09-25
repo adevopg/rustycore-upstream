@@ -80,7 +80,8 @@ fn aggregate_item_removal_plan_persists_all_objectives_in_one_status() {
     session.set_quest_store(Arc::new(QuestStore::from_quests_like_cpp([quest])));
     add_active_quest_in_slot_with_status(&mut session, quest_id, 0, QUEST_STATUS_COMPLETE_LIKE_CPP);
     session
-        .quest_test_fixture_like_cpp.player_quests
+        .quest_test_fixture_like_cpp
+        .player_quests
         .get_mut(&quest_id)
         .expect("active quest")
         .objective_counts = vec![1, 1];
@@ -119,7 +120,8 @@ fn mixed_item_transfer_quest_plan_applies_withdrawal_after_deposit() {
     session.set_quest_store(Arc::new(QuestStore::from_quests_like_cpp([quest])));
     add_active_quest_in_slot_with_status(&mut session, quest_id, 0, QUEST_STATUS_COMPLETE_LIKE_CPP);
     session
-        .quest_test_fixture_like_cpp.player_quests
+        .quest_test_fixture_like_cpp
+        .player_quests
         .get_mut(&quest_id)
         .expect("active quest")
         .objective_counts = vec![1];
@@ -210,7 +212,8 @@ async fn bank_withdrawal_credits_only_first_matching_bound_item_objective_like_c
     assert_eq!(changed, vec![planned_quest_id]);
     assert_eq!(
         session
-            .quest_test_fixture_like_cpp.player_quests
+            .quest_test_fixture_like_cpp
+            .player_quests
             .values()
             .flat_map(|status| status.objective_counts.iter())
             .copied()
@@ -323,7 +326,10 @@ async fn bank_withdrawal_item_objective_never_sends_generic_credit_like_cpp() {
         .await;
 
     assert_eq!(changed, vec![quest_id]);
-    assert_eq!(session.quest_test_fixture_like_cpp.player_quests[&quest_id].objective_counts, vec![1]);
+    assert_eq!(
+        session.quest_test_fixture_like_cpp.player_quests[&quest_id].objective_counts,
+        vec![1]
+    );
     assert!(
         send_rx.try_recv().is_err(),
         "C++ suppresses QuestUpdateAddCredit for ITEM objectives"
@@ -410,12 +416,18 @@ async fn quest_giver_choose_reward_rejects_missing_reward_item_template_like_cpp
 
     assert_eq!(
         session
-            .quest_test_fixture_like_cpp.player_quests
+            .quest_test_fixture_like_cpp
+            .player_quests
             .get(&quest_id)
             .map(|status| status.status),
         Some(QUEST_STATUS_COMPLETE_LIKE_CPP)
     );
-    assert!(!session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 5);
     assert!(send_rx.try_recv().is_err());
 }
@@ -467,8 +479,18 @@ async fn quest_giver_choose_reward_removes_item_objective_before_rewards_like_cp
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
     let item = session
         .inventory_items_like_cpp()
@@ -530,12 +552,18 @@ async fn quest_giver_choose_reward_direct_choice_inventory_failure_sends_quest_f
 
     assert_eq!(
         session
-            .quest_test_fixture_like_cpp.player_quests
+            .quest_test_fixture_like_cpp
+            .player_quests
             .get(&quest_id)
             .map(|status| status.status),
         Some(QUEST_STATUS_COMPLETE_LIKE_CPP)
     );
-    assert!(!session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 5);
     assert_eq!(
         send_rx.try_recv().unwrap(),
@@ -594,12 +622,18 @@ async fn quest_giver_choose_reward_fixed_reward_inventory_failure_sends_quest_fa
 
     assert_eq!(
         session
-            .quest_test_fixture_like_cpp.player_quests
+            .quest_test_fixture_like_cpp
+            .player_quests
             .get(&quest_id)
             .map(|status| status.status),
         Some(QUEST_STATUS_COMPLETE_LIKE_CPP)
     );
-    assert!(!session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 5);
     assert_eq!(
         send_rx.try_recv().unwrap(),
@@ -647,8 +681,18 @@ async fn quest_giver_choose_reward_fixed_reward_stores_and_pushes_item_like_cpp(
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
     let reward_item = session
         .inventory_items_like_cpp()
@@ -748,12 +792,18 @@ async fn quest_reward_item_definite_and_unknown_commit_fail_closed_before_public
 
         assert_eq!(
             session
-                .quest_test_fixture_like_cpp.player_quests
+                .quest_test_fixture_like_cpp
+                .player_quests
                 .get(&quest_id)
                 .map(|status| status.status),
             Some(QUEST_STATUS_COMPLETE_LIKE_CPP)
         );
-        assert!(!session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+        assert!(
+            !session
+                .quest_test_fixture_like_cpp
+                .rewarded_quests
+                .contains(&quest_id)
+        );
         assert_eq!(session.player_gold_like_cpp(), 5);
         // The operation mutated the in-memory inventory while it planned, as
         // C++ `StoreNewItem` does before its save. Nothing durable changed, so
@@ -815,8 +865,18 @@ async fn quest_giver_choose_reward_chosen_item_stores_and_pushes_item_like_cpp()
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
     let reward_item = session
         .inventory_items_like_cpp()

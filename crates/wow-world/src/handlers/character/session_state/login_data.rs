@@ -5,11 +5,11 @@
 
 //! Auxiliary persisted character data loaded during the login sequence.
 
-use super::*;
 use super::super::spell_rules::{
     spell_charge_entry_from_db_like_cpp, spell_history_entry_from_db_like_cpp,
     unix_now_secs_like_cpp,
 };
+use super::*;
 
 impl WorldSession {
     pub(in crate::handlers::character) fn skill_rewarded_quest_fallback_allowed_like_cpp(

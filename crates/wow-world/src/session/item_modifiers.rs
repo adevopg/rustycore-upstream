@@ -376,7 +376,8 @@ impl WorldSession {
             };
 
             if action != TitanGripPenaltyAction::None {
-                self.player_item_test_fixture_like_cpp.represented_titan_grip_penalty_actions_like_cpp
+                self.player_item_test_fixture_like_cpp
+                    .represented_titan_grip_penalty_actions_like_cpp
                     .push(action);
             }
         }

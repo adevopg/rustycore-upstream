@@ -5,16 +5,16 @@
 
 use super::*;
 
-#[path = "scenarios_spell_state_12/player_power_effects.rs"]
-mod player_power_effects;
+#[path = "scenarios_spell_state_12/creature_power_effects.rs"]
+mod creature_power_effects;
 #[path = "scenarios_spell_state_12/extra_attacks.rs"]
 mod extra_attacks;
 #[path = "scenarios_spell_state_12/inebriate.rs"]
 mod inebriate;
+#[path = "scenarios_spell_state_12/player_power_effects.rs"]
+mod player_power_effects;
 #[path = "scenarios_spell_state_12/reputation.rs"]
 mod reputation;
-#[path = "scenarios_spell_state_12/creature_power_effects.rs"]
-mod creature_power_effects;
 
 #[test]
 fn represented_spell_positivity_covers_common_cpp_buffs_and_debuffs() {

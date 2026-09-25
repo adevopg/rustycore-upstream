@@ -770,6 +770,7 @@ impl WorldSession {
     }
     #[cfg(test)]
     pub(crate) fn represented_quest_push_result_sender_mismatch_count_like_cpp(&self) -> u32 {
-        self.quest_test_fixture_like_cpp.represented_quest_push_result_sender_mismatch_count_like_cpp
+        self.quest_test_fixture_like_cpp
+            .represented_quest_push_result_sender_mismatch_count_like_cpp
     }
 }

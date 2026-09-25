@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// C++ `Unit::MeleeDamageBonusTaken` for a creature attacker against a player
 /// victim, through the production ownership path.
 ///

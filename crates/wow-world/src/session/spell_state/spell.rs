@@ -87,11 +87,13 @@ impl WorldSession {
     }
     #[cfg(test)]
     pub fn set_start_all_spells_like_cpp(&mut self, enabled: bool) {
-        self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_spells_like_cpp = enabled;
+        self.player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_spells_like_cpp = enabled;
     }
     #[cfg(test)]
     pub(crate) fn start_all_spells_like_cpp(&self) -> bool {
-        self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_spells_like_cpp
+        self.player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_spells_like_cpp
     }
     /// Install the complete process-wide C++ script binding audit.
     ///
@@ -739,20 +741,52 @@ impl WorldSession {
         if canonical.is_none() && self.player_handle_like_cpp.is_none() {
             return Some(RepresentedPlayerSpellRuntimeLikeCpp {
                 known_spells: self.player_spell_test_fixture_like_cpp.known_spells.clone(),
-                rows: self.player_spell_test_fixture_like_cpp.represented_player_spell_rows_like_cpp.clone(),
-                rows_loaded: self.player_spell_test_fixture_like_cpp.represented_player_spell_rows_loaded_like_cpp,
-                rows_complete: self.player_spell_test_fixture_like_cpp.represented_player_spell_rows_complete_like_cpp,
-                fallback_rows: self.player_spell_test_fixture_like_cpp.represented_fallback_player_spell_rows_like_cpp.clone(),
-                dependent_known_spells: self.player_spell_test_fixture_like_cpp.represented_dependent_known_spells_like_cpp.clone(),
-                removed_known_spells: self.player_spell_test_fixture_like_cpp.represented_removed_known_spells_like_cpp.clone(),
-                favorite_known_spells: self.player_spell_test_fixture_like_cpp.represented_favorite_known_spells_like_cpp.clone(),
-                trait_definition_ids: self.player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp.clone(),
+                rows: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_player_spell_rows_like_cpp
+                    .clone(),
+                rows_loaded: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_player_spell_rows_loaded_like_cpp,
+                rows_complete: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_player_spell_rows_complete_like_cpp,
+                fallback_rows: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_fallback_player_spell_rows_like_cpp
+                    .clone(),
+                dependent_known_spells: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_dependent_known_spells_like_cpp
+                    .clone(),
+                removed_known_spells: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_removed_known_spells_like_cpp
+                    .clone(),
+                favorite_known_spells: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_favorite_known_spells_like_cpp
+                    .clone(),
+                trait_definition_ids: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_spell_trait_definition_ids_like_cpp
+                    .clone(),
                 trait_definition_ids_complete: self
-                    .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_complete_like_cpp,
-                trait_config_rows: self.player_spell_test_fixture_like_cpp.represented_trait_config_rows_like_cpp.clone(),
-                trait_config_rows_complete: self.player_spell_test_fixture_like_cpp.represented_trait_config_rows_complete_like_cpp,
-                trait_entry_rows_complete: self.player_spell_test_fixture_like_cpp.represented_trait_entry_rows_complete_like_cpp,
-                trait_entry_rows_empty: self.player_spell_test_fixture_like_cpp.represented_trait_entry_rows_empty_like_cpp,
+                    .player_spell_test_fixture_like_cpp
+                    .represented_spell_trait_definition_ids_complete_like_cpp,
+                trait_config_rows: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_trait_config_rows_like_cpp
+                    .clone(),
+                trait_config_rows_complete: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_trait_config_rows_complete_like_cpp,
+                trait_entry_rows_complete: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_trait_entry_rows_complete_like_cpp,
+                trait_entry_rows_empty: self
+                    .player_spell_test_fixture_like_cpp
+                    .represented_trait_entry_rows_empty_like_cpp,
                 override_spells: self.represented_override_spells_like_cpp.clone(),
                 override_spells_complete: self.represented_override_spells_complete_like_cpp,
             });

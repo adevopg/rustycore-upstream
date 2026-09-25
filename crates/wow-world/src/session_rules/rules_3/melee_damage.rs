@@ -5,14 +5,13 @@
 
 //! Receiver-free melee damage rules used by the world-session runtime.
 
+use super::aura_effects::{
+    AppliedAuraEffectLikeCpp, player_aura_effects_all_like_cpp,
+    player_aura_effects_by_spell_aura_type_like_cpp,
+};
 use crate::session::*;
 use std::collections::HashMap;
 use wow_data::SpellStore;
-use super::aura_effects::{
-    player_aura_effects_all_like_cpp,
-    player_aura_effects_by_spell_aura_type_like_cpp,
-    AppliedAuraEffectLikeCpp,
-};
 use wow_entities::AuraApplicationLikeCpp;
 
 /// C++ `Unit::MeleeDamageBonusDone`'s auto-attack percentage term

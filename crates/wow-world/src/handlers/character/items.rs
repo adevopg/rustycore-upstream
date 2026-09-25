@@ -6,9 +6,9 @@
 //! Inventory storage, equip/swap, destroy, durability and item modification.
 
 use super::*;
-mod handlers;
 mod destruction;
 mod equipment_sets;
+mod handlers;
 mod inventory_moves;
 pub(super) mod login_load;
 
@@ -36,7 +36,6 @@ pub(crate) fn item_turnin_persistence_rows_like_cpp(
 }
 
 impl WorldSession {
-
     pub(super) fn creature_virtual_items_from_row_with_catalogs_like_cpp(
         &mut self,
         catalogs: &CreatureSpawnCatalogsLikeCpp,
@@ -636,7 +635,6 @@ impl WorldSession {
         }
     }
 
-
     pub(super) fn has_item_count_direct_inventory(&self, item_entry: u32, count: u32) -> bool {
         if count == 0 {
             return true;
@@ -792,6 +790,4 @@ impl WorldSession {
             self.send_stat_update();
         }
     }
-
-
 }

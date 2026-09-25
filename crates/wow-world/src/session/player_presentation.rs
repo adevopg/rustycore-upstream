@@ -329,7 +329,9 @@ impl WorldSession {
     pub(crate) fn represented_force_deselects_like_cpp(
         &self,
     ) -> &[RepresentedForceDeselectLikeCpp] {
-        &self.duel_test_fixture_like_cpp.represented_force_deselects_like_cpp
+        &self
+            .duel_test_fixture_like_cpp
+            .represented_force_deselects_like_cpp
     }
 
     pub(crate) fn represented_eject_passenger_like_cpp(
@@ -347,7 +349,8 @@ impl WorldSession {
         if !enable {
             #[cfg(test)]
             if let Some(player_guid) = self.player_guid() {
-                self.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(player_guid);
+                self.visibility_test_fixture_like_cpp
+                    .represented_seer_guid_like_cpp = Some(player_guid);
             }
             return;
         }
@@ -359,7 +362,8 @@ impl WorldSession {
         if self.canonical_map_has_seer_like_object_like_cpp(target) {
             #[cfg(test)]
             {
-                self.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(target);
+                self.visibility_test_fixture_like_cpp
+                    .represented_seer_guid_like_cpp = Some(target);
             }
         } else {
             debug!("CMSG_FAR_SIGHT enable target {:?} is not resoluble", target);

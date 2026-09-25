@@ -8,8 +8,7 @@ use super::*;
 #[cfg(test)]
 pub(super) struct PlayerSpellAndTraitTestFixtureLikeCpp {
     pub(super) known_spells: Vec<i32>,
-    pub(super) represented_player_spell_rows_like_cpp:
-        BTreeMap<i32, RepresentedPlayerSpellLikeCpp>,
+    pub(super) represented_player_spell_rows_like_cpp: BTreeMap<i32, RepresentedPlayerSpellLikeCpp>,
     pub(super) represented_player_spell_rows_loaded_like_cpp: bool,
     pub(super) represented_player_spell_rows_complete_like_cpp: bool,
     pub(super) represented_fallback_player_spell_rows_like_cpp:

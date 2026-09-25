@@ -592,8 +592,18 @@ async fn loot_money_gain_completes_money_tracking_event_objective_like_cpp() {
     session.handle_loot_money(loot_money_packet()).await;
 
     assert_eq!(session.player_gold_like_cpp(), 7);
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
 
     let sent = send_rx.try_recv().unwrap();
     let mut sent = WorldPacket::from_bytes(&sent);

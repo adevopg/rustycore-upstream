@@ -250,16 +250,24 @@ impl WorldSession {
             self.begin_player_equipment_inventory_authority_load_like_cpp();
             #[cfg(test)]
             {
-                self.quest_test_fixture_like_cpp.player_quest_status_authority_complete_like_cpp = false;
-                self.quest_test_fixture_like_cpp.represented_rewarded_quest_rows_like_cpp.clear();
-                self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_like_cpp = None;
-                self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_ex_like_cpp = None;
-                self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_applied_like_cpp = false;
+                self.quest_test_fixture_like_cpp
+                    .player_quest_status_authority_complete_like_cpp = false;
+                self.quest_test_fixture_like_cpp
+                    .represented_rewarded_quest_rows_like_cpp
+                    .clear();
+                self.player_flags_test_fixture_like_cpp
+                    .represented_loaded_player_flags_like_cpp = None;
+                self.player_flags_test_fixture_like_cpp
+                    .represented_loaded_player_flags_ex_like_cpp = None;
+                self.player_flags_test_fixture_like_cpp
+                    .represented_loaded_player_flags_applied_like_cpp = false;
             }
             #[cfg(test)]
             {
-                self.guild_test_fixture_like_cpp.represented_guild_id_like_cpp = 0;
-                self.guild_test_fixture_like_cpp.represented_guild_id_authority_complete_like_cpp = false;
+                self.guild_test_fixture_like_cpp
+                    .represented_guild_id_like_cpp = 0;
+                self.guild_test_fixture_like_cpp
+                    .represented_guild_id_authority_complete_like_cpp = false;
             }
             let _ = self.clear_represented_trait_config_rows_like_cpp();
             let _ = self.update_player_pet_lifecycle_state_like_cpp(|state| {
@@ -287,7 +295,8 @@ impl WorldSession {
             self.last_observed_farsight_object_like_cpp = wow_core::ObjectGuid::EMPTY;
             #[cfg(test)]
             {
-                self.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(guid);
+                self.visibility_test_fixture_like_cpp
+                    .represented_seer_guid_like_cpp = Some(guid);
             }
         }
         if guid.is_none() {
@@ -298,7 +307,8 @@ impl WorldSession {
             }
             #[cfg(test)]
             {
-                self.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = None;
+                self.visibility_test_fixture_like_cpp
+                    .represented_seer_guid_like_cpp = None;
             }
             self.last_observed_farsight_object_like_cpp = wow_core::ObjectGuid::EMPTY;
             // Old registry clones remain permanently closed; a later character
@@ -358,7 +368,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(controller.guid());
+            self.visibility_test_fixture_like_cpp
+                .represented_seer_guid_like_cpp = Some(controller.guid());
         }
         self.last_observed_farsight_object_like_cpp = wow_core::ObjectGuid::EMPTY;
         #[cfg(test)]

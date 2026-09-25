@@ -16,13 +16,11 @@ pub(crate) struct DuelTestFixtureLikeCpp {
     pub(in crate::session) represented_can_duel_spell_casts_like_cpp:
         Vec<RepresentedCanDuelSpellCastLikeCpp>,
     pub(in crate::session) represented_duel_arbiter_guid_like_cpp: Option<ObjectGuid>,
-    pub(in crate::session) represented_duel_requests_like_cpp:
-        Vec<RepresentedDuelRequestedLikeCpp>,
+    pub(in crate::session) represented_duel_requests_like_cpp: Vec<RepresentedDuelRequestedLikeCpp>,
     pub(in crate::session) represented_force_deselects_like_cpp:
         Vec<RepresentedForceDeselectLikeCpp>,
     pub(in crate::session) represented_duel_accepts_like_cpp: Vec<RepresentedDuelAcceptedLikeCpp>,
-    pub(in crate::session) represented_duel_cancels_like_cpp:
-        Vec<RepresentedDuelCancelledLikeCpp>,
+    pub(in crate::session) represented_duel_cancels_like_cpp: Vec<RepresentedDuelCancelledLikeCpp>,
 }
 
 impl Default for DuelTestFixtureLikeCpp {

@@ -70,7 +70,11 @@ impl WorldSession {
                     }
                 }
                 rows.complete = true;
-                info!("Loaded {} DB spells for {:?}", rows.known_spells.len(), guid);
+                info!(
+                    "Loaded {} DB spells for {:?}",
+                    rows.known_spells.len(),
+                    guid
+                );
             }
             wow_persistence::PlayerLoginAuxiliaryLoadOutcomeLikeCpp::Failed { reason } => {
                 warn!("Failed to load spells for {:?}: {}", guid, reason);

@@ -727,7 +727,8 @@ impl WorldSession {
                 action,
             };
             #[cfg(test)]
-            self.player_item_test_fixture_like_cpp.represented_item_bonus_actions_like_cpp
+            self.player_item_test_fixture_like_cpp
+                .represented_item_bonus_actions_like_cpp
                 .push(represented_action.clone());
             let spell_action_applied = self.apply_loaded_enchantment_spell_action_like_cpp(action);
             if !spell_action_applied

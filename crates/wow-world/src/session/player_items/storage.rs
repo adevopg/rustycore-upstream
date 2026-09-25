@@ -669,13 +669,14 @@ impl WorldSession {
                 _ => None,
             };
             if let Some(attack) = attack {
-                self.player_item_test_fixture_like_cpp.represented_combat_stat_recalculations_like_cpp
+                self.player_item_test_fixture_like_cpp
+                    .represented_combat_stat_recalculations_like_cpp
                     .push(RepresentedCombatStatRecalculationLikeCpp::Expertise { attack });
-                self.player_item_test_fixture_like_cpp.represented_combat_stat_recalculations_like_cpp.push(
-                    RepresentedCombatStatRecalculationLikeCpp::Rating {
+                self.player_item_test_fixture_like_cpp
+                    .represented_combat_stat_recalculations_like_cpp
+                    .push(RepresentedCombatStatRecalculationLikeCpp::Rating {
                         combat_rating: CR_ARMOR_PENETRATION_LIKE_CPP,
-                    },
-                );
+                    });
             }
         }
     }
@@ -684,11 +685,13 @@ impl WorldSession {
         &mut self,
         inventory: &PlayerInventoryRuntime,
     ) {
-        self.player_item_test_fixture_like_cpp.inventory_items = inventory.inventory_items().clone();
+        self.player_item_test_fixture_like_cpp.inventory_items =
+            inventory.inventory_items().clone();
         self.player_item_test_fixture_like_cpp.buyback_items = inventory.buyback_items().clone();
         self.player_item_test_fixture_like_cpp.buyback_price = *inventory.buyback_price();
         self.player_item_test_fixture_like_cpp.buyback_timestamp = *inventory.buyback_timestamp();
-        self.player_item_test_fixture_like_cpp.current_buyback_slot = inventory.current_buyback_slot();
+        self.player_item_test_fixture_like_cpp.current_buyback_slot =
+            inventory.current_buyback_slot();
         self.inventory_item_objects = inventory.item_objects().clone();
     }
     pub(crate) fn mutate_player_inventory_runtime_like_cpp<R>(
@@ -700,15 +703,20 @@ impl WorldSession {
         #[cfg(test)]
         if self.player_handle_like_cpp.is_none() {
             let mut inventory = PlayerInventoryRuntime::default();
-            inventory
-                .inventory_items_mut()
-                .extend(self.player_item_test_fixture_like_cpp.inventory_items.clone());
+            inventory.inventory_items_mut().extend(
+                self.player_item_test_fixture_like_cpp
+                    .inventory_items
+                    .clone(),
+            );
             inventory
                 .buyback_items_mut()
                 .extend(self.player_item_test_fixture_like_cpp.buyback_items.clone());
             *inventory.buyback_price_mut() = self.player_item_test_fixture_like_cpp.buyback_price;
-            *inventory.buyback_timestamp_mut() = self.player_item_test_fixture_like_cpp.buyback_timestamp;
-            inventory.set_current_buyback_slot(self.player_item_test_fixture_like_cpp.current_buyback_slot);
+            *inventory.buyback_timestamp_mut() =
+                self.player_item_test_fixture_like_cpp.buyback_timestamp;
+            inventory.set_current_buyback_slot(
+                self.player_item_test_fixture_like_cpp.current_buyback_slot,
+            );
             inventory
                 .item_objects_mut()
                 .extend(self.inventory_item_objects.clone());
@@ -742,15 +750,20 @@ impl WorldSession {
         #[cfg(test)]
         if self.player_handle_like_cpp.is_none() {
             let mut inventory = PlayerInventoryRuntime::default();
-            inventory
-                .inventory_items_mut()
-                .extend(self.player_item_test_fixture_like_cpp.inventory_items.clone());
+            inventory.inventory_items_mut().extend(
+                self.player_item_test_fixture_like_cpp
+                    .inventory_items
+                    .clone(),
+            );
             inventory
                 .buyback_items_mut()
                 .extend(self.player_item_test_fixture_like_cpp.buyback_items.clone());
             *inventory.buyback_price_mut() = self.player_item_test_fixture_like_cpp.buyback_price;
-            *inventory.buyback_timestamp_mut() = self.player_item_test_fixture_like_cpp.buyback_timestamp;
-            inventory.set_current_buyback_slot(self.player_item_test_fixture_like_cpp.current_buyback_slot);
+            *inventory.buyback_timestamp_mut() =
+                self.player_item_test_fixture_like_cpp.buyback_timestamp;
+            inventory.set_current_buyback_slot(
+                self.player_item_test_fixture_like_cpp.current_buyback_slot,
+            );
             inventory
                 .item_objects_mut()
                 .extend(self.inventory_item_objects.clone());

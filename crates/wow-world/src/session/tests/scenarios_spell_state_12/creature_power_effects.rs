@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// C++ `Spell::EffectPowerDrain` returns before touching the pool when the
 /// target's `GetPowerType()` differs from the effect's power
 /// (`SpellEffects.cpp:1078`).

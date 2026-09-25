@@ -18,12 +18,14 @@ impl WorldSession {
 
     #[cfg(test)]
     pub fn set_start_all_explored_like_cpp(&mut self, enabled: bool) {
-        self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_explored_like_cpp = enabled;
+        self.player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_explored_like_cpp = enabled;
     }
 
     #[cfg(test)]
     pub(crate) fn start_all_explored_like_cpp(&self) -> bool {
-        self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_explored_like_cpp
+        self.player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_explored_like_cpp
     }
 
     #[cfg(test)]

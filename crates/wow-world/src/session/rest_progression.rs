@@ -4,10 +4,10 @@
 //! Rest progression: private Session responsibility.
 //! Relocated under #1233; canonical state, phase order and public paths are unchanged.
 
-#[cfg(test)]
-use super::{REST_BONUS_MAX_NEXT_LEVEL_XP_FACTOR_LIKE_CPP, REST_STATE_NORMAL_LIKE_CPP};
 use super::{Arc, AreaTriggerDb2Store, PLAYER_FLAGS_RESTING_LIKE_CPP};
 use super::{PLAYER_FLAGS_VOID_UNLOCKED_LIKE_CPP, REST_FLAG_IN_TAVERN_LIKE_CPP};
+#[cfg(test)]
+use super::{REST_BONUS_MAX_NEXT_LEVEL_XP_FACTOR_LIKE_CPP, REST_STATE_NORMAL_LIKE_CPP};
 use super::{RepresentedAuraEffectLikeCpp, WorldSession, max_level_for_expansion_like_cpp};
 
 /// Handle-less test fixture for RestMgr state and test-only rate configuration.
@@ -148,29 +148,23 @@ impl WorldSession {
             .is_some();
         #[cfg(test)]
         if self.player_handle_like_cpp.is_none() {
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_rest_bonus_xp_like_cpp = state.rest_bonus_like_cpp();
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_rest_state_xp_like_cpp = state.rest_state_like_cpp();
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_rest_flag_mask_like_cpp = state.rest_flag_mask_like_cpp();
-            self.rest_mgr_test_fixture_like_cpp.represented_rest_location_initialized_like_cpp =
+            self.rest_mgr_test_fixture_like_cpp
+                .represented_rest_location_initialized_like_cpp =
                 state.is_location_initialized_like_cpp();
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_defer_rest_flag_sync_like_cpp = state.defers_flag_sync_like_cpp();
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_deferred_rest_flag_update_dirty_like_cpp =
                 state.deferred_flag_update_dirty_like_cpp();
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_inn_area_trigger_id_like_cpp = state.inn_trigger_id_like_cpp();
-            self
-                .rest_mgr_test_fixture_like_cpp
+            self.rest_mgr_test_fixture_like_cpp
                 .represented_rest_time_secs_like_cpp = state.rest_time_secs_like_cpp();
             return true;
         }
@@ -290,7 +284,9 @@ impl WorldSession {
             self.canonical_player_snapshot_like_cpp(|player| player.data().player_flags);
         #[cfg(test)]
         if canonical.is_none() && self.player_handle_like_cpp.is_none() {
-            return self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_like_cpp;
+            return self
+                .player_flags_test_fixture_like_cpp
+                .represented_loaded_player_flags_like_cpp;
         }
         canonical
     }
@@ -409,7 +405,9 @@ impl WorldSession {
         #[cfg(test)]
         let canonical_flags_ex =
             if canonical_flags_ex.is_none() && self.player_handle_like_cpp.is_none() {
-                self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_ex_like_cpp.or(Some(0))
+                self.player_flags_test_fixture_like_cpp
+                    .represented_loaded_player_flags_ex_like_cpp
+                    .or(Some(0))
             } else {
                 canonical_flags_ex
             };
@@ -422,8 +420,11 @@ impl WorldSession {
         self.resolved_player_flags_for_create_like_cpp()
             .unwrap_or_else(|| {
                 (
-                    self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_like_cpp.unwrap_or(0),
-                    self.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_ex_like_cpp
+                    self.player_flags_test_fixture_like_cpp
+                        .represented_loaded_player_flags_like_cpp
+                        .unwrap_or(0),
+                    self.player_flags_test_fixture_like_cpp
+                        .represented_loaded_player_flags_ex_like_cpp
                         .unwrap_or(0),
                 )
             })

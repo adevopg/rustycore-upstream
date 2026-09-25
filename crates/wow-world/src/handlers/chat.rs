@@ -58,27 +58,6 @@ mod tests;
 
 // ── Handler registrations ─────────────────────────────────────────
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 mod registrations;
 
 // ── Handler implementations ───────────────────────────────────────

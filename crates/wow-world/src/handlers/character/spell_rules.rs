@@ -9,9 +9,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use wow_packet::packets::misc::{SpellChargeEntry, SpellHistoryEntry};
 
-use crate::session::{
-    RepresentedPlayerSkillLikeCpp,
-};
+use crate::session::RepresentedPlayerSkillLikeCpp;
 
 pub(super) fn active_known_spell_for_send_like_cpp(
     spell_id: u32,

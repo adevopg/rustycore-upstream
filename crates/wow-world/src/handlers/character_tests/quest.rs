@@ -498,7 +498,10 @@ fn gossip_quest_text_offers_sallina_followup_after_hunter_training_rewarded_like
         .or_default()
         .push(10_070);
     session.set_quest_store(Arc::new(store));
-    session.quest_test_fixture_like_cpp.rewarded_quests.insert(9_393);
+    session
+        .quest_test_fixture_like_cpp
+        .rewarded_quests
+        .insert(9_393);
 
     let quest_text = session.represented_creature_gossip_text_like_cpp(sallina_entry);
 

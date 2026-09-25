@@ -10,8 +10,8 @@
 
 use super::*;
 
-mod real_swap;
 mod item_mutations;
+mod real_swap;
 
 impl WorldSession {
     pub(crate) fn validate_inventory_swap_target_like_cpp(
@@ -746,9 +746,6 @@ impl WorldSession {
         )
         .await;
     }
-
-
-
 
     pub(crate) fn publish_inventory_position_changes_like_cpp(&mut self, positions: &[(u8, u8)]) {
         let mut unique_positions = positions.to_vec();

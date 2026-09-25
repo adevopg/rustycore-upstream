@@ -7,10 +7,10 @@
 
 use super::*;
 
-mod buyback;
 mod buy;
-pub(super) mod rules;
+mod buyback;
 mod list_inventory;
+pub(super) mod rules;
 mod sell;
 
 use rules::{VendorBuyItem, vendor_currency_type_is_known};
@@ -173,7 +173,6 @@ impl WorldSession {
         self.handle_repair_item_with_generator_like_cpp(generators.item.as_ref(), repair)
             .await;
     }
-
 
     /// Handle CMSG_ITEM_PURCHASE_REFUND.
     ///
@@ -726,7 +725,6 @@ impl WorldSession {
             self.send_stat_update();
         }
     }
-
 }
 
 impl WorldSession {

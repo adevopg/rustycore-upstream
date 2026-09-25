@@ -8,9 +8,9 @@ mod contacts;
 mod duel;
 mod group;
 mod guild;
-mod trade;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
+mod trade;
 
 #[cfg(test)]
 #[path = "group_tests.rs"]

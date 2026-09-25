@@ -4,33 +4,66 @@
 //! State: private Session responsibility.
 //! Relocated under #1233; canonical state, phase order and public paths are unchanged.
 
-use super::RepresentedQuestObjectiveProgressEventLikeCpp;
-use super::{AccessRequirementStoreLikeCpp, AccountDataLikeCpp, AccountHeirloomDataLikeCpp};
-use super::{AdventureMapPoiStore, Arc, AreaTableStore, AreaTriggerDb2Store};
-use super::{AreaTriggerScriptDispatcherLikeCpp, AreaTriggerScriptStoreLikeCpp, AreaTriggerStore};
-use super::{AtomicBool, AuraApplication, BTreeMap, BTreeSet};
 #[cfg(test)]
 use super::AtomicUsize;
 #[cfg(test)]
 use super::BattlePetTestFixtureLikeCpp;
+use super::PlayerConditionStore;
+use super::PlayerCurrency;
+use super::RepresentedBankItemMoveLikeCpp;
+use super::RepresentedBattlefieldListLikeCpp;
 #[cfg(test)]
-use super::visibility::test_fixtures::VisibilityTestFixtureLikeCpp;
+use super::RepresentedBattlegroundQueueSlotLikeCpp;
+use super::RepresentedBattlemasterJoinSkirmishLikeCpp;
+#[cfg(test)]
+use super::RepresentedCreatureKillEventLikeCpp;
+#[cfg(test)]
+use super::RepresentedGameObjectCriteriaEvent;
+#[cfg(test)]
+use super::RepresentedGuildRepairBankWithdrawLikeCpp;
+use super::RepresentedHomebindLikeCpp;
+use super::RepresentedPendingSpellCastRequestLikeCpp;
+use super::RepresentedQueryPetitionLikeCpp;
+use super::RepresentedQuestCompleteStatusUpdateLikeCpp;
+use super::RepresentedQuestObjectiveProgressEventLikeCpp;
+use super::RepresentedSignPetitionLikeCpp;
+#[cfg(test)]
+use super::RepresentedSilencePartyTalkerLikeCpp;
+#[cfg(test)]
+use super::RepresentedVehicleSeatSpellClickRequestLikeCpp;
 #[cfg(test)]
 use super::instances::test_fixtures::InstanceTestFixtureLikeCpp;
 #[cfg(test)]
-use super::social::test_fixtures::TradeTestFixtureLikeCpp;
+use super::persistence::test_fixtures::LoadedPlayerFlagsTestFixtureLikeCpp;
 #[cfg(test)]
-use super::social::test_fixtures::GuildTestFixtureLikeCpp;
+use super::player_items::test_fixtures::PlayerItemTestFixtureLikeCpp;
+#[cfg(test)]
+use super::progression::PlayerSkillTestFixtureLikeCpp;
+#[cfg(test)]
+use super::quest::test_fixtures::QuestTestFixtureLikeCpp;
+#[cfg(test)]
+use super::rest_progression::RestMgrTestFixtureLikeCpp;
 #[cfg(test)]
 use super::social::test_fixtures::CalendarTestFixtureLikeCpp;
 #[cfg(test)]
 use super::social::test_fixtures::DuelTestFixtureLikeCpp;
 #[cfg(test)]
-use super::test_support::test_fixtures::PlayerBootstrapCatalogTestFixtureLikeCpp;
+use super::social::test_fixtures::GuildTestFixtureLikeCpp;
 #[cfg(test)]
-use super::persistence::test_fixtures::LoadedPlayerFlagsTestFixtureLikeCpp;
+use super::social::test_fixtures::TradeTestFixtureLikeCpp;
+#[cfg(test)]
+use super::spell_state::PlayerSpellAndTraitTestFixtureLikeCpp;
 #[cfg(test)]
 use super::support_features::test_fixtures::SupportFeatureTestFixtureLikeCpp;
+#[cfg(test)]
+use super::test_support::test_fixtures::PlayerBootstrapCatalogTestFixtureLikeCpp;
+use super::time_synchronization::TimeSynchronizationStateLikeCpp;
+#[cfg(test)]
+use super::visibility::test_fixtures::VisibilityTestFixtureLikeCpp;
+use super::{AccessRequirementStoreLikeCpp, AccountDataLikeCpp, AccountHeirloomDataLikeCpp};
+use super::{AdventureMapPoiStore, Arc, AreaTableStore, AreaTriggerDb2Store};
+use super::{AreaTriggerScriptDispatcherLikeCpp, AreaTriggerScriptStoreLikeCpp, AreaTriggerStore};
+use super::{AtomicBool, AuraApplication, BTreeMap, BTreeSet};
 use super::{BankBagSlotPricesStore, BattlePetAccountAttachmentLikeCpp};
 use super::{BattlemasterListStore, CanonicalThreatAuraSnapshotLikeCpp};
 use super::{CharacterPowerSnapshotLikeCpp, ChatFloodConfigLikeCpp, ChatFloodThrottleDataLikeCpp};
@@ -66,8 +99,6 @@ use super::{OwnedLootAuthority, PLAYER_EXPLORED_ZONES_SIZE_LIKE_CPP, PacketCount
 use super::{PacketHandlerEntry, PacketSpoofConfigLikeCpp, PacketSpoofPendingBanLikeCpp};
 use super::{ParagonReputationStore, PendingCreatureKillRewardLikeCpp, PendingCreatureSpawn};
 use super::{PendingInvites, PetStable, PhaseGroupStore, PhaseShift, PhaseStore};
-use super::PlayerConditionStore;
-use super::PlayerCurrency;
 use super::{PlayerIdentityBootstrapLikeCpp, PlayerInteractionDataLikeCpp, PlayerRegistry};
 use super::{PlayerResurrectionRequestLikeCpp, PlayerStatsStore, PowerTypeStore, PvpItemStore};
 use super::{RandPropPointsStore, RegenGameTablesLikeCpp, RepSpilloverTemplateStoreLikeCpp};
@@ -77,37 +108,19 @@ use super::{RepresentedAlterAppearanceLikeCpp, RepresentedAuctionPlaceBidLikeCpp
 use super::{RepresentedAreaZoneCriteriaLikeCpp, RepresentedAtLoginFlagRemovalLikeCpp};
 use super::{RepresentedAuctionRemoveItemLikeCpp, RepresentedAuctionReplicateRequestLikeCpp};
 use super::{RepresentedAuctionSellItemLikeCpp, RepresentedAutoUnequipOffhandLikeCpp};
-use super::RepresentedBankItemMoveLikeCpp;
-#[cfg(test)]
-use super::RepresentedBattlegroundQueueSlotLikeCpp;
-use super::RepresentedBattlefieldListLikeCpp;
 use super::{RepresentedBattlefieldPortLikeCpp, RepresentedBattlemasterHelloLikeCpp};
 use super::{RepresentedBattlemasterJoinArenaLikeCpp, RepresentedBattlemasterJoinLikeCpp};
-use super::RepresentedBattlemasterJoinSkirmishLikeCpp;
 use super::{RepresentedCharacterSpellChargeLikeCpp, RepresentedCharacterSpellCooldownLikeCpp};
 use super::{RepresentedConfirmBarbersChoiceLikeCpp, RepresentedConfirmRespecWipeLikeCpp};
-#[cfg(test)]
-use super::RepresentedCreatureKillEventLikeCpp;
 use super::{RepresentedDeclinePetitionLikeCpp, RepresentedGameObjectUseEffect};
-#[cfg(test)]
-use super::RepresentedGameObjectCriteriaEvent;
 use super::{RepresentedGameObjectUseState, RepresentedGuildRepairBankStateLikeCpp};
 #[cfg(test)]
 use super::{RepresentedGuildBankInventoryMoveLikeCpp, RepresentedGuildBankListRequestLikeCpp};
 #[cfg(test)]
 use super::{RepresentedGuildBankMoneyMoveLikeCpp, RepresentedGuildBankTabActionLikeCpp};
 #[cfg(test)]
-use super::RepresentedGuildRepairBankWithdrawLikeCpp;
-use super::RepresentedHomebindLikeCpp;
-#[cfg(test)]
 use super::{RepresentedLiveApplicationLikeCpp, RepresentedLootRollCriteriaEvent};
 use super::{RepresentedLootRollState, RepresentedPendingBind};
-use super::RepresentedPendingSpellCastRequestLikeCpp;
-use super::RepresentedQueryPetitionLikeCpp;
-use super::RepresentedQuestCompleteStatusUpdateLikeCpp;
-use super::RepresentedSignPetitionLikeCpp;
-#[cfg(test)]
-use super::RepresentedSilencePartyTalkerLikeCpp;
 #[cfg(test)]
 use super::{RepresentedTalentResetScriptHookLikeCpp, RepresentedTalentRespecCriteriaEventLikeCpp};
 use super::{RepresentedTalentRespecVisualSpellCastLikeCpp, RepresentedVoidStorageItemLikeCpp};
@@ -117,8 +130,6 @@ use super::{RepresentedTaxiFlightStateLikeCpp, RepresentedTransmogCriteriaEvent}
 use super::{RepresentedVehicleBaseMovementLikeCpp, RepresentedVehicleDismissMovementLikeCpp};
 #[cfg(test)]
 use super::{RepresentedVehicleEnterRequestLikeCpp, RepresentedVehicleSeatChangeRequestLikeCpp};
-#[cfg(test)]
-use super::RepresentedVehicleSeatSpellClickRequestLikeCpp;
 use super::{RepresentedWargameInviteAcceptanceLikeCpp, ReputationRatesLikeCpp};
 use super::{ReputationRewardRateStoreLikeCpp, ScalingStatDistributionStore};
 use super::{ScalingStatValuesStore, ScriptNameInternerLikeCpp, SessionCommand, SessionManager};
@@ -126,17 +137,6 @@ use super::{SessionPersistencePortsLikeCpp, SessionState, SharedCanonicalMapMana
 use super::{SharedClientVisibleGuidsLikeCpp, ShieldBlockRegularGameTableLikeCpp, SkillLineStore};
 use super::{SkillStore, SkillTiersStoreLikeCpp, SocketTimeoutsLikeCpp, SpellCastState};
 use super::{SpellChargeEntry, SpellHistoryEntry, StdRng, TactKeyStore};
-#[cfg(test)]
-use super::progression::PlayerSkillTestFixtureLikeCpp;
-#[cfg(test)]
-use super::rest_progression::RestMgrTestFixtureLikeCpp;
-#[cfg(test)]
-use super::quest::test_fixtures::QuestTestFixtureLikeCpp;
-#[cfg(test)]
-use super::player_items::test_fixtures::PlayerItemTestFixtureLikeCpp;
-#[cfg(test)]
-use super::spell_state::PlayerSpellAndTraitTestFixtureLikeCpp;
-use super::time_synchronization::TimeSynchronizationStateLikeCpp;
 use super::{TalentStore, TavernAreaTriggerStoreLikeCpp, TeleportToOptionsLikeCpp, ToyStore};
 use super::{TrainerStoreLikeCpp, TraitDefinitionStore, TransmogSetItemStore};
 use super::{TrinityStringStoreLikeCpp, UnitFlags, UnitMoveTypeLikeCpp, UnitStandStateType};
@@ -225,7 +225,8 @@ pub struct WorldSession {
     /// `urand`/`SelectRandomContainerElement` while the owning Player/Map runtime is
     /// still being split out of `WorldSession`.
     pub(in crate::session) represented_runtime_rng_like_cpp: StdRng,
-    pub(in crate::session) represented_player_recent_instances_like_cpp: std::collections::HashMap<u32, u32>,
+    pub(in crate::session) represented_player_recent_instances_like_cpp:
+        std::collections::HashMap<u32, u32>,
     pub(in crate::session) represented_loaded_player_flags_like_cpp: Option<u32>,
     pub(in crate::session) represented_loaded_player_flags_ex_like_cpp: Option<u32>,
     pub(in crate::session) represented_partner_trade_server_state_index_like_cpp: u32,
@@ -588,8 +589,7 @@ pub struct WorldSession {
     pub(in crate::session) rest_mgr_test_fixture_like_cpp: RestMgrTestFixtureLikeCpp,
     /// Detached loaded Player flag values used only by persistence tests.
     #[cfg(test)]
-    pub(in crate::session) player_flags_test_fixture_like_cpp:
-        LoadedPlayerFlagsTestFixtureLikeCpp,
+    pub(in crate::session) player_flags_test_fixture_like_cpp: LoadedPlayerFlagsTestFixtureLikeCpp,
     /// Test-only bootstrap for fixtures without a canonical `Player` owner.
     /// Production money lives exclusively in `Player::ActivePlayerData::Coinage`.
     #[cfg(test)]

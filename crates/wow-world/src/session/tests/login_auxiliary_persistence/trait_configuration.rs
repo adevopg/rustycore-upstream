@@ -418,8 +418,16 @@ async fn malformed_trait_entry_keeps_authority_incomplete_without_suppressing_co
 
     assert_eq!(configs.len(), 1);
     assert!(configs[0].entries.is_empty());
-    assert!(!session.player_spell_test_fixture_like_cpp.represented_trait_config_rows_complete_like_cpp);
-    assert!(!session.player_spell_test_fixture_like_cpp.represented_trait_entry_rows_complete_like_cpp);
+    assert!(
+        !session
+            .player_spell_test_fixture_like_cpp
+            .represented_trait_config_rows_complete_like_cpp
+    );
+    assert!(
+        !session
+            .player_spell_test_fixture_like_cpp
+            .represented_trait_entry_rows_complete_like_cpp
+    );
 }
 
 #[tokio::test]
@@ -455,6 +463,10 @@ async fn failed_trait_entries_do_not_suppress_the_independent_config_query_like_
 
     assert_eq!(configs.len(), 1);
     assert_eq!(configs[0].trait_system_id, 7);
-    assert!(!session.player_spell_test_fixture_like_cpp.represented_trait_config_rows_complete_like_cpp);
+    assert!(
+        !session
+            .player_spell_test_fixture_like_cpp
+            .represented_trait_config_rows_complete_like_cpp
+    );
     assert_eq!(port.requests().len(), 2);
 }

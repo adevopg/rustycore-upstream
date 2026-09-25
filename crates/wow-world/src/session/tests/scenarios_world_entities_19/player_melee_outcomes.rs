@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// The map-owned melee phase publishes the attack-table outcome, not only the
 /// damage.
 ///

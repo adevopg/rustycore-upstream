@@ -92,7 +92,11 @@ impl WorldSession {
             .any(|entry| entry.item_id == choice_item_id)
     }
 
-    pub(in crate::handlers::quest) fn send_quest_failed_like_cpp(&self, quest_id: u32, reason: InventoryResult) {
+    pub(in crate::handlers::quest) fn send_quest_failed_like_cpp(
+        &self,
+        quest_id: u32,
+        reason: InventoryResult,
+    ) {
         if quest_id == 0 {
             return;
         }

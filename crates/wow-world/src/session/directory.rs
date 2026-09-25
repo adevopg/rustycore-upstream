@@ -489,21 +489,21 @@ struct PlayerRegistryEntry {
     durable_loot_money: Arc<DurableLootMoneyPersistenceTrackerLikeCpp>,
 }
 
+#[path = "directory/delivery.rs"]
+mod delivery;
 #[path = "directory/group_state.rs"]
 mod group_state;
 #[path = "directory/identity.rs"]
 mod identity;
+#[path = "directory/loot.rs"]
+mod loot;
 #[path = "directory/name_query.rs"]
 mod name_query;
-#[path = "directory/delivery.rs"]
-mod delivery;
+#[path = "directory/recipient_queries.rs"]
+mod recipient_queries;
 #[cfg(any(test, feature = "test-fixtures"))]
 #[path = "directory/test_fixtures.rs"]
 mod test_fixtures;
-#[path = "directory/loot.rs"]
-mod loot;
-#[path = "directory/recipient_queries.rs"]
-mod recipient_queries;
 pub use identity::PlayerDirectoryIdentityLikeCpp;
 pub use name_query::PlayerNameQuerySnapshotLikeCpp;
 
@@ -790,5 +790,4 @@ impl PlayerRegistry {
         )
         .is_some()
     }
-
 }

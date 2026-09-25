@@ -5,21 +5,18 @@
 
 //! Vendor item purchase handler and transaction/publication flow.
 
-use super::*;
 use super::rules::{
-    VendorBuyTemplateBlock, VendorExtendedCostBlock,
-    vendor_buy_coinage_update_like_cpp,
-    vendor_buy_currency_packet_quantity_to_cpp_count,
-    vendor_buy_currency_quantity_block_result,
-    vendor_buy_direct_inventory_destination,
-    vendor_buy_direct_store_block_result, vendor_buy_extended_cost_block_result,
-    vendor_buy_extended_cost_currency_costs, vendor_buy_extended_cost_item_costs,
-    vendor_buy_muid_to_cpp_slot, vendor_buy_packet_quantity_to_cpp_count,
-    vendor_buy_player_condition_block_result_like_cpp, vendor_buy_quantity_and_price,
-    vendor_buy_required_reputation_block_result, vendor_buy_template_block_result,
-    vendor_conditions_block_result, vendor_list_item_refundable,
+    VendorBuyTemplateBlock, VendorExtendedCostBlock, vendor_buy_coinage_update_like_cpp,
+    vendor_buy_currency_packet_quantity_to_cpp_count, vendor_buy_currency_quantity_block_result,
+    vendor_buy_direct_inventory_destination, vendor_buy_direct_store_block_result,
+    vendor_buy_extended_cost_block_result, vendor_buy_extended_cost_currency_costs,
+    vendor_buy_extended_cost_item_costs, vendor_buy_muid_to_cpp_slot,
+    vendor_buy_packet_quantity_to_cpp_count, vendor_buy_player_condition_block_result_like_cpp,
+    vendor_buy_quantity_and_price, vendor_buy_required_reputation_block_result,
+    vendor_buy_template_block_result, vendor_conditions_block_result, vendor_list_item_refundable,
     vendor_stored_new_item_flags_like_cpp,
 };
+use super::*;
 
 impl WorldSession {
     #[cfg(test)]

@@ -5,7 +5,10 @@
 
 //! Random item-property generation and stack compatibility for loot items.
 
-use rand::{Rng, distributions::{Distribution, WeightedIndex}};
+use rand::{
+    Rng,
+    distributions::{Distribution, WeightedIndex},
+};
 use wow_constants::{InventoryType, ItemQuality};
 use wow_data::{ItemRandomEnchantmentTemplateEntry, ItemRandomPropertyTemplateEntry};
 use wow_entities::Item;

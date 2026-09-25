@@ -15,7 +15,6 @@ mod items;
 mod validation;
 
 impl WorldSession {
-
     fn represented_direct_inventory_count_like_cpp(&self, item_entry: u32) -> Option<u32> {
         Some(
             self.resolved_inventory_items_like_cpp()?
@@ -195,7 +194,8 @@ impl WorldSession {
     ) {
         #[cfg(test)]
         if quest.reward_skill_line_id != 0 {
-            self.quest_test_fixture_like_cpp.represented_quest_reward_skill_updates_like_cpp
+            self.quest_test_fixture_like_cpp
+                .represented_quest_reward_skill_updates_like_cpp
                 .push((quest.reward_skill_line_id, quest.reward_skill_points));
         }
     }
@@ -209,8 +209,9 @@ impl WorldSession {
             let caster_selection_unrepresented =
                 (quest.flags & QUEST_FLAGS_PLAYER_CAST_COMPLETE_LIKE_CPP) == 0;
             if quest.reward_spell > 0 {
-                self.quest_test_fixture_like_cpp.represented_quest_reward_spell_casts_like_cpp.push(
-                    RepresentedQuestRewardSpellCastLikeCpp {
+                self.quest_test_fixture_like_cpp
+                    .represented_quest_reward_spell_casts_like_cpp
+                    .push(RepresentedQuestRewardSpellCastLikeCpp {
                         quest_id: quest.id,
                         spell_id: quest.reward_spell,
                         kind: RepresentedQuestRewardSpellKindLikeCpp::RewardSpell,
@@ -218,8 +219,7 @@ impl WorldSession {
                         spell_info_lookup_unrepresented: true,
                         caster_selection_unrepresented,
                         cast_spell_runtime_unrepresented: true,
-                    },
-                );
+                    });
                 return;
             }
 
@@ -228,8 +228,9 @@ impl WorldSession {
                 if spell_id == 0 {
                     continue;
                 }
-                self.quest_test_fixture_like_cpp.represented_quest_reward_spell_casts_like_cpp.push(
-                    RepresentedQuestRewardSpellCastLikeCpp {
+                self.quest_test_fixture_like_cpp
+                    .represented_quest_reward_spell_casts_like_cpp
+                    .push(RepresentedQuestRewardSpellCastLikeCpp {
                         quest_id: quest.id,
                         spell_id,
                         kind: RepresentedQuestRewardSpellKindLikeCpp::RewardDisplaySpell {
@@ -239,8 +240,7 @@ impl WorldSession {
                         spell_info_lookup_unrepresented: true,
                         caster_selection_unrepresented,
                         cast_spell_runtime_unrepresented: true,
-                    },
-                );
+                    });
             }
         }
         #[cfg(not(test))]
@@ -253,14 +253,14 @@ impl WorldSession {
     ) {
         #[cfg(test)]
         if quest.reward_title_id != 0 {
-            self.quest_test_fixture_like_cpp.represented_quest_reward_titles_like_cpp.push(
-                RepresentedQuestRewardTitleLikeCpp {
+            self.quest_test_fixture_like_cpp
+                .represented_quest_reward_titles_like_cpp
+                .push(RepresentedQuestRewardTitleLikeCpp {
                     quest_id: quest.id,
                     title_id: quest.reward_title_id,
                     char_title_lookup_unrepresented: true,
                     set_title_runtime_unrepresented: true,
-                },
-            );
+                });
         }
         if quest.reward_skill_points != 0 {
             let _ = self.add_represented_quest_reward_talent_points_like_cpp(
@@ -281,7 +281,8 @@ impl WorldSession {
                 return;
             }
 
-            self.quest_test_fixture_like_cpp.represented_quest_reward_mails_like_cpp
+            self.quest_test_fixture_like_cpp
+                .represented_quest_reward_mails_like_cpp
                 .push(RepresentedQuestRewardMailLikeCpp {
                     quest_id: quest.id,
                     mail_template_id: quest.reward_mail_template_id,
@@ -505,8 +506,9 @@ impl WorldSession {
 
             #[cfg(test)]
             {
-                self.quest_test_fixture_like_cpp.represented_quest_reward_reputations_like_cpp.push(
-                    RepresentedQuestRewardReputationLikeCpp {
+                self.quest_test_fixture_like_cpp
+                    .represented_quest_reward_reputations_like_cpp
+                    .push(RepresentedQuestRewardReputationLikeCpp {
                         quest_id: quest.id,
                         slot: slot as u8,
                         faction_id,
@@ -530,8 +532,7 @@ impl WorldSession {
                             && current_rank_for_cap.is_none(),
                         calculate_reputation_gain_unrepresented: true,
                         modify_reputation_runtime_unrepresented,
-                    },
-                );
+                    });
             }
         }
     }

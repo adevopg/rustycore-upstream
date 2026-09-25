@@ -3,7 +3,7 @@
 use super::*;
 
 impl WorldSession {
-/// Send nearby gameobjects to the client as UpdateObject packets.
+    /// Send nearby gameobjects to the client as UpdateObject packets.
     pub async fn send_nearby_gameobjects(
         &mut self,
         map_id: u16,

@@ -78,8 +78,7 @@ impl WorldSession {
                 || x == wow_data::spell::spell_effect_types::SPELL_EFFECT_BIND
                 || x == wow_data::spell::spell_effect_types::SPELL_EFFECT_TELEPORT_UNITS
                 || x == wow_data::spell::spell_effect_types::SPELL_EFFECT_DURABILITY_DAMAGE
-                || x == wow_data::spell::spell_effect_types::SPELL_EFFECT_DURABILITY_DAMAGE_PCT =>
-            {
+                || x == wow_data::spell::spell_effect_types::SPELL_EFFECT_DURABILITY_DAMAGE_PCT => {
             }
             _ => {
                 debug!("Spell effect type {} not yet implemented", effect_type);

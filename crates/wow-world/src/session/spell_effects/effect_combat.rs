@@ -12,7 +12,6 @@ mod damage_and_combat_application;
 mod healing_application;
 
 impl WorldSession {
-
     /// C++ `Unit::SpellDamageBonusDone` (`Unit.cpp:6623-6680`) for the
     /// represented player-caster `SPELL_DIRECT_DAMAGE`:
     /// `int32(max((pdamage + int32(SpellBaseDamageBonusDone(schoolMask) *
@@ -669,7 +668,6 @@ impl WorldSession {
         }
         Some(benefit)
     }
-
 }
 
 /// C++ `UI64LIT(1) << mechanic`: the bit a positive mechanic occupies in a

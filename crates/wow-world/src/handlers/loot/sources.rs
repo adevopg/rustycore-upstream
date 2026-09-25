@@ -14,8 +14,8 @@ use super::*;
 #[path = "sources/creature.rs"]
 mod creature;
 
-mod gameobject;
 mod creature_conditions;
+mod gameobject;
 mod gameobject_authority;
 
 impl WorldSession {
@@ -895,12 +895,6 @@ impl WorldSession {
         all_stored
     }
 
-
-
-
-
-
-
     pub(super) fn remove_canonical_corpse_lootable_dynamic_flag_like_cpp(
         &mut self,
         corpse_guid: ObjectGuid,
@@ -960,7 +954,4 @@ impl WorldSession {
             )
             .is_some()
     }
-
-
-
 }

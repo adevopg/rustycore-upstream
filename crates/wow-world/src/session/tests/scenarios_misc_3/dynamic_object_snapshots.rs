@@ -102,7 +102,9 @@ async fn dynamic_object_values_snapshot_player_shared_vision_no_seer_gate_sends_
         7,
     );
     prepare_dynamic_object_values_snapshot_like_cpp(&canonical, 571, 7, dynamic_guid, 41.5);
-    session.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(viewer_guid);
+    session
+        .visibility_test_fixture_like_cpp
+        .represented_seer_guid_like_cpp = Some(viewer_guid);
     session.client_visible_guids_like_cpp.insert(dynamic_guid);
 
     assert_eq!(

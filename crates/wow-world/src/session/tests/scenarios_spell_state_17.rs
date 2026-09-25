@@ -322,7 +322,8 @@ async fn spell_quest_complete_effect_marks_active_event_quest_complete_like_cpp(
         .expect("represented quest-complete spell row should execute");
 
     let status = session
-        .quest_test_fixture_like_cpp.player_quests
+        .quest_test_fixture_like_cpp
+        .player_quests
         .get(&quest_id)
         .expect("non-tracking quest remains in log");
     assert!(status.explored);
@@ -330,7 +331,12 @@ async fn spell_quest_complete_effect_marks_active_event_quest_complete_like_cpp(
         status.status,
         crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP
     );
-    assert!(!session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(
         drain_server_opcodes(&send_rx),
         vec![
@@ -396,8 +402,18 @@ async fn spell_quest_complete_effect_auto_rewards_active_tracking_event_like_cpp
         .await
         .expect("represented tracking quest-complete spell row should execute");
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(
         drain_server_opcodes(&send_rx),
         vec![
@@ -459,10 +475,16 @@ async fn spell_quest_complete_effect_rewards_unlogged_tracking_event_like_cpp() 
         .await
         .expect("represented unlogged tracking quest-complete spell row should execute");
 
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
     assert!(
         session
-            .quest_test_fixture_like_cpp.represented_quest_completed_bits_like_cpp
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .represented_quest_completed_bits_like_cpp
             .contains(&65)
     );
     assert_eq!(
@@ -525,7 +547,11 @@ async fn spell_quest_complete_effect_keeps_failed_active_quest_unchanged_like_cp
         .await
         .expect("represented failed quest-complete spell row should execute as no-op");
 
-    let status = session.quest_test_fixture_like_cpp.player_quests.get(&quest_id).expect("quest remains");
+    let status = session
+        .quest_test_fixture_like_cpp
+        .player_quests
+        .get(&quest_id)
+        .expect("quest remains");
     assert!(!status.explored);
     assert_eq!(
         status.status,

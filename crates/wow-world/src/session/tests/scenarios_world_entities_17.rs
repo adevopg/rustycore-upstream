@@ -495,8 +495,18 @@ async fn gameobject_use_goober_tracking_event_objective_auto_rewards_like_cpp() 
             .await
     );
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(
         session.represented_quest_complete_status_updates_like_cpp(),
         &[RepresentedQuestCompleteStatusUpdateLikeCpp {

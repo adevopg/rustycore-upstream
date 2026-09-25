@@ -34,7 +34,10 @@ fn player_spell_hit_source_authority_evaluates_spell_area_quest_requirements_lik
         "the issue #26 zone aura cannot fit while quest 10045 is exactly not rewarded"
     );
 
-    session.quest_test_fixture_like_cpp.rewarded_quests.insert(10_045);
+    session
+        .quest_test_fixture_like_cpp
+        .rewarded_quests
+        .insert(10_045);
     assert!(
         !session.can_authorize_empty_player_spell_hit_aura_source_like_cpp(),
         "the same C++ spell_area row can autocast after its rewarded requirement fits"

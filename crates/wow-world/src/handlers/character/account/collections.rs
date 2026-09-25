@@ -7,7 +7,9 @@ use wow_persistence::{
 };
 
 impl WorldSession {
-    pub(in crate::handlers::character) fn login_known_spells_after_account_collections_like_cpp(&self) -> Vec<i32> {
+    pub(in crate::handlers::character) fn login_known_spells_after_account_collections_like_cpp(
+        &self,
+    ) -> Vec<i32> {
         // C++ `Player::HasSpell` includes inactive, non-disabled rows, while
         // `Player::SendKnownSpells` publishes only active rows. Prefer the
         // complete PlayerSpellMap when available so the internal mirror can
@@ -279,7 +281,9 @@ impl WorldSession {
         );
     }
 
-    pub(in crate::handlers::character) async fn load_account_transmog_illusions_like_cpp(&mut self) {
+    pub(in crate::handlers::character) async fn load_account_transmog_illusions_like_cpp(
+        &mut self,
+    ) {
         let Some(port) = self.player_lifecycle_port_like_cpp().map(Arc::clone) else {
             self.load_represented_account_transmog_illusions_like_cpp([]);
             return;

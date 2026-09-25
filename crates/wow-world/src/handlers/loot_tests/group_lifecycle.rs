@@ -1,17 +1,17 @@
 //! Shared group-loot and generation-lifecycle fixtures for loot tests.
 
 use std::collections::HashMap;
-use wow_loot::{LOOT_METHOD_GROUP_LIKE_CPP, LOOT_METHOD_MASTER_LIKE_CPP};
 use std::sync::Arc;
 use wow_core::ObjectGuid;
+use wow_loot::{LOOT_METHOD_GROUP_LIKE_CPP, LOOT_METHOD_MASTER_LIKE_CPP};
 use wow_packet::packets::loot::{
     CreatureLoot, LOOT_TYPE_CORPSE_LIKE_CPP, LootEntry, LootEntryFlags,
 };
 use wow_social::group::{GroupInfo, GroupRegistry, PendingInvites};
 
 use super::{
-    broadcast_info, install_cached_test_creature_loot_authority_like_cpp,
-    loot_unit_packet, make_session_with_send_capacity, register_test_creature_like_cpp,
+    broadcast_info, install_cached_test_creature_loot_authority_like_cpp, loot_unit_packet,
+    make_session_with_send_capacity, register_test_creature_like_cpp,
     represented_loot_object_guid_like_cpp, test_creature, test_creature_guid,
 };
 use crate::session::WorldSession;

@@ -16,7 +16,7 @@ impl WorldSession {
         UpdateObject::create_creature_block(viewer_create_data, &spawn.position)
     }
 
-/// Send nearby creatures to the client as UpdateObject packets.
+    /// Send nearby creatures to the client as UpdateObject packets.
     ///
     /// Queries the world database for creatures within visibility range
     /// on the player's map, builds CreatureCreateData for each, and sends
@@ -192,7 +192,7 @@ impl WorldSession {
         );
     }
 
-/// Dynamic visibility update — called when the player moves significantly.
+    /// Dynamic visibility update — called when the player moves significantly.
     ///
     /// Queries the DB for all creatures/GOs in the new range, diffs against
     /// the current visible set, and sends:
@@ -951,7 +951,6 @@ impl WorldSession {
                 .count()
         );
     }
-
 }
 
 #[cfg(test)]

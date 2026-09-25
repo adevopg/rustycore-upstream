@@ -5,15 +5,15 @@
 
 //! Full post-instance player login sequence.
 
-use super::*;
-use super::super::vendor::rules::{LoadedItemRefundDecision, loaded_item_refund_decision};
 use super::super::spell_rules::{
     apply_skill_rewarded_spell_changes_to_login_like_cpp, favorite_known_spells_for_send_like_cpp,
     sync_loaded_fist_weapons_with_unarmed_like_cpp,
 };
+use super::super::vendor::rules::{LoadedItemRefundDecision, loaded_item_refund_decision};
+use super::*;
 
-mod admission;
 mod action_buttons;
+mod admission;
 mod aura_loading;
 mod cuf_profiles;
 mod currency_loading;

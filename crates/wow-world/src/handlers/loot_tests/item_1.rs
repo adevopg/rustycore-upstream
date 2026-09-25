@@ -427,7 +427,11 @@ async fn quest_bound_loot_credits_objective_without_physical_item_like_cpp() {
         0,
         "C++ StoreNewItem returns nullptr for quest-bound objective credit"
     );
-    let status = first.quest_test_fixture_like_cpp.player_quests.get(&quest_id).expect("active quest");
+    let status = first
+        .quest_test_fixture_like_cpp
+        .player_quests
+        .get(&quest_id)
+        .expect("active quest");
     assert_eq!(status.objective_counts, vec![6]);
     assert_eq!(
         status.status,
@@ -499,7 +503,11 @@ async fn quest_bound_loot_still_requires_can_store_new_item_like_cpp() {
         .await;
 
     assert_eq!(grants.load(Ordering::SeqCst), 0);
-    let status = first.quest_test_fixture_like_cpp.player_quests.get(&quest_id).expect("active quest");
+    let status = first
+        .quest_test_fixture_like_cpp
+        .player_quests
+        .get(&quest_id)
+        .expect("active quest");
     assert_eq!(status.objective_counts, vec![5]);
     assert_eq!(
         status.status,

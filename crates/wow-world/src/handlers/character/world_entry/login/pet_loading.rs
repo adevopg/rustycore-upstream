@@ -241,8 +241,8 @@ impl WorldSession {
                             recharge_start_unix_secs: row.recharge_start_unix_secs,
                             recharge_end_unix_secs: row.recharge_end_unix_secs,
                         });
-                    let loaded =
-                        self.load_represented_pet_spell_charge_rows_like_cpp(summoned_pet_number, rows);
+                    let loaded = self
+                        .load_represented_pet_spell_charge_rows_like_cpp(summoned_pet_number, rows);
                     trace!(
                         player_guid = guid.counter(),
                         summoned_pet_number,

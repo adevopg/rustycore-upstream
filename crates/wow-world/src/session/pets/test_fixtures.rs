@@ -1,7 +1,7 @@
 //! Handle-less battle-pet state used by isolated Session tests.
 
 use super::{
-    Arc, BTreeMap, BATTLE_PET_SLOT_COUNT_LIKE_CPP, BattlePetBreedQualityStore,
+    Arc, BATTLE_PET_SLOT_COUNT_LIKE_CPP, BTreeMap, BattlePetBreedQualityStore,
     BattlePetBreedStateStore, BattlePetSpeciesStateStore, BattlePetSpeciesStore,
     BattlePetXpGameTableLikeCpp, HashMap, ObjectGuid, RepresentedBattlePetCageItemLikeCpp,
     RepresentedBattlePetDataLikeCpp, RepresentedBattlePetLevelCriteriaLikeCpp,

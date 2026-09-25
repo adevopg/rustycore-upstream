@@ -294,7 +294,8 @@ impl WorldSession {
             else {
                 return;
             };
-            self.player_item_test_fixture_like_cpp.represented_avg_equipped_item_level_updates_like_cpp
+            self.player_item_test_fixture_like_cpp
+                .represented_avg_equipped_item_level_updates_like_cpp
                 .push(avg_equipped_item_level);
         }
     }
@@ -704,6 +705,8 @@ impl WorldSession {
     }
     #[cfg(test)]
     pub(crate) fn represented_avg_equipped_item_level_updates_like_cpp(&self) -> &[f32] {
-        &self.player_item_test_fixture_like_cpp.represented_avg_equipped_item_level_updates_like_cpp
+        &self
+            .player_item_test_fixture_like_cpp
+            .represented_avg_equipped_item_level_updates_like_cpp
     }
 }

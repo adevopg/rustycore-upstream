@@ -4,15 +4,15 @@ use std::sync::{Arc, RwLock};
 use wow_core::{ObjectGuid, Position};
 use wow_packet::packets::loot::{
     CreatureLoot, LOOT_RESPONSE_DEFAULT_FAILURE_REASON_LIKE_CPP,
-    LOOT_RESPONSE_DEFAULT_THRESHOLD_LIKE_CPP, LOOT_TYPE_CORPSE_LIKE_CPP, LootEntry,
-    LootEntryFlags, LootResponse,
+    LOOT_RESPONSE_DEFAULT_THRESHOLD_LIKE_CPP, LOOT_TYPE_CORPSE_LIKE_CPP, LootEntry, LootEntryFlags,
+    LootResponse,
 };
 
 use super::{
-    install_limited_test_item_template, make_session_with_send_capacity,
-    register_test_creature_like_cpp, represented_loot_object_guid_like_cpp,
-    represented_loot_response_items_like_cpp, test_creature, test_creature_guid,
-    loot_type_for_client_like_cpp,
+    install_limited_test_item_template, loot_type_for_client_like_cpp,
+    make_session_with_send_capacity, register_test_creature_like_cpp,
+    represented_loot_object_guid_like_cpp, represented_loot_response_items_like_cpp, test_creature,
+    test_creature_guid,
 };
 use crate::handlers::loot::rebuild_represented_personal_loot_counts_preserving_consumed_like_cpp;
 use crate::session::WorldSession;

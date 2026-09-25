@@ -9,8 +9,8 @@ use wow_loot::{
 };
 
 use super::{
-    LOOT_MODE_DEFAULT_LIKE_CPP, attach_loot_guid_allocator_for_owner, broadcast_info,
-    make_session, register_test_creature_like_cpp, test_creature, test_creature_guid,
+    LOOT_MODE_DEFAULT_LIKE_CPP, attach_loot_guid_allocator_for_owner, broadcast_info, make_session,
+    register_test_creature_like_cpp, test_creature, test_creature_guid,
 };
 use crate::session::WorldSession;
 use crate::session::directory::PlayerRegistry;
@@ -25,8 +25,8 @@ pub(super) struct OverworldPersonalLootTestFixtureLikeCpp {
     pub(super) alliance_item_id: u32,
 }
 
-pub(super) fn overworld_personal_loot_test_fixture_like_cpp(
-) -> OverworldPersonalLootTestFixtureLikeCpp {
+pub(super) fn overworld_personal_loot_test_fixture_like_cpp()
+-> OverworldPersonalLootTestFixtureLikeCpp {
     let mut session = make_session();
     let first_tapper = ObjectGuid::create_player(1, 42);
     let second_tapper = ObjectGuid::create_player(1, 43);

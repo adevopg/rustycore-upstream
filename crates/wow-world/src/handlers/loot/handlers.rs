@@ -794,7 +794,6 @@ impl WorldSession {
             .await;
     }
 
-
     pub(crate) async fn handle_represented_master_loot_give_command_with_generator_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,

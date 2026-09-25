@@ -69,8 +69,18 @@ async fn spell_kill_credit_effect_row_rewards_player_monster_objective_like_cpp(
         .await
         .expect("represented kill-credit spell row should execute");
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(
         drain_server_opcodes(&send_rx),
         vec![
@@ -153,8 +163,18 @@ async fn spell_kill_credit2_effect_row_rewards_current_session_like_cpp_without_
         .await
         .expect("represented kill-credit2 spell row should execute");
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(
         drain_server_opcodes(&send_rx),
         vec![

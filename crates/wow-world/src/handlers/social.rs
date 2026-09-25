@@ -19,12 +19,12 @@ use wow_packet::packets::social::{
     DelIgnore, FriendStatusPkt, FriendsResult, SetContactNotes, SocialContractRequestResponse,
 };
 
-use crate::session::{WorldSession, player_team_for_race_cpp};
 use crate::session::mailbox::{
     CancelRepresentedTradeLikeCppCommand, SendRepresentedDuelCountdownLikeCppCommand,
     SendRepresentedDuelRequestedLikeCppCommand, SendRepresentedTradeStatusLikeCppCommand,
     UnacceptRepresentedTradeLikeCppCommand,
 };
+use crate::session::{WorldSession, player_team_for_race_cpp};
 use wow_persistence::{
     PersistenceOutcomeLikeCpp, SocialAddCandidateLoadOutcomeLikeCpp,
     SocialContactListLoadOutcomeLikeCpp, SocialRelationshipKindLikeCpp,

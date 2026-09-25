@@ -4,12 +4,12 @@
 //! registrations are unchanged and shared fixtures stay in the parent module.
 
 use super::*;
-use crate::handlers::character::vendor::rules::{
-    LoadedItemRefundDecision, loaded_item_refund_decision,
-};
 use crate::handlers::character::spell_rules::{
     SKILL_FIST_WEAPONS_LIKE_CPP, SKILL_UNARMED_LIKE_CPP,
     sync_loaded_fist_weapons_with_unarmed_like_cpp,
+};
+use crate::handlers::character::vendor::rules::{
+    LoadedItemRefundDecision, loaded_item_refund_decision,
 };
 
 #[test]

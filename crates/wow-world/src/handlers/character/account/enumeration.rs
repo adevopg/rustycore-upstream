@@ -1,9 +1,7 @@
 //! Character-list enumeration handler and persistence adapter.
 
 use super::*;
-use wow_persistence::{
-    CharacterEnumerationLoadOutcomeLikeCpp, CharacterEnumerationRequestLikeCpp,
-};
+use wow_persistence::{CharacterEnumerationLoadOutcomeLikeCpp, CharacterEnumerationRequestLikeCpp};
 
 impl WorldSession {
     /// Handle CMSG_ENUM_CHARACTERS — list characters for this account.

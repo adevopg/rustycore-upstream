@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[test]
 fn legacy_creature_melee_tick_once_rejects_same_guid_attacker_replacement_like_cpp() {
     use crate::map_manager::RuntimeTickOwner;

@@ -640,9 +640,24 @@ async fn quest_giver_choose_reward_sets_daily_lockout_status_like_cpp() {
         ))
         .await;
 
-    assert!(session.quest_test_fixture_like_cpp.daily_quests_completed_like_cpp.contains(&quest_id));
-    assert!(!session.quest_test_fixture_like_cpp.df_quests_like_cpp.contains(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.last_daily_quest_time_like_cpp > 0);
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .daily_quests_completed_like_cpp
+            .contains(&quest_id)
+    );
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .df_quests_like_cpp
+            .contains(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .last_daily_quest_time_like_cpp
+            > 0
+    );
 }
 #[tokio::test]
 async fn quest_giver_choose_reward_sets_df_lockout_in_daily_table_like_cpp() {
@@ -675,9 +690,24 @@ async fn quest_giver_choose_reward_sets_df_lockout_in_daily_table_like_cpp() {
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.daily_quests_completed_like_cpp.contains(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.df_quests_like_cpp.contains(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.last_daily_quest_time_like_cpp > 0);
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .daily_quests_completed_like_cpp
+            .contains(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .df_quests_like_cpp
+            .contains(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .last_daily_quest_time_like_cpp
+            > 0
+    );
 }
 #[tokio::test]
 async fn quest_giver_choose_reward_sets_weekly_and_monthly_lockouts_like_cpp() {
@@ -718,22 +748,26 @@ async fn quest_giver_choose_reward_sets_weekly_and_monthly_lockouts_like_cpp() {
 
     assert!(
         session
-            .quest_test_fixture_like_cpp.weekly_quests_completed_like_cpp
+            .quest_test_fixture_like_cpp
+            .weekly_quests_completed_like_cpp
             .contains(&weekly_id)
     );
     assert!(
         !session
-            .quest_test_fixture_like_cpp.weekly_quests_completed_like_cpp
+            .quest_test_fixture_like_cpp
+            .weekly_quests_completed_like_cpp
             .contains(&monthly_id)
     );
     assert!(
         session
-            .quest_test_fixture_like_cpp.monthly_quests_completed_like_cpp
+            .quest_test_fixture_like_cpp
+            .monthly_quests_completed_like_cpp
             .contains(&monthly_id)
     );
     assert!(
         !session
-            .quest_test_fixture_like_cpp.monthly_quests_completed_like_cpp
+            .quest_test_fixture_like_cpp
+            .monthly_quests_completed_like_cpp
             .contains(&weekly_id)
     );
 }
@@ -772,11 +806,16 @@ async fn quest_giver_choose_reward_sets_seasonal_lockout_status_like_cpp() {
 
     assert!(
         session
-            .quest_test_fixture_like_cpp.seasonal_quests_like_cpp
+            .quest_test_fixture_like_cpp
+            .seasonal_quests_like_cpp
             .get(&event_id)
             .is_some_and(|quests| quests.contains_key(&quest_id))
     );
-    assert!(session.quest_test_fixture_like_cpp.seasonal_quest_changed_like_cpp);
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .seasonal_quest_changed_like_cpp
+    );
 }
 #[tokio::test]
 async fn quest_giver_choose_reward_removes_currency_objective_before_rewards_like_cpp() {
@@ -837,8 +876,18 @@ async fn quest_giver_choose_reward_removes_currency_objective_before_rewards_lik
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
     assert_eq!(session.player_currency_quantity(currency_id), Some(6));
     assert_eq!(

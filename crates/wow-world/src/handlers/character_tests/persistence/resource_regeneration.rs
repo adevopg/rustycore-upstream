@@ -25,7 +25,7 @@ fn mana_power_type_store_like_cpp(
     ])
 }
 
-#[path = "resource_regeneration/mana_and_food_emotes.rs"]
-mod mana_and_food_emotes;
 #[path = "resource_regeneration/health_and_power_regeneration.rs"]
 mod health_and_power_regeneration;
+#[path = "resource_regeneration/mana_and_food_emotes.rs"]
+mod mana_and_food_emotes;

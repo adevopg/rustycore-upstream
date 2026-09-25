@@ -6,9 +6,9 @@
 
 use super::*;
 
-#[path = "scenarios_world_entities_32/melee_hit_and_armor.rs"]
-mod melee_hit_and_armor;
-#[path = "scenarios_world_entities_32/melee_damage_modifiers.rs"]
-mod melee_damage_modifiers;
 #[path = "scenarios_world_entities_32/melee_absorption.rs"]
 mod melee_absorption;
+#[path = "scenarios_world_entities_32/melee_damage_modifiers.rs"]
+mod melee_damage_modifiers;
+#[path = "scenarios_world_entities_32/melee_hit_and_armor.rs"]
+mod melee_hit_and_armor;

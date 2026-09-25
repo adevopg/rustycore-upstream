@@ -150,13 +150,13 @@ fn represented_cat_form_fixture_like_cpp(
     (shapeshift_spell_id, form_id)
 }
 
+#[path = "scenarios_spell_state_25/attack_speed_and_form_timing.rs"]
+mod attack_speed_and_form_timing;
 #[path = "scenarios_spell_state_25/health_derived_aurastate.rs"]
 mod health_derived_aurastate;
+#[path = "scenarios_spell_state_25/shapeshift_forms_and_display_power.rs"]
+mod shapeshift_forms_and_display_power;
 #[path = "scenarios_spell_state_25/spell_damage_and_healing.rs"]
 mod spell_damage_and_healing;
 #[path = "scenarios_spell_state_25/spell_power_coefficients.rs"]
 mod spell_power_coefficients;
-#[path = "scenarios_spell_state_25/attack_speed_and_form_timing.rs"]
-mod attack_speed_and_form_timing;
-#[path = "scenarios_spell_state_25/shapeshift_forms_and_display_power.rs"]
-mod shapeshift_forms_and_display_power;

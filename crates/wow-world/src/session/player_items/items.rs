@@ -221,7 +221,8 @@ impl WorldSession {
             self.record_represented_remove_items_set_item_like_cpp(item_guid, &item_set)
         };
         #[cfg(test)]
-        self.player_item_test_fixture_like_cpp.represented_item_set_spell_events_like_cpp
+        self.player_item_test_fixture_like_cpp
+            .represented_item_set_spell_events_like_cpp
             .extend(events.iter().copied());
         events
     }
@@ -632,7 +633,9 @@ impl WorldSession {
     pub(crate) fn represented_item_mod_reapply_events_like_cpp(
         &self,
     ) -> &[RepresentedItemModsReapplyEventLikeCpp] {
-        &self.player_item_test_fixture_like_cpp.represented_item_mod_reapply_events_like_cpp
+        &self
+            .player_item_test_fixture_like_cpp
+            .represented_item_mod_reapply_events_like_cpp
     }
     #[cfg(test)]
     pub(crate) fn represented_trade_spell_cast_item_like_cpp(&self) -> Option<ObjectGuid> {

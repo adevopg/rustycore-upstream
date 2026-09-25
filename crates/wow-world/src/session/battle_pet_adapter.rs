@@ -358,7 +358,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_critter_guid_like_cpp = guid;
+            self.battle_pet_test_fixture_like_cpp
+                .represented_critter_guid_like_cpp = guid;
         }
     }
 
@@ -370,7 +371,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_critter_guid_like_cpp
+            self.battle_pet_test_fixture_like_cpp
+                .represented_critter_guid_like_cpp
         }
         #[cfg(not(test))]
         {
@@ -401,13 +403,16 @@ impl WorldSession {
 
         self.set_represented_critter_guid_like_cpp(None);
         #[cfg(test)]
-        self.battle_pet_test_fixture_like_cpp.represented_dismissed_critter_guids_like_cpp
+        self.battle_pet_test_fixture_like_cpp
+            .represented_dismissed_critter_guids_like_cpp
             .push(critter_guid);
         true
     }
 
     #[cfg(test)]
     pub(crate) fn represented_dismissed_critter_guids_like_cpp(&self) -> &[ObjectGuid] {
-        &self.battle_pet_test_fixture_like_cpp.represented_dismissed_critter_guids_like_cpp
+        &self
+            .battle_pet_test_fixture_like_cpp
+            .represented_dismissed_critter_guids_like_cpp
     }
 }

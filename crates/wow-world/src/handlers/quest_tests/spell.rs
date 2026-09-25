@@ -130,7 +130,8 @@ async fn quest_confirm_accept_source_spell_records_two_self_casts_like_cpp() {
 
     assert_eq!(session.represented_pending_quest_sharing_like_cpp(), None);
     let status = session
-        .quest_test_fixture_like_cpp.player_quests
+        .quest_test_fixture_like_cpp
+        .player_quests
         .get(&quest_id)
         .expect("source-spell-only quest should still insert represented local AddQuest state");
     assert_eq!(status.quest_id, quest_id);

@@ -201,7 +201,10 @@ fn lfg_lock_status_applies_access_requirement_order_like_cpp() {
         Some(LFG_LOCKSTATUS_QUEST_NOT_COMPLETED_LIKE_CPP)
     );
 
-    session.quest_test_fixture_like_cpp.rewarded_quests.insert(42);
+    session
+        .quest_test_fixture_like_cpp
+        .rewarded_quests
+        .insert(42);
     install_requirement(
         &mut session,
         wow_data::AccessRequirementLikeCpp {
@@ -237,7 +240,10 @@ fn lfg_reward_uses_other_quest_when_df_first_quest_on_cooldown_like_cpp() {
         first.clone(),
         other.clone(),
     ])));
-    session.quest_test_fixture_like_cpp.df_quests_like_cpp.insert(first.id);
+    session
+        .quest_test_fixture_like_cpp
+        .df_quests_like_cpp
+        .insert(first.id);
 
     let mut info =
         wow_packet::packets::misc::LfgPlayerDungeonInfo::random_dungeon_like_cpp(100_663_552);

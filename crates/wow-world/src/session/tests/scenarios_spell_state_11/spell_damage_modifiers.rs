@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[tokio::test]
 async fn spell_school_damage_applies_damage_done_versus_like_cpp() {
     let (mut session, _, _) = make_session();
@@ -246,7 +245,6 @@ async fn spell_school_damage_applies_damage_done_versus_aurastate_like_cpp() {
         700
     );
 }
-
 
 #[tokio::test]
 async fn spell_school_damage_applies_damage_done_for_mechanic_like_cpp() {

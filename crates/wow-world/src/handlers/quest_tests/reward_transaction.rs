@@ -64,7 +64,10 @@ async fn quest_reward_reaches_the_database_once_with_its_status_row_like_cpp() {
     choose_reward_like_cpp(&mut session, quest_id).await;
 
     assert!(
-        !session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id),
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id),
         "the operation must have run to completion before it commits"
     );
     let requests = requests.lock().unwrap();

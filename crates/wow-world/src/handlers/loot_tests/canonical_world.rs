@@ -129,7 +129,10 @@ pub(super) fn make_canonical_corpse_for_session(
     corpse
 }
 
-pub(super) fn canonical_corpse_snapshot(session: &WorldSession, guid: ObjectGuid) -> Option<Corpse> {
+pub(super) fn canonical_corpse_snapshot(
+    session: &WorldSession,
+    guid: ObjectGuid,
+) -> Option<Corpse> {
     let manager = session.canonical_map_manager.as_ref()?;
     let manager = manager.lock().ok()?;
     let map = manager.find_map(u32::from(session.player_map_id_like_cpp()), 0)?;

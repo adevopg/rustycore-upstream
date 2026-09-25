@@ -4,11 +4,11 @@
 //! Opcode registrations for this handler family (moved out of the root file to keep it
 //! inside its physical budget; PacketHandlerEntry remains the single registration source).
 
-use wow_packet::ClientPacket;
 use crate::session::registry::PacketHandlerEntry;
 use wow_constants::ClientOpcodes;
-use wow_handler::SessionStatus;
 use wow_handler::PacketProcessing;
+use wow_handler::SessionStatus;
+use wow_packet::ClientPacket;
 
 inventory::submit! {
     PacketHandlerEntry {

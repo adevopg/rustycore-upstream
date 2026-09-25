@@ -48,8 +48,7 @@ fn persisted_transport_restore_stays_between_identity_and_reputation_loading_lik
 #[test]
 fn reputation_login_phase_returns_completion_for_first_login_reputation() {
     let login = include_str!("../character/world_entry/login.rs");
-    let reputation_loading =
-        include_str!("../character/world_entry/login/reputation_loading.rs");
+    let reputation_loading = include_str!("../character/world_entry/login/reputation_loading.rs");
     let restore_offset = login
         .find("restore_persisted_transport_for_login_like_cpp(")
         .expect("transport restoration precedes reputation loading");
@@ -291,18 +290,14 @@ fn aura_login_phase_precedes_initial_item_mods_and_sets_authority() {
         "CharacterAuraEffectRowLikeCpp",
         "PlayerLoginAuxiliaryLoadOutcomeLikeCpp::Failed { reason }",
     ] {
-        assert!(
-            aura_loading.contains(marker),
-            "aura phase lost `{marker}`"
-        );
+        assert!(aura_loading.contains(marker), "aura phase lost `{marker}`");
     }
 }
 
 #[test]
 fn player_spell_map_finalization_keeps_merge_rules_and_authority_gate() {
     let login = include_str!("../character/world_entry/login.rs");
-    let finalization =
-        include_str!("../character/world_entry/login/spell_map_finalization.rs");
+    let finalization = include_str!("../character/world_entry/login/spell_map_finalization.rs");
     let mount_offset = login
         .find("self.promote_loaded_character_mount_spells_like_cpp(&known_spells);")
         .expect("mount promotion precedes PlayerSpellMap finalization");
@@ -412,10 +407,7 @@ fn mail_login_phase_follows_controller_and_aborts_on_failure() {
         "canonical Player mail owner disappeared",
         "return false;",
     ] {
-        assert!(
-            mail_loading.contains(marker),
-            "mail phase lost `{marker}`"
-        );
+        assert!(mail_loading.contains(marker), "mail phase lost `{marker}`");
     }
 }
 

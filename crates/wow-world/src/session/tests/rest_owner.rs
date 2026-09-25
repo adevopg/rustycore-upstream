@@ -425,8 +425,12 @@ fn rest_queries_reject_stale_and_missing_owner_even_with_populated_fixtures() {
         .unwrap()
         .install_detached_player_like_cpp(replacement)
         .unwrap();
-    session.player_flags_test_fixture_like_cpp.represented_loaded_player_flags_like_cpp = Some(PLAYER_FLAGS_RESTING_LIKE_CPP);
-    session.rest_mgr_test_fixture_like_cpp.represented_rest_location_initialized_like_cpp = true;
+    session
+        .player_flags_test_fixture_like_cpp
+        .represented_loaded_player_flags_like_cpp = Some(PLAYER_FLAGS_RESTING_LIKE_CPP);
+    session
+        .rest_mgr_test_fixture_like_cpp
+        .represented_rest_location_initialized_like_cpp = true;
     session
         .rest_mgr_test_fixture_like_cpp
         .represented_rest_flag_mask_like_cpp = REST_FLAG_IN_CITY_LIKE_CPP;

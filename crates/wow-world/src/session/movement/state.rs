@@ -126,7 +126,7 @@ impl WorldSession {
         self.set_player_emote_state_like_cpp(0)
     }
 
-/// Remove a GUID from the legit characters list.
+    /// Remove a GUID from the legit characters list.
     pub fn remove_legit_character(&mut self, guid: &ObjectGuid) {
         self.legit_characters.retain(|g| g != guid);
     }
@@ -280,7 +280,7 @@ impl WorldSession {
         self.set_player_map_position_like_cpp(self.current_map_id, position);
     }
 
-/// Apply the server-side facing update used by C++ `Unit::SetOrientation`
+    /// Apply the server-side facing update used by C++ `Unit::SetOrientation`
     /// for a vehicle passenger. This intentionally leaves map coordinates and
     /// cell ownership untouched; the vehicle remains authoritative for them.
     pub(crate) fn set_player_orientation_like_cpp(&mut self, orientation: f32) -> bool {
@@ -339,7 +339,7 @@ impl WorldSession {
         }
     }
 
-/// C++ `Unit::m_movementCounter` post-increment: returns the current value and advances
+    /// C++ `Unit::m_movementCounter` post-increment: returns the current value and advances
     /// it. Used as the SequenceIndex of movement-control packets (vehicle-rec, collision,
     /// near-teleport, speed/flag) and read for `SMSG_RESUME_TOKEN` on far teleport.
     pub(crate) fn next_movement_counter_like_cpp(&mut self) -> Option<u32> {
@@ -355,7 +355,7 @@ impl WorldSession {
         canonical
     }
 
-/// C++ `Player::SendInitialPacketsBeforeAddToMap` resets `m_movementCounter` to 0 for a
+    /// C++ `Player::SendInitialPacketsBeforeAddToMap` resets `m_movementCounter` to 0 for a
     /// non-seamless add (login / far teleport). Player.cpp:23483.
     pub(crate) fn reset_movement_counter_like_cpp(&mut self) -> bool {
         let canonical = self
@@ -370,7 +370,7 @@ impl WorldSession {
         canonical || cfg!(test) && self.player_handle_like_cpp.is_none()
     }
 
-/// Current `Unit::m_movementCounter` value (read without advancing). C++ reads this for
+    /// Current `Unit::m_movementCounter` value (read without advancing). C++ reads this for
     /// `SMSG_RESUME_TOKEN.SequenceIndex` on far teleport (MovementHandler.cpp:109), before
     /// `SendInitialPacketsBeforeAddToMap` resets it.
     pub(crate) fn movement_counter_like_cpp(&self) -> Option<u32> {
@@ -404,7 +404,7 @@ impl WorldSession {
         canonical
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn player_movement_flags_like_cpp(&self) -> MovementFlag {
         self.resolved_player_movement_flags_like_cpp()
             .expect("test Player movement owner must resolve")
@@ -426,18 +426,21 @@ impl WorldSession {
         canonical
     }
 
-#[cfg_attr(not(test), allow(unused_variables))]
+    #[cfg_attr(not(test), allow(unused_variables))]
     pub(crate) fn calendar_remove_event_like_cpp(&mut self, event_id: u64) {
         #[cfg(test)]
-        self.calendar_test_fixture_like_cpp.represented_calendar_remove_events_like_cpp
+        self.calendar_test_fixture_like_cpp
+            .represented_calendar_remove_events_like_cpp
             .push(RepresentedCalendarRemoveEventLikeCpp { event_id });
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn represented_calendar_remove_events_like_cpp(
         &self,
     ) -> &[RepresentedCalendarRemoveEventLikeCpp] {
-        &self.calendar_test_fixture_like_cpp.represented_calendar_remove_events_like_cpp
+        &self
+            .calendar_test_fixture_like_cpp
+            .represented_calendar_remove_events_like_cpp
     }
 
     pub(crate) fn player_moved_unit_guid_like_cpp(&self) -> Option<ObjectGuid> {
@@ -456,7 +459,7 @@ impl WorldSession {
         canonical.flatten()
     }
 
-/// Resolve the active mover's `MoveSpline::Finalized()` admission state.
+    /// Resolve the active mover's `MoveSpline::Finalized()` admission state.
     ///
     /// `WorldSession::HandleMovementOpcode` rejects a packet while the mover's
     /// spline is still active (`MovementHandler.cpp:305-335`). Player motion
@@ -501,7 +504,7 @@ impl WorldSession {
             })
     }
 
-/// Resolve the active mover's current world position for MovementHandler's
+    /// Resolve the active mover's current world position for MovementHandler's
     /// stale transport-packet guard (`MovementHandler.cpp:345-350`). C++
     /// applies the grid-size comparison to every `Unit*`, including a
     /// controlled creature or pet; keep the legacy map runtime as the first
@@ -537,7 +540,7 @@ impl WorldSession {
             })
     }
 
-/// Resolve the movement-force magnitude from the active Unit. C++ reads
+    /// Resolve the movement-force magnitude from the active Unit. C++ reads
     /// `mover->GetMovementForces()->GetModMagnitude()` in
     /// `HandleMoveSetModMovementForceMagnitudeAck` (`MovementHandler.cpp:638-650)`;
     /// a controlled Creature/Pet therefore cannot borrow the Player's value.
@@ -584,7 +587,7 @@ impl WorldSession {
             })
     }
 
-/// Reconcile the canonical map transport passenger set with the movement
+    /// Reconcile the canonical map transport passenger set with the movement
     /// packet's requested transport. This is the C++ `AddPassenger`/
     /// `RemovePassenger` branch in `MovementHandler.cpp:361-390`; the map owns
     /// both the transport object and its passenger membership.
@@ -665,14 +668,14 @@ impl WorldSession {
         }
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn represented_vehicle_dismiss_movements_like_cpp(
         &self,
     ) -> &[RepresentedVehicleDismissMovementLikeCpp] {
         &self.represented_vehicle_dismiss_movements_like_cpp
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn represented_vehicle_base_movements_like_cpp(
         &self,
     ) -> &[RepresentedVehicleBaseMovementLikeCpp] {
@@ -821,7 +824,7 @@ impl WorldSession {
         canonical
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn player_movement_time_like_cpp(&self) -> u32 {
         self.resolved_player_movement_time_like_cpp()
             .expect("test Player movement-time owner must resolve")
@@ -896,7 +899,7 @@ impl WorldSession {
             .map(|state| Position::new(state.x, state.y, state.z, state.orientation))
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn set_movement_force_mod_magnitude_changes_like_cpp(&mut self, count: u8) {
         let canonical = self
             .with_owned_player_mut_like_cpp(|player| {
@@ -908,7 +911,7 @@ impl WorldSession {
         }
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn set_movement_force_mod_magnitude_like_cpp(&mut self, magnitude: f32) {
         let canonical = self
             .with_owned_player_mut_like_cpp(|player| {

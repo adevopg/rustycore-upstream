@@ -7,8 +7,8 @@
 
 use super::*;
 
-mod login;
 mod initial_packets;
+mod login;
 mod login_recovery;
 
 pub(super) fn is_represented_bag_slot(slot: u8) -> bool {

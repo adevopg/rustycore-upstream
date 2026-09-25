@@ -14,7 +14,7 @@ impl WorldSession {
         })
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     fn has_represented_aura_effect_like_cpp(&self, effect: RepresentedAuraEffectLikeCpp) -> bool {
         self.resolved_has_represented_aura_effect_like_cpp(effect)
             .expect("test Player aura owner must resolve")
@@ -33,7 +33,7 @@ impl WorldSession {
         })
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(in crate::session) fn has_represented_aura_effect_with_misc_value_like_cpp(
         &self,
         effect: RepresentedAuraEffectLikeCpp,
@@ -56,7 +56,7 @@ impl WorldSession {
         })
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(in crate::session) fn total_represented_aura_modifier_like_cpp(
         &self,
         effect: RepresentedAuraEffectLikeCpp,
@@ -94,7 +94,7 @@ impl WorldSession {
         })
     }
 
-/// Resolve active aura effects directly from the canonical visible aura
+    /// Resolve active aura effects directly from the canonical visible aura
     /// applications and their immutable SpellInfo. This keeps StatSystem
     /// producers independent of packet-only aura mirrors and also covers
     /// loaded applications whose represented-effect enum is intentionally
@@ -116,7 +116,7 @@ impl WorldSession {
         )
     }
 
-/// Resolve active aura effects of `aura_type` paired with their owning
+    /// Resolve active aura effects of `aura_type` paired with their owning
     /// spell id. C++ `GetTotalAuraModifier(aurType, predicate)` filters the
     /// `AuraEffect` list with a predicate that reads the owning `SpellInfo`
     /// (for example `Player::UpdateExpertise`'s item-fit check), so callers
@@ -152,7 +152,7 @@ impl WorldSession {
         Some(effects)
     }
 
-/// Resolve active aura effects of `aura_type` with the owning spell id, the
+    /// Resolve active aura effects of `aura_type` with the owning spell id, the
     /// C++ `GetMiscValue()` and the amount. `Unit::UpdateDamagePctDoneMods`
     /// (`Unit.cpp:9033-9072`) filters `SPELL_AURA_MOD_DAMAGE_PERCENT_DONE` by the
     /// physical school mask and by `Player::CheckAttackFitToAuraRequirement`,
@@ -189,7 +189,7 @@ impl WorldSession {
         Some(effects)
     }
 
-/// Resolve active aura effects of `aura_type` with both C++ misc values and
+    /// Resolve active aura effects of `aura_type` with both C++ misc values and
     /// the amount. Several `UnitMods` producers (`HandleAuraModResistance`,
     /// `HandleModResistanceOfStatPercent`) select by `GetMiscValue()` and read
     /// `GetMiscValueB()`, so callers need `(misc_value, misc_value_b, amount)`.
@@ -228,7 +228,7 @@ impl WorldSession {
         Some(effects)
     }
 
-/// Resolve a C++ `GetTotalAuraMultiplierByMiscValue` family from the
+    /// Resolve a C++ `GetTotalAuraMultiplierByMiscValue` family from the
     /// canonical aura effects.
     pub(crate) fn resolved_total_aura_multiplier_by_spell_aura_type_and_misc_value_like_cpp(
         &self,
@@ -244,7 +244,7 @@ impl WorldSession {
             })
     }
 
-/// Resolve a C++ `GetTotalAuraModifierByMiscValue` family from the
+    /// Resolve a C++ `GetTotalAuraModifierByMiscValue` family from the
     /// canonical aura effects.
     pub(crate) fn resolved_total_aura_modifier_by_spell_aura_type_and_misc_value_like_cpp(
         &self,
@@ -261,7 +261,7 @@ impl WorldSession {
             })
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(in crate::session) fn total_represented_aura_multiplier_like_cpp(
         &self,
         effect: RepresentedAuraEffectLikeCpp,

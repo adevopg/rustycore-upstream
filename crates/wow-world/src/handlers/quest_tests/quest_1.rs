@@ -78,7 +78,8 @@ async fn quest_giver_accept_emits_player_quest_log_update_like_cpp() {
         .await;
 
     let status = session
-        .quest_test_fixture_like_cpp.player_quests
+        .quest_test_fixture_like_cpp
+        .player_quests
         .get(&quest_id)
         .expect("accepted quest should enter the represented quest log");
     assert_eq!(status.slot, 0);
@@ -122,7 +123,12 @@ async fn quest_giver_accept_rejected_source_sends_no_quest_log_update_like_cpp()
         .handle_quest_giver_accept_quest(quest_giver_cmsg_packet(source_guid, quest_id, 0x00))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
     assert!(send_rx.try_recv().is_err());
 }
 #[tokio::test]
@@ -465,8 +471,18 @@ async fn quest_giver_choose_reward_accepts_existing_reward_currency_like_cpp() {
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
     assert_eq!(session.player_currency_quantity(currency_id), Some(5));
     assert_eq!(
@@ -540,8 +556,18 @@ async fn quest_giver_choose_reward_fixed_currency_rewards_like_cpp() {
         ))
         .await;
 
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
     assert_eq!(session.player_currency_quantity(currency_id), Some(7));
     assert_eq!(
@@ -613,8 +639,18 @@ async fn quest_giver_choose_reward_removes_timed_quest_before_rewards_like_cpp()
         session.represented_timed_quest_removals_like_cpp(),
         &[quest_id]
     );
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
     assert_eq!(session.player_gold_like_cpp(), 42);
 }
 #[tokio::test]
@@ -652,8 +688,18 @@ async fn quest_giver_choose_reward_non_timed_quest_records_no_timed_removal_like
             .represented_timed_quest_removals_like_cpp()
             .is_empty()
     );
-    assert!(!session.quest_test_fixture_like_cpp.player_quests.contains_key(&quest_id));
-    assert!(session.quest_test_fixture_like_cpp.rewarded_quests.contains(&quest_id));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .contains_key(&quest_id)
+    );
+    assert!(
+        session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&quest_id)
+    );
 }
 #[tokio::test]
 async fn quest_giver_choose_reward_emits_reward_skill_fields_like_cpp() {

@@ -5,13 +5,13 @@
 
 //! Vendor inventory listing, reference expansion, filtering, and publication.
 
-use super::*;
 use super::rules::{
     vendor_list_item_refundable, vendor_list_reaches_cpp_item_limit,
-    vendor_list_should_skip_allowed_class,
-    vendor_list_should_skip_currency_row, vendor_list_should_skip_faction_flags,
-    vendor_list_should_skip_sold_out, vendor_player_condition_failed_id_like_cpp,
+    vendor_list_should_skip_allowed_class, vendor_list_should_skip_currency_row,
+    vendor_list_should_skip_faction_flags, vendor_list_should_skip_sold_out,
+    vendor_player_condition_failed_id_like_cpp,
 };
+use super::*;
 
 impl WorldSession {
     /// Handle CMSG_LIST_INVENTORY — player opens vendor window.

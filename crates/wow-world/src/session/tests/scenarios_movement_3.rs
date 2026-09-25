@@ -438,7 +438,9 @@ async fn far_sight_update_visibility_falls_back_for_unsupported_seer_like_cpp() 
     );
 
     set_canonical_player_farsight_object_like_cpp(&canonical, player_guid, gameobject_seer_guid);
-    session.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(gameobject_seer_guid);
+    session
+        .visibility_test_fixture_like_cpp
+        .represented_seer_guid_like_cpp = Some(gameobject_seer_guid);
 
     assert_eq!(
         session.represented_visibility_source_position_like_cpp(),

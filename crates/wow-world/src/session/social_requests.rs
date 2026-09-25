@@ -117,14 +117,14 @@ impl WorldSession {
         }
 
         #[cfg(test)]
-        self.calendar_test_fixture_like_cpp.represented_calendar_community_invites_like_cpp.push(
-            RepresentedCalendarCommunityInviteLikeCpp {
+        self.calendar_test_fixture_like_cpp
+            .represented_calendar_community_invites_like_cpp
+            .push(RepresentedCalendarCommunityInviteLikeCpp {
                 guild_id,
                 min_level,
                 max_level,
                 max_rank_order,
-            },
-        );
+            });
         true
     }
 
@@ -132,7 +132,9 @@ impl WorldSession {
     pub(crate) fn represented_calendar_community_invites_like_cpp(
         &self,
     ) -> &[RepresentedCalendarCommunityInviteLikeCpp] {
-        &self.calendar_test_fixture_like_cpp.represented_calendar_community_invites_like_cpp
+        &self
+            .calendar_test_fixture_like_cpp
+            .represented_calendar_community_invites_like_cpp
     }
 
     #[cfg_attr(not(test), allow(unused_variables))]
@@ -167,7 +169,8 @@ impl WorldSession {
         };
 
         #[cfg(test)]
-        self.calendar_test_fixture_like_cpp.represented_calendar_add_events_like_cpp
+        self.calendar_test_fixture_like_cpp
+            .represented_calendar_add_events_like_cpp
             .push(RepresentedCalendarAddEventLikeCpp {
                 guild_id,
                 club_id,
@@ -187,7 +190,9 @@ impl WorldSession {
     pub(crate) fn represented_calendar_add_events_like_cpp(
         &self,
     ) -> &[RepresentedCalendarAddEventLikeCpp] {
-        &self.calendar_test_fixture_like_cpp.represented_calendar_add_events_like_cpp
+        &self
+            .calendar_test_fixture_like_cpp
+            .represented_calendar_add_events_like_cpp
     }
 
     #[cfg_attr(not(test), allow(unused_variables))]

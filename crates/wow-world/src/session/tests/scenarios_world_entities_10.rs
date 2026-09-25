@@ -5,6 +5,8 @@
 
 use super::*;
 
+#[path = "scenarios_world_entities_10/creature_aura_application.rs"]
+mod creature_aura_application;
 #[path = "scenarios_world_entities_10/creature_kill_and_death.rs"]
 mod creature_kill_and_death;
 #[path = "scenarios_world_entities_10/spell_damage_death.rs"]
@@ -13,5 +15,3 @@ mod spell_damage_death;
 mod spell_healing;
 #[path = "scenarios_world_entities_10/spell_threat.rs"]
 mod spell_threat;
-#[path = "scenarios_world_entities_10/creature_aura_application.rs"]
-mod creature_aura_application;

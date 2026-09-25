@@ -323,7 +323,11 @@ async fn combat_tick_kill_keeps_empty_creature_loot_non_lootable_after_pending_d
     assert_eq!(loot.loot_type, LOOT_TYPE_CORPSE_LIKE_CPP);
     assert_eq!((loot.coins, loot.unlooted_count), (0, 0));
     assert!(session.player_xp_like_cpp() > 0);
-    let quest = session.quest_test_fixture_like_cpp.player_quests.get(&9_001).unwrap();
+    let quest = session
+        .quest_test_fixture_like_cpp
+        .player_quests
+        .get(&9_001)
+        .unwrap();
     assert_eq!(
         quest.status,
         crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP

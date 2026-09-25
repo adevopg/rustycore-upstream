@@ -290,7 +290,7 @@ impl WorldSession {
         })
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(super) fn materialize_creature_spawn_row_like_cpp(
         &mut self,
         map_id: u16,

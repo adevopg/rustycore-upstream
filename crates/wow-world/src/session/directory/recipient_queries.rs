@@ -500,10 +500,12 @@ impl PlayerRegistry {
                     customizations: Arc::new(
                         customizations
                             .into_iter()
-                            .map(|(option_id, choice_id)| ChrCustomizationChoiceValuesUpdate {
-                                option_id,
-                                choice_id,
-                            })
+                            .map(
+                                |(option_id, choice_id)| ChrCustomizationChoiceValuesUpdate {
+                                    option_id,
+                                    choice_id,
+                                },
+                            )
                             .collect(),
                     ),
                     party_member_party_type: party_type,
@@ -774,10 +776,12 @@ impl PlayerRegistry {
                     customizations: Arc::new(
                         customizations
                             .into_iter()
-                            .map(|(option_id, choice_id)| ChrCustomizationChoiceValuesUpdate {
-                                option_id,
-                                choice_id,
-                            })
+                            .map(
+                                |(option_id, choice_id)| ChrCustomizationChoiceValuesUpdate {
+                                    option_id,
+                                    choice_id,
+                                },
+                            )
                             .collect(),
                     ),
                     party_member_party_type: party_type,

@@ -273,7 +273,8 @@ impl WorldSession {
             .is_some();
         #[cfg(test)]
         if canonical || self.player_handle_like_cpp.is_none() {
-            self.player_item_test_fixture_like_cpp.player_bank_bag_slot_count_like_cpp = count;
+            self.player_item_test_fixture_like_cpp
+                .player_bank_bag_slot_count_like_cpp = count;
         }
         canonical || cfg!(test) && self.player_handle_like_cpp.is_none()
     }
@@ -571,7 +572,10 @@ impl WorldSession {
         let canonical = self.with_owned_player_like_cpp(Player::bank_bag_slot_count);
         #[cfg(test)]
         if canonical.is_none() && self.player_handle_like_cpp.is_none() {
-            return Some(self.player_item_test_fixture_like_cpp.player_bank_bag_slot_count_like_cpp);
+            return Some(
+                self.player_item_test_fixture_like_cpp
+                    .player_bank_bag_slot_count_like_cpp,
+            );
         }
         canonical
     }

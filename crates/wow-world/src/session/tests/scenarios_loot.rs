@@ -99,7 +99,10 @@ fn player_registry_publishes_loot_condition_state_like_cpp() {
         assert_eq!(info.inventory_item_counts.get(&9001), Some(&6));
     }
 
-    session.player_spell_test_fixture_like_cpp.known_spells.push(54_321);
+    session
+        .player_spell_test_fixture_like_cpp
+        .known_spells
+        .push(54_321);
     session.mutate_player_quest_gameplay_like_cpp(|state| {
         state.insert_status_like_cpp(
             300,

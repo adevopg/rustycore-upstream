@@ -30,9 +30,7 @@ impl WorldSession {
                 aura_rows_complete = true;
                 aura_rows.extend(rows.into_iter().map(|row| {
                     crate::session::CharacterAuraRowLikeCpp {
-                        caster_guid: object_guid_from_db_binary_like_cpp(
-                            row.caster_guid_binary,
-                        ),
+                        caster_guid: object_guid_from_db_binary_like_cpp(row.caster_guid_binary),
                         spell_id: row.spell_id,
                         effect_mask: row.effect_mask,
                         recalculate_mask: row.recalculate_mask,
@@ -66,9 +64,7 @@ impl WorldSession {
                 aura_effect_rows_complete = true;
                 aura_effect_rows.extend(rows.into_iter().map(|row| {
                     crate::session::CharacterAuraEffectRowLikeCpp {
-                        caster_guid: object_guid_from_db_binary_like_cpp(
-                            row.caster_guid_binary,
-                        ),
+                        caster_guid: object_guid_from_db_binary_like_cpp(row.caster_guid_binary),
                         spell_id: row.spell_id,
                         effect_mask: row.effect_mask,
                         effect_index: row.effect_index,

@@ -587,10 +587,19 @@ async fn quest_giver_choose_reward_gameobject_no_relation_rejects_like_cpp() {
         .await;
 
     assert_eq!(
-        session.quest_test_fixture_like_cpp.player_quests.get(&9_225).map(|quest| quest.status),
+        session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .get(&9_225)
+            .map(|quest| quest.status),
         Some(crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP)
     );
-    assert!(!session.quest_test_fixture_like_cpp.rewarded_quests.contains(&9_225));
+    assert!(
+        !session
+            .quest_test_fixture_like_cpp
+            .rewarded_quests
+            .contains(&9_225)
+    );
     assert_eq!(session.player_gold_like_cpp(), 5);
     assert!(send_rx.try_recv().is_err());
 }

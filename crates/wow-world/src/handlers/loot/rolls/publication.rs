@@ -261,5 +261,4 @@ impl WorldSession {
             let _ = registry.send_current_packet(registration, bytes.clone());
         }
     }
-
 }

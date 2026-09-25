@@ -39,13 +39,16 @@ impl WorldSession {
         &mut self,
         store: Arc<wow_data::battle_pet_selection::BattlePetSelectionStoreLikeCpp>,
     ) {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_selection_store_like_cpp = Some(store);
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_selection_store_like_cpp = Some(store);
     }
     #[cfg(test)]
     pub(crate) fn battle_pet_selection_store_like_cpp(
         &self,
     ) -> Option<&Arc<wow_data::battle_pet_selection::BattlePetSelectionStoreLikeCpp>> {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_selection_store_like_cpp.as_ref()
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_selection_store_like_cpp
+            .as_ref()
     }
     pub(crate) fn battle_pet_purchase_store_like_cpp(
         &self,
@@ -61,29 +64,35 @@ impl WorldSession {
         &mut self,
         selection: Option<wow_data::battle_pet_selection::BattlePetTrainerSelectionLikeCpp>,
     ) {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_purchase_selection_override_like_cpp = selection;
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_purchase_selection_override_like_cpp = selection;
     }
     #[cfg(test)]
     pub(crate) fn battle_pet_purchase_selection_override_like_cpp(
         &self,
     ) -> Option<wow_data::battle_pet_selection::BattlePetTrainerSelectionLikeCpp> {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_purchase_selection_override_like_cpp
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_purchase_selection_override_like_cpp
     }
     #[cfg(test)]
     pub fn set_battle_pet_breed_state_store(&mut self, store: Arc<BattlePetBreedStateStore>) {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_breed_state_store = Some(store);
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_breed_state_store = Some(store);
     }
     #[cfg(test)]
     pub fn set_battle_pet_species_store(&mut self, store: Arc<BattlePetSpeciesStore>) {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_species_store = Some(store);
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_species_store = Some(store);
     }
     #[cfg(test)]
     pub fn set_battle_pet_species_state_store(&mut self, store: Arc<BattlePetSpeciesStateStore>) {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_species_state_store = Some(store);
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_species_state_store = Some(store);
     }
     #[cfg(test)]
     pub fn set_battle_pet_xp_game_table(&mut self, table: Arc<BattlePetXpGameTableLikeCpp>) {
-        self.battle_pet_test_fixture_like_cpp.battle_pet_xp_game_table = Some(table);
+        self.battle_pet_test_fixture_like_cpp
+            .battle_pet_xp_game_table = Some(table);
     }
     pub(crate) fn battle_pet_calculate_stats_like_cpp(
         &self,
@@ -104,9 +113,15 @@ impl WorldSession {
                 species,
                 quality,
                 level,
-                self.battle_pet_test_fixture_like_cpp.battle_pet_breed_state_store.as_ref()?,
-                self.battle_pet_test_fixture_like_cpp.battle_pet_species_state_store.as_ref()?,
-                self.battle_pet_test_fixture_like_cpp.battle_pet_breed_quality_store.as_ref()?,
+                self.battle_pet_test_fixture_like_cpp
+                    .battle_pet_breed_state_store
+                    .as_ref()?,
+                self.battle_pet_test_fixture_like_cpp
+                    .battle_pet_species_state_store
+                    .as_ref()?,
+                self.battle_pet_test_fixture_like_cpp
+                    .battle_pet_breed_quality_store
+                    .as_ref()?,
             )?;
 
             Some(RepresentedBattlePetCalculatedStatsLikeCpp {
@@ -130,7 +145,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         return self
-            .battle_pet_test_fixture_like_cpp.battle_pet_species_store
+            .battle_pet_test_fixture_like_cpp
+            .battle_pet_species_store
             .as_ref()
             .and_then(|store| store.get(species))
             .is_some_and(|entry| entry.has_flag_like_cpp(flag));
@@ -145,15 +161,21 @@ impl WorldSession {
         flags: u16,
         save_info: RepresentedBattlePetSaveInfoLikeCpp,
     ) {
-        self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.insert(
-            pet_guid,
-            RepresentedBattlePetDataLikeCpp::minimal_like_cpp(flags, save_info),
-        );
+        self.battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .insert(
+                pet_guid,
+                RepresentedBattlePetDataLikeCpp::minimal_like_cpp(flags, save_info),
+            );
     }
     /// C++ `BattlePetMgr::ClearFanfare`.
     #[cfg(test)]
     pub(crate) fn battle_pet_clear_fanfare_like_cpp(&mut self, pet_guid: ObjectGuid) -> bool {
-        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get_mut(&pet_guid) else {
+        let Some(pet) = self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .get_mut(&pet_guid)
+        else {
             return false;
         };
 
@@ -194,7 +216,11 @@ impl WorldSession {
             return false;
         }
 
-        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get_mut(&pet_guid) else {
+        let Some(pet) = self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .get_mut(&pet_guid)
+        else {
             return false;
         };
 
@@ -236,7 +262,8 @@ impl WorldSession {
         }
 
         let Some(pet) = self
-            .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
             .get(&pet_guid)
             .cloned()
         else {
@@ -251,7 +278,8 @@ impl WorldSession {
         }
 
         if self
-            .battle_pet_test_fixture_like_cpp.represented_battle_pet_slots_like_cpp
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pet_slots_like_cpp
             .iter()
             .any(|slot| slot.pet_guid == Some(pet_guid))
         {
@@ -278,7 +306,8 @@ impl WorldSession {
             display_id: pet.display_id,
         };
         #[cfg(test)]
-        self.battle_pet_test_fixture_like_cpp.represented_battle_pet_cage_items_like_cpp
+        self.battle_pet_test_fixture_like_cpp
+            .represented_battle_pet_cage_items_like_cpp
             .push(cage_item);
         #[cfg(not(test))]
         let _ = cage_item;
@@ -292,7 +321,8 @@ impl WorldSession {
             });
             #[cfg(test)]
             if _cleared.is_none() {
-                self.battle_pet_test_fixture_like_cpp.represented_summoned_battle_pet_guid_like_cpp = None;
+                self.battle_pet_test_fixture_like_cpp
+                    .represented_summoned_battle_pet_guid_like_cpp = None;
             }
         }
 
@@ -306,7 +336,11 @@ impl WorldSession {
         flags: u16,
         control_type: u8,
     ) -> bool {
-        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get_mut(&pet_guid) else {
+        let Some(pet) = self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .get_mut(&pet_guid)
+        else {
             return false;
         };
 
@@ -387,7 +421,8 @@ impl WorldSession {
                 .pet_count_like_cpp(species, owner_guid);
         }
         let species_flags = self
-            .battle_pet_test_fixture_like_cpp.battle_pet_species_store
+            .battle_pet_test_fixture_like_cpp
+            .battle_pet_species_store
             .as_ref()
             .and_then(|store| store.get(species))
             .map(|entry| entry.flags)
@@ -396,7 +431,8 @@ impl WorldSession {
             species_flags & wow_data::BATTLE_PET_SPECIES_FLAG_NOT_ACCOUNT_WIDE_LIKE_CPP != 0;
 
         let count = self
-            .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
             .values()
             .filter(|pet| pet.species == species)
             .filter(|pet| pet.save_info != RepresentedBattlePetSaveInfoLikeCpp::Removed)
@@ -428,7 +464,8 @@ impl WorldSession {
         #[cfg(test)]
         {
             let Some(species_entry) = self
-                .battle_pet_test_fixture_like_cpp.battle_pet_species_store
+                .battle_pet_test_fixture_like_cpp
+                .battle_pet_species_store
                 .as_ref()
                 .and_then(|store| store.get(species))
             else {
@@ -463,7 +500,8 @@ impl WorldSession {
         level: u16,
     ) -> Option<ObjectGuid> {
         let species_entry = self
-            .battle_pet_test_fixture_like_cpp.battle_pet_species_store
+            .battle_pet_test_fixture_like_cpp
+            .battle_pet_species_store
             .as_ref()
             .and_then(|store| store.get(species))
             .cloned()?;
@@ -510,14 +548,19 @@ impl WorldSession {
         };
         crate::session::apply_battle_pet_calculated_stats_like_cpp(&mut pet, calculated_stats);
 
-        self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.insert(pet_guid, pet);
+        self.battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .insert(pet_guid, pet);
         self.send_battle_pet_updates_like_cpp(&[pet_guid], true);
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_battle_pet_unique_owned_criteria_like_cpp = self
-                .battle_pet_test_fixture_like_cpp.represented_battle_pet_unique_owned_criteria_like_cpp
+            self.battle_pet_test_fixture_like_cpp
+                .represented_battle_pet_unique_owned_criteria_like_cpp = self
+                .battle_pet_test_fixture_like_cpp
+                .represented_battle_pet_unique_owned_criteria_like_cpp
                 .saturating_add(1);
-            self.battle_pet_test_fixture_like_cpp.represented_battle_pet_learned_new_pet_criteria_like_cpp
+            self.battle_pet_test_fixture_like_cpp
+                .represented_battle_pet_learned_new_pet_criteria_like_cpp
                 .push(species);
         }
 
@@ -569,10 +612,13 @@ impl WorldSession {
                 });
                 #[cfg(test)]
                 {
-                    self.battle_pet_test_fixture_like_cpp.represented_battle_pet_unique_owned_criteria_like_cpp = self
-                        .battle_pet_test_fixture_like_cpp.represented_battle_pet_unique_owned_criteria_like_cpp
+                    self.battle_pet_test_fixture_like_cpp
+                        .represented_battle_pet_unique_owned_criteria_like_cpp = self
+                        .battle_pet_test_fixture_like_cpp
+                        .represented_battle_pet_unique_owned_criteria_like_cpp
                         .saturating_add(1);
-                    self.battle_pet_test_fixture_like_cpp.represented_battle_pet_learned_new_pet_criteria_like_cpp
+                    self.battle_pet_test_fixture_like_cpp
+                        .represented_battle_pet_learned_new_pet_criteria_like_cpp
                         .push(species);
                 }
                 Ok(guid)
@@ -589,13 +635,15 @@ impl WorldSession {
         let _ = species;
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_battle_pet_unique_owned_criteria_like_cpp = self
+            self.battle_pet_test_fixture_like_cpp
+                .represented_battle_pet_unique_owned_criteria_like_cpp = self
                 .battle_pet_account_attachment_like_cpp
                 .as_ref()
                 .map(|attachment| attachment.owner_like_cpp().unique_species_count_like_cpp())
                 .unwrap_or_else(|| {
                     u32::try_from(
-                        self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
+                        self.battle_pet_test_fixture_like_cpp
+                            .represented_battle_pets_like_cpp
                             .values()
                             .map(|pet| pet.species)
                             .collect::<BTreeSet<_>>()
@@ -604,10 +652,12 @@ impl WorldSession {
                     .unwrap_or(u32::MAX)
                 });
             if !self
-                .battle_pet_test_fixture_like_cpp.represented_battle_pet_learned_new_pet_criteria_like_cpp
+                .battle_pet_test_fixture_like_cpp
+                .represented_battle_pet_learned_new_pet_criteria_like_cpp
                 .contains(&species)
             {
-                self.battle_pet_test_fixture_like_cpp.represented_battle_pet_learned_new_pet_criteria_like_cpp
+                self.battle_pet_test_fixture_like_cpp
+                    .represented_battle_pet_learned_new_pet_criteria_like_cpp
                     .push(species);
             }
         }
@@ -622,7 +672,10 @@ impl WorldSession {
     pub(crate) fn battle_pet_heal_battle_pets_pct_like_cpp(&mut self, pct: u8) -> usize {
         let mut updated = Vec::new();
 
-        for (pet_guid, pet) in &mut self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp {
+        for (pet_guid, pet) in &mut self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+        {
             if pet.save_info == RepresentedBattlePetSaveInfoLikeCpp::Removed {
                 continue;
             }
@@ -655,7 +708,11 @@ impl WorldSession {
             return RepresentedBattlePetGrantExperienceOutcomeLikeCpp::NoJournalLock;
         }
 
-        let Some(pet) = self.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.get(&pet_guid) else {
+        let Some(pet) = self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .get(&pet_guid)
+        else {
             return RepresentedBattlePetGrantExperienceOutcomeLikeCpp::UnknownPet;
         };
 
@@ -701,10 +758,12 @@ impl WorldSession {
             #[cfg(test)]
             {
                 let criteria = RepresentedBattlePetLevelCriteriaLikeCpp { species, level };
-                self.battle_pet_test_fixture_like_cpp.represented_battle_pet_level_criteria_like_cpp
+                self.battle_pet_test_fixture_like_cpp
+                    .represented_battle_pet_level_criteria_like_cpp
                     .push(criteria);
                 if xp_source == RepresentedBattlePetXpSourceLikeCpp::PetBattle {
-                    self.battle_pet_test_fixture_like_cpp.represented_battle_pet_active_level_criteria_like_cpp
+                    self.battle_pet_test_fixture_like_cpp
+                        .represented_battle_pet_active_level_criteria_like_cpp
                         .push(criteria);
                 }
             }
@@ -714,7 +773,8 @@ impl WorldSession {
             self.battle_pet_calculate_stats_like_cpp(breed, species, quality, level);
 
         let pet = self
-            .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
             .get_mut(&pet_guid)
             .expect("pet was checked before XP calculation");
         pet.level = level;
@@ -813,10 +873,12 @@ impl WorldSession {
             Ok(((), packet)) => {
                 #[cfg(test)]
                 {
-                    self.battle_pet_test_fixture_like_cpp.represented_battle_pet_level_criteria_like_cpp
+                    self.battle_pet_test_fixture_like_cpp
+                        .represented_battle_pet_level_criteria_like_cpp
                         .extend(criteria.iter().copied());
                     if xp_source == RepresentedBattlePetXpSourceLikeCpp::PetBattle {
-                        self.battle_pet_test_fixture_like_cpp.represented_battle_pet_active_level_criteria_like_cpp
+                        self.battle_pet_test_fixture_like_cpp
+                            .represented_battle_pet_active_level_criteria_like_cpp
                             .extend(criteria);
                     }
                 }
@@ -841,11 +903,14 @@ impl WorldSession {
     }
     #[cfg(test)]
     pub(crate) fn represented_battle_pet_unique_owned_criteria_like_cpp(&self) -> u32 {
-        self.battle_pet_test_fixture_like_cpp.represented_battle_pet_unique_owned_criteria_like_cpp
+        self.battle_pet_test_fixture_like_cpp
+            .represented_battle_pet_unique_owned_criteria_like_cpp
     }
     #[cfg(test)]
     pub(crate) fn represented_battle_pet_learned_new_pet_criteria_like_cpp(&self) -> &[u32] {
-        &self.battle_pet_test_fixture_like_cpp.represented_battle_pet_learned_new_pet_criteria_like_cpp
+        &self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pet_learned_new_pet_criteria_like_cpp
     }
     /// C++ `WorldSession::HandleBattlePetSummon` represented toggle.
     ///
@@ -870,7 +935,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_summoned_battle_pet_guid_like_cpp
+            self.battle_pet_test_fixture_like_cpp
+                .represented_summoned_battle_pet_guid_like_cpp
         }
         #[cfg(not(test))]
         {
@@ -893,7 +959,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_summoned_battle_pet_guid_like_cpp = pet_guid;
+            self.battle_pet_test_fixture_like_cpp
+                .represented_summoned_battle_pet_guid_like_cpp = pet_guid;
             true
         }
         #[cfg(not(test))]
@@ -905,7 +972,9 @@ impl WorldSession {
     pub(crate) fn represented_battle_pet_cage_items_like_cpp(
         &self,
     ) -> &[RepresentedBattlePetCageItemLikeCpp] {
-        &self.battle_pet_test_fixture_like_cpp.represented_battle_pet_cage_items_like_cpp
+        &self
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pet_cage_items_like_cpp
     }
     #[cfg(test)]
     pub(crate) fn set_represented_battle_pet_query_companion_like_cpp(
@@ -913,7 +982,8 @@ impl WorldSession {
         unit_guid: ObjectGuid,
         companion: RepresentedBattlePetQueryCompanionLikeCpp,
     ) {
-        self.battle_pet_test_fixture_like_cpp.represented_battle_pet_query_companions_like_cpp
+        self.battle_pet_test_fixture_like_cpp
+            .represented_battle_pet_query_companions_like_cpp
             .insert(unit_guid, companion);
     }
     pub(crate) fn represented_battle_pet_query_companion_like_cpp(
@@ -954,7 +1024,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         {
-            self.battle_pet_test_fixture_like_cpp.represented_battle_pet_query_companions_like_cpp
+            self.battle_pet_test_fixture_like_cpp
+                .represented_battle_pet_query_companions_like_cpp
                 .get(&unit_guid)
                 .copied()
         }
@@ -972,7 +1043,8 @@ impl WorldSession {
         }
         #[cfg(test)]
         return self
-            .battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
             .get(&pet_guid)
             .cloned();
         #[cfg(not(test))]

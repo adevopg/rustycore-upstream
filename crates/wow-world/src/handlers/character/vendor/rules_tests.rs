@@ -1,32 +1,30 @@
 //! Unit tests for pure vendor admission, listing, pricing, and purchase rules.
 
 use super::{
-    SellItemAmountAction, VendorBuyTemplateBlock, VendorExtendedCostBlock,
-    sell_item_amount_action, vendor_buy_coinage_update_like_cpp,
-    vendor_buy_currency_packet_quantity_to_cpp_count, vendor_buy_currency_quantity_block_result,
-    vendor_buy_direct_inventory_destination, vendor_buy_direct_store_block_result,
-    vendor_buy_extended_cost_block_result, vendor_buy_extended_cost_currency_costs,
-    vendor_buy_extended_cost_item_costs, vendor_buy_muid_to_cpp_slot,
-    vendor_buy_packet_quantity_to_cpp_count, vendor_buy_player_condition_block_result_like_cpp,
-    vendor_buy_quantity_and_price, vendor_buy_required_reputation_block_result,
-    vendor_buy_stock_refill_count, vendor_buy_template_block_result,
-    vendor_conditions_block_result, vendor_list_item_refundable,
+    SellItemAmountAction, VendorBuyTemplateBlock, VendorExtendedCostBlock, sell_item_amount_action,
+    vendor_buy_coinage_update_like_cpp, vendor_buy_currency_packet_quantity_to_cpp_count,
+    vendor_buy_currency_quantity_block_result, vendor_buy_direct_inventory_destination,
+    vendor_buy_direct_store_block_result, vendor_buy_extended_cost_block_result,
+    vendor_buy_extended_cost_currency_costs, vendor_buy_extended_cost_item_costs,
+    vendor_buy_muid_to_cpp_slot, vendor_buy_packet_quantity_to_cpp_count,
+    vendor_buy_player_condition_block_result_like_cpp, vendor_buy_quantity_and_price,
+    vendor_buy_required_reputation_block_result, vendor_buy_stock_refill_count,
+    vendor_buy_template_block_result, vendor_conditions_block_result, vendor_list_item_refundable,
     vendor_list_reaches_cpp_item_limit, vendor_list_should_skip_allowed_class,
     vendor_list_should_skip_currency_row, vendor_list_should_skip_faction_flags,
     vendor_list_should_skip_sold_out, vendor_player_condition_failed_id_like_cpp,
     vendor_stored_new_item_flags_like_cpp,
 };
+use wow_constants::BuyResult;
 use wow_constants::{
     InventoryResult, ItemBondingType, ItemExtendedCostFlags, ItemFieldFlags, ItemFlags, ItemFlags2,
     Team,
 };
 use wow_core::ObjectGuid;
 use wow_data::{
-    CurrencyTypesStore, ItemExtendedCostStore, PlayerConditionContextLikeCpp,
-    PlayerConditionStore,
+    CurrencyTypesStore, ItemExtendedCostStore, PlayerConditionContextLikeCpp, PlayerConditionStore,
 };
 use wow_entities::{INVENTORY_SLOT_BAG_0, MAX_BAG_SIZE, NULL_BAG, NULL_SLOT};
-use wow_constants::BuyResult;
 use wow_packet::packets::misc::BuyItem;
 
 use super::super::super::player_team_for_race_cpp;
@@ -262,19 +260,20 @@ fn vendor_buy_extended_cost_fails_closed_like_cpp_preflight() {
         vendor_buy_extended_cost_currency_costs(Some(&extended_cost_store), 12, 5, 10),
         vec![(395, 20)]
     );
-    let item_turnin_store = ItemExtendedCostStore::from_entries([wow_data::ItemExtendedCostEntry {
-        id: 13,
-        required_arena_rating: 0,
-        arena_bracket: 0,
-        flags: ItemExtendedCostFlags::empty(),
-        min_faction_id: 0,
-        min_reputation: 0,
-        required_achievement: 0,
-        item_id: [700, 0, 0, 0, 0],
-        item_count: [3, 0, 0, 0, 0],
-        currency_id: [0; wow_data::MAX_ITEM_EXT_COST_CURRENCIES],
-        currency_count: [0; wow_data::MAX_ITEM_EXT_COST_CURRENCIES],
-    }]);
+    let item_turnin_store =
+        ItemExtendedCostStore::from_entries([wow_data::ItemExtendedCostEntry {
+            id: 13,
+            required_arena_rating: 0,
+            arena_bracket: 0,
+            flags: ItemExtendedCostFlags::empty(),
+            min_faction_id: 0,
+            min_reputation: 0,
+            required_achievement: 0,
+            item_id: [700, 0, 0, 0, 0],
+            item_count: [3, 0, 0, 0, 0],
+            currency_id: [0; wow_data::MAX_ITEM_EXT_COST_CURRENCIES],
+            currency_count: [0; wow_data::MAX_ITEM_EXT_COST_CURRENCIES],
+        }]);
     assert_eq!(
         vendor_buy_extended_cost_block_result(
             Some(&item_turnin_store),
@@ -636,7 +635,10 @@ fn vendor_buy_destination_rejects_cpp_slot_over_max_bag_size() {
         item_id: 700,
     };
 
-    assert_eq!(vendor_buy_direct_inventory_destination(player_guid, &buy), None);
+    assert_eq!(
+        vendor_buy_direct_inventory_destination(player_guid, &buy),
+        None
+    );
 }
 
 #[test]

@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[tokio::test]
 async fn equipment_stats_use_one_canonical_contribution_path_like_cpp() {
     let (mut session, _, _) = make_session();

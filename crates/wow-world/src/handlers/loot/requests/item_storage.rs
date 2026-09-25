@@ -1,7 +1,7 @@
 //! Direct loot item storage and publication helpers.
 
-use wow_entities::Item;
 use super::*;
+use wow_entities::Item;
 mod disenchant;
 
 impl WorldSession {
@@ -32,7 +32,11 @@ impl WorldSession {
         item.bind_if_stored(is_bag_pos(make_item_pos(INVENTORY_SLOT_BAG_0, slot)));
     }
 
-    pub(in crate::handlers::loot) fn stored_new_item_dynamic_flags_like_cpp(&self, item_id: u32, slot: u8) -> u32 {
+    pub(in crate::handlers::loot) fn stored_new_item_dynamic_flags_like_cpp(
+        &self,
+        item_id: u32,
+        slot: u8,
+    ) -> u32 {
         let mut item = Item::new(0);
         self.apply_stored_new_item_flags_like_cpp(item_id, slot, &mut item);
         item.item_flags_bits()
@@ -55,7 +59,6 @@ impl WorldSession {
         planned.item_flags_bits()
     }
 
-
     pub(in crate::handlers::loot) async fn store_direct_loot_item_from_owner_with_generator_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
@@ -73,7 +76,6 @@ impl WorldSession {
         )
         .await
     }
-
 
     pub(in crate::handlers::loot) async fn store_direct_loot_item_with_source_and_generator_like_cpp(
         &mut self,
@@ -200,7 +202,8 @@ impl WorldSession {
                     .await;
                 debug_assert!(applied.as_ref().is_some_and(|result| result.no_grant));
                 debug_assert!(plan.statuses.iter().all(|planned| {
-                    self.quest_test_fixture_like_cpp.player_quests
+                    self.quest_test_fixture_like_cpp
+                        .player_quests
                         .get(&planned.quest_id)
                         .is_some_and(|actual| {
                             actual.status == planned.status
@@ -878,7 +881,10 @@ impl WorldSession {
         (remaining == 0).then_some(dest)
     }
 
-    pub(in crate::handlers::loot) async fn destroy_fully_looted_direct_item(&mut self, item_guid: ObjectGuid) {
+    pub(in crate::handlers::loot) async fn destroy_fully_looted_direct_item(
+        &mut self,
+        item_guid: ObjectGuid,
+    ) {
         self.destroy_direct_item_count_after_loot_release_like_cpp(item_guid, None)
             .await;
     }

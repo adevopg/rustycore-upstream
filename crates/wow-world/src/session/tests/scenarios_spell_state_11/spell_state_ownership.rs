@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[test]
 fn represented_unit_values_update_preserves_unrepresented_spellclick_delta_like_cpp() {
     let (mut session, _pkt_tx, _send_rx) = make_session();

@@ -5,16 +5,16 @@
 
 use super::*;
 
-#[path = "scenarios_spell_state_11/spell_state_ownership.rs"]
-mod spell_state_ownership;
 #[path = "scenarios_spell_state_11/reputation.rs"]
 mod reputation;
 #[path = "scenarios_spell_state_11/spell_damage_base.rs"]
 mod spell_damage_base;
-#[path = "scenarios_spell_state_11/spell_healing.rs"]
-mod spell_healing;
 #[path = "scenarios_spell_state_11/spell_damage_modifiers.rs"]
 mod spell_damage_modifiers;
+#[path = "scenarios_spell_state_11/spell_healing.rs"]
+mod spell_healing;
+#[path = "scenarios_spell_state_11/spell_state_ownership.rs"]
+mod spell_state_ownership;
 
 /// The represented replacement runtime this scenario installs and expects.
 fn replacement_spell_runtime_like_cpp(

@@ -6,8 +6,8 @@
 //! Loot window open/close requests and the represented loot cache.
 
 use super::*;
-use wow_packet::ClientPacket;
 use wow_entities::ItemObjectUpdateLikeCpp;
+use wow_packet::ClientPacket;
 
 mod context;
 mod item_storage;
@@ -180,7 +180,6 @@ impl WorldSession {
             _ => {}
         }
     }
-
 
     /// True only while a request still belongs to the exact object lifetime
     /// whose loot window this session opened.
@@ -362,5 +361,4 @@ impl WorldSession {
         self.do_loot_release_owner_like_cpp(req.unit, player_guid)
             .await;
     }
-
 }

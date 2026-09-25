@@ -64,18 +64,33 @@ impl WorldSession {
         &self,
     ) -> PlayerBootstrapCatalogsLikeCpp {
         let mut catalogs = PlayerBootstrapCatalogsLikeCpp::default();
-        if let Some(store) = &self.player_bootstrap_catalog_test_fixture_like_cpp.player_create_info_store_like_cpp {
+        if let Some(store) = &self
+            .player_bootstrap_catalog_test_fixture_like_cpp
+            .player_create_info_store_like_cpp
+        {
             catalogs.create_info = Arc::clone(store);
         }
-        if let Some(store) = &self.player_bootstrap_catalog_test_fixture_like_cpp.player_create_cast_spell_store_like_cpp {
+        if let Some(store) = &self
+            .player_bootstrap_catalog_test_fixture_like_cpp
+            .player_create_cast_spell_store_like_cpp
+        {
             catalogs.cast_spells = Arc::clone(store);
         }
-        if let Some(store) = &self.player_bootstrap_catalog_test_fixture_like_cpp.player_create_custom_spell_store_like_cpp {
+        if let Some(store) = &self
+            .player_bootstrap_catalog_test_fixture_like_cpp
+            .player_create_custom_spell_store_like_cpp
+        {
             catalogs.custom_spells = Arc::clone(store);
         }
-        catalogs.start_all_spells = self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_spells_like_cpp;
-        catalogs.start_all_explored = self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_explored_like_cpp;
-        catalogs.start_all_reputation = self.player_bootstrap_catalog_test_fixture_like_cpp.start_all_reputation_like_cpp;
+        catalogs.start_all_spells = self
+            .player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_spells_like_cpp;
+        catalogs.start_all_explored = self
+            .player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_explored_like_cpp;
+        catalogs.start_all_reputation = self
+            .player_bootstrap_catalog_test_fixture_like_cpp
+            .start_all_reputation_like_cpp;
         catalogs
     }
     #[cfg(test)]
@@ -87,7 +102,9 @@ impl WorldSession {
             offline_tavern_or_city: self
                 .rest_mgr_test_fixture_like_cpp
                 .rest_offline_tavern_or_city_rate_like_cpp,
-            ingame: self.rest_mgr_test_fixture_like_cpp.rest_ingame_rate_like_cpp,
+            ingame: self
+                .rest_mgr_test_fixture_like_cpp
+                .rest_ingame_rate_like_cpp,
         }
     }
     #[cfg(test)]
@@ -154,11 +171,21 @@ impl WorldSession {
     #[cfg(test)]
     pub(crate) fn support_feature_policy_for_test_like_cpp(&self) -> SupportFeaturePolicyLikeCpp {
         SupportFeaturePolicyLikeCpp {
-            support_enabled: self.support_feature_test_fixture_like_cpp.represented_support_enabled_like_cpp,
-            tickets_enabled: self.support_feature_test_fixture_like_cpp.represented_support_tickets_enabled_like_cpp,
-            bugs_enabled: self.support_feature_test_fixture_like_cpp.represented_support_bugs_enabled_like_cpp,
-            complaints_enabled: self.support_feature_test_fixture_like_cpp.represented_support_complaints_enabled_like_cpp,
-            suggestions_enabled: self.support_feature_test_fixture_like_cpp.represented_support_suggestions_enabled_like_cpp,
+            support_enabled: self
+                .support_feature_test_fixture_like_cpp
+                .represented_support_enabled_like_cpp,
+            tickets_enabled: self
+                .support_feature_test_fixture_like_cpp
+                .represented_support_tickets_enabled_like_cpp,
+            bugs_enabled: self
+                .support_feature_test_fixture_like_cpp
+                .represented_support_bugs_enabled_like_cpp,
+            complaints_enabled: self
+                .support_feature_test_fixture_like_cpp
+                .represented_support_complaints_enabled_like_cpp,
+            suggestions_enabled: self
+                .support_feature_test_fixture_like_cpp
+                .represented_support_suggestions_enabled_like_cpp,
             character_undelete_enabled: self.feature_system_character_undelete_enabled_like_cpp,
             bpay_store_enabled: self.feature_system_bpay_store_enabled_like_cpp,
             max_characters_per_realm: self.characters_per_realm_like_cpp,

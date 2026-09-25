@@ -522,7 +522,8 @@ impl WorldSession {
         self.last_observed_farsight_object_like_cpp = dynamic_object_guid;
         #[cfg(test)]
         {
-            self.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(dynamic_object_guid);
+            self.visibility_test_fixture_like_cpp
+                .represented_seer_guid_like_cpp = Some(dynamic_object_guid);
         }
         player_set_viewpoint.update_visibility_requested
     }
@@ -640,7 +641,8 @@ impl WorldSession {
             let clear_target_packet_bytes =
                 wow_packet::packets::spell::ClearTarget { guid: caster_guid }.to_bytes();
 
-            self.duel_test_fixture_like_cpp.represented_force_deselects_like_cpp
+            self.duel_test_fixture_like_cpp
+                .represented_force_deselects_like_cpp
                 .push(RepresentedForceDeselectLikeCpp {
                     caster_guid,
                     visibility_range_yards: DEFAULT_VISIBILITY_DISTANCE_YARDS_LIKE_CPP,

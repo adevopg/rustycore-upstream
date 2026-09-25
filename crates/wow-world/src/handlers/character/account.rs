@@ -7,8 +7,6 @@
 
 use wow_packet::ClientPacket;
 
-
-
 use super::*;
 
 mod collections;
@@ -208,5 +206,4 @@ impl WorldSession {
             });
         }
     }
-
 }

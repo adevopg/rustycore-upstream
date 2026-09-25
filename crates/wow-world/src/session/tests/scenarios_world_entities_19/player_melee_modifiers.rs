@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// The map-owned melee phase applies the victim's aurastate and aura-mechanic
 /// melee bonuses, not only the session path.
 ///

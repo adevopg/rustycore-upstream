@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[tokio::test]
 async fn school_resistances_follow_update_resistances_like_cpp() {
     let (mut session, _, _) = make_session();

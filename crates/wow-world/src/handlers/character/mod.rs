@@ -70,10 +70,9 @@ use wow_entities::{
     CorpseType, CreatureAddonLifecycleRecordLikeCpp, GAMEOBJECT_TYPE_FISHING_HOLE,
     GAMEOBJECT_TYPE_QUESTGIVER, GameObjectTemplateData, INVENTORY_DEFAULT_SIZE,
     INVENTORY_SLOT_BAG_0, INVENTORY_SLOT_BAG_END, INVENTORY_SLOT_BAG_START,
-    INVENTORY_SLOT_ITEM_START, InventoryStorageMovePlanLikeCpp, MAX_BAG_SIZE,
+    INVENTORY_SLOT_ITEM_START, InventoryStorageMovePlanLikeCpp, MAX_BAG_SIZE, MAX_MONEY_AMOUNT,
     MovementGeneratorType, NULL_BAG, NULL_SLOT, PlayerEffectiveCombatStatsLikeCpp,
-    MAX_MONEY_AMOUNT, REAGENT_BAG_SLOT_END, REAGENT_BAG_SLOT_START, SendNewItemDelivery,
-    SendNewItemDisplayText,
+    REAGENT_BAG_SLOT_END, REAGENT_BAG_SLOT_START, SendNewItemDelivery, SendNewItemDisplayText,
     SendNewItemInstancePlan, SendNewItemModifier, SendNewItemPlan, SocketedGem,
     SwapItemPreflightResult, WorldObject, is_bank_pos, is_child_equipment_pos, is_equipment_pos,
     is_inventory_pos, item_can_go_into_bag, normalize_creature_chase_movement_type_like_cpp,
@@ -121,10 +120,7 @@ use crate::session::{
     RepresentedHomebindLikeCpp, RepresentedQuestObjectiveProgressEventLikeCpp,
     RepresentedVoidStorageItemLikeCpp, SpellCastMetadata, SupportFeaturePolicyLikeCpp,
 };
-#[cfg(test)]
-use wow_entities::GAMEOBJECT_TYPE_GOOBER;
-use item_load_support::*;
-use login_support::*;
+pub(crate) use creation_support::default_display_id;
 use creation_support::{
     default_character_power1_like_cpp, default_health_mana, max_health_u32_like_cpp,
     restored_saved_health_like_cpp, start_position, start_zone,
@@ -133,7 +129,9 @@ use enumeration_support::{
     EnumCharacterFlagsLikeCpp, enum_character_effective_player_flags_like_cpp,
     enum_character_flags_like_cpp, enum_character_pet_data_like_cpp,
 };
-pub(crate) use creation_support::default_display_id;
+use item_load_support::*;
+use login_support::*;
+pub(crate) use login_transport_support::player_visibility_create_update_from_snapshot_like_cpp;
 use login_transport_support::{
     InitTransportsPlanLikeCpp, MapTransportCreateLikeCpp, PersistedTransportLoginLikeCpp,
     TransportCreatePositionLikeCpp, compose_init_self_create_blocks_like_cpp,
@@ -141,7 +139,8 @@ use login_transport_support::{
     object_guid_from_db_binary_like_cpp, transport_position_for_login_like_cpp,
     transport_route_contains_saved_map_like_cpp, validate_persisted_transport_login_like_cpp,
 };
-pub(crate) use login_transport_support::player_visibility_create_update_from_snapshot_like_cpp;
+#[cfg(test)]
+use wow_entities::GAMEOBJECT_TYPE_GOOBER;
 
 // ── Handler registration ────────────────────────────────────────────
 
@@ -580,8 +579,6 @@ const GAMEOBJECT_TYPE_MAP_OBJ_TRANSPORT_LIKE_CPP: u8 = 15;
 const TAXI_PATH_NODE_FLAG_TELEPORT_LIKE_CPP: i32 = 0x1;
 const TAXI_PATH_NODE_FLAG_STOP_LIKE_CPP: i32 = 0x2;
 
-
-
 fn initial_character_rest_state_like_cpp(is_a_recruiter: bool, recruiter_id: u32) -> u8 {
     if is_a_recruiter || recruiter_id != 0 {
         REST_STATE_RAF_LINKED_LIKE_CPP
@@ -698,7 +695,6 @@ use wow_packet::packets::query::*;
 use crate::session::{InventoryItem, WorldSession};
 
 // ── Hardcoded data ──────────────────────────────────────────────────
-
 
 /// Maximum characters per account.
 const MAX_CHARACTERS_PER_ACCOUNT: u32 = 10;

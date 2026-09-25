@@ -5,8 +5,8 @@
 
 //! Vendor sale transaction, buyback creation and publication.
 
-use super::*;
 use super::rules::{SellItemAmountAction, sell_item_amount_action};
+use super::*;
 
 impl WorldSession {
     /// Handle CMSG_SELL_ITEM — player sells an item to a vendor.
@@ -376,6 +376,4 @@ impl WorldSession {
             Some(new_gold),
         );
     }
-
-
 }

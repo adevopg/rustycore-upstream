@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[tokio::test]
 async fn armor_aura_producers_follow_update_armor_like_cpp() {
     let (mut session, _, _) = make_session();

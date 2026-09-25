@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[tokio::test]
 async fn expertise_aura_modifiers_filter_by_weapon_fit_like_cpp() {
     let (mut session, _, _) = make_session();

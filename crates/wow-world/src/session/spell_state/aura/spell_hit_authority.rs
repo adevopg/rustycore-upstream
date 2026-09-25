@@ -28,7 +28,7 @@ impl WorldSession {
         canonical
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(in crate::session) fn mutate_player_aura_subsystem_like_cpp<R>(
         &mut self,
         mutate: impl FnOnce(&mut wow_entities::AuraSubsystem) -> R,
@@ -79,7 +79,7 @@ impl WorldSession {
         _canonical
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn player_aura_authority_complete_like_cpp(&self) -> bool {
         self.player_aura_authority_complete_like_cpp
     }
@@ -114,7 +114,7 @@ impl WorldSession {
             .unwrap_or(false)
     }
 
-/// C++ `_LoadTraits` creates missing configs for specialization indexes
+    /// C++ `_LoadTraits` creates missing configs for specialization indexes
     /// `0..MAX_SPECIALIZATIONS - 1`, and `CreateTraitConfig` can attach granted
     /// entries. This narrow proof is therefore limited to a complete set of
     /// persisted, active-for-spec combat configs whose global entry query was
@@ -166,7 +166,7 @@ impl WorldSession {
         expected_specs.is_empty()
     }
 
-/// C++ `Map::AddPlayerToMap` can dispatch `InstanceScript::OnPlayerEnter`,
+    /// C++ `Map::AddPlayerToMap` can dispatch `InstanceScript::OnPlayerEnter`,
     /// Scenario, and Battleground hooks before the login authority is
     /// published. Those hooks are not represented, so only an exact ordinary
     /// world-map DB2 row excludes them.
@@ -260,7 +260,7 @@ impl WorldSession {
         )
     }
 
-/// Publish the combined session-source proof to the canonical Player.
+    /// Publish the combined session-source proof to the canonical Player.
     /// Positive publication is reserved for explicit login/snapshot boundaries;
     /// individual source mutations call the invalidation helper instead.
     pub(crate) fn sync_player_spell_hit_aura_authority_to_canonical_like_cpp(

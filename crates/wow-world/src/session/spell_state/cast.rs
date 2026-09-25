@@ -125,7 +125,8 @@ impl WorldSession {
         &mut self,
         store: Arc<PlayerCreateInfoCastSpellStoreLikeCpp>,
     ) {
-        self.player_bootstrap_catalog_test_fixture_like_cpp.player_create_cast_spell_store_like_cpp = Some(store);
+        self.player_bootstrap_catalog_test_fixture_like_cpp
+            .player_create_cast_spell_store_like_cpp = Some(store);
     }
     /// Conservative C++ `SpellArea::IsFitToRequirements` projection used only
     /// to decide whether an unrepresented AUTOCAST aura could exist. A proven
@@ -410,7 +411,9 @@ impl WorldSession {
     pub(crate) fn represented_can_duel_spell_casts_like_cpp(
         &self,
     ) -> &[RepresentedCanDuelSpellCastLikeCpp] {
-        &self.duel_test_fixture_like_cpp.represented_can_duel_spell_casts_like_cpp
+        &self
+            .duel_test_fixture_like_cpp
+            .represented_can_duel_spell_casts_like_cpp
     }
     #[cfg_attr(not(test), allow(unused_variables))]
     pub(crate) fn record_represented_talent_respec_visual_spell_cast_like_cpp(

@@ -37,7 +37,11 @@ async fn quest_giver_reward_daily_flag_is_not_auto_complete_like_cpp() {
 
     assert!(send_rx.try_recv().is_err());
     assert_eq!(
-        session.quest_test_fixture_like_cpp.player_quests.get(&9_219).map(|quest| quest.status),
+        session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .get(&9_219)
+            .map(|quest| quest.status),
         Some(crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP)
     );
 }
@@ -74,7 +78,11 @@ async fn quest_giver_complete_daily_flag_requires_involved_source_like_cpp() {
 
     assert!(send_rx.try_recv().is_err());
     assert_eq!(
-        session.quest_test_fixture_like_cpp.player_quests.get(&9_220).map(|quest| quest.status),
+        session
+            .quest_test_fixture_like_cpp
+            .player_quests
+            .get(&9_220)
+            .map(|quest| quest.status),
         Some(crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP)
     );
 }

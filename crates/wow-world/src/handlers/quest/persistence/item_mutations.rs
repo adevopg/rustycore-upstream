@@ -441,5 +441,4 @@ impl WorldSession {
 
         None
     }
-
 }

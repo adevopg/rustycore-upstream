@@ -5,20 +5,20 @@
 
 //! Pure vendor admission, catalog, price, stock, and cost rules.
 
+use wow_constants::BuyResult;
 use wow_constants::{
-    InventoryResult, ItemBondingType, ItemExtendedCostFlags, ItemFieldFlags, ItemFlags,
-    ItemFlags2, Team,
+    InventoryResult, ItemBondingType, ItemExtendedCostFlags, ItemFieldFlags, ItemFlags, ItemFlags2,
+    Team,
 };
 use wow_core::ObjectGuid;
 use wow_data::{
-    CurrencyTypesStore, ItemExtendedCostStore, PlayerConditionContextLikeCpp,
-    PlayerConditionStore, is_player_meeting_condition_like_cpp,
+    CurrencyTypesStore, ItemExtendedCostStore, PlayerConditionContextLikeCpp, PlayerConditionStore,
+    is_player_meeting_condition_like_cpp,
 };
 use wow_entities::{
-    INVENTORY_SLOT_BAG_0, MAX_BAG_SIZE, MAX_MONEY_AMOUNT, NULL_BAG, NULL_SLOT,
-    is_equipment_pos, is_inventory_pos,
+    INVENTORY_SLOT_BAG_0, MAX_BAG_SIZE, MAX_MONEY_AMOUNT, NULL_BAG, NULL_SLOT, is_equipment_pos,
+    is_inventory_pos,
 };
-use wow_constants::BuyResult;
 use wow_packet::packets::misc::BuyItem;
 
 use super::super::{player_class_mask, player_team_for_race_cpp};

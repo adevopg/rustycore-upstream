@@ -213,8 +213,6 @@ fn trainer_condition_admission_proof_like_cpp(
 
 // ── Handler registrations ─────────────────────────────────────────────────────
 
-
-
 mod registrations;
 
 // ── Handler implementations ───────────────────────────────────────────────────

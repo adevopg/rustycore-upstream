@@ -223,7 +223,8 @@ impl WorldSession {
         }
 
         #[cfg(test)]
-        self.quest_test_fixture_like_cpp.represented_auto_accept_acknowledged_quests_like_cpp
+        self.quest_test_fixture_like_cpp
+            .represented_auto_accept_acknowledged_quests_like_cpp
             .push(quest_id);
         true
     }
@@ -268,7 +269,8 @@ impl WorldSession {
         if removed {
             #[cfg(test)]
             {
-                self.quest_test_fixture_like_cpp.represented_timed_quest_removals_like_cpp
+                self.quest_test_fixture_like_cpp
+                    .represented_timed_quest_removals_like_cpp
                     .push(quest_id);
             }
         }

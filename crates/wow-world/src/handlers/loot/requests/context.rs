@@ -170,7 +170,10 @@ impl WorldSession {
         })
     }
 
-    pub(in crate::handlers::loot) fn item_template_flags2_like_cpp(&self, item_id: u32) -> Option<u32> {
+    pub(in crate::handlers::loot) fn item_template_flags2_like_cpp(
+        &self,
+        item_id: u32,
+    ) -> Option<u32> {
         self.item_stats_store()
             .and_then(|store| store.sparse_template(item_id))
             .map(|template| template.flags[1])
@@ -203,7 +206,10 @@ impl WorldSession {
             || ((!needs_quest && !has_non_none_start_quest_status) || has_quest_for_item)
     }
 
-    pub(in crate::handlers::loot) fn has_incomplete_quest_objective_for_item_like_cpp(&self, item_id: u32) -> bool {
+    pub(in crate::handlers::loot) fn has_incomplete_quest_objective_for_item_like_cpp(
+        &self,
+        item_id: u32,
+    ) -> bool {
         let Ok(item_object_id) = i32::try_from(item_id) else {
             return false;
         };
@@ -317,7 +323,10 @@ impl WorldSession {
             })
     }
 
-    pub(in crate::handlers::loot) fn direct_inventory_item_count_like_cpp(&self, item_id: u32) -> Option<u32> {
+    pub(in crate::handlers::loot) fn direct_inventory_item_count_like_cpp(
+        &self,
+        item_id: u32,
+    ) -> Option<u32> {
         Some(
             self.represented_inventory_item_counts_like_cpp()?
                 .get(&item_id)
@@ -387,7 +396,9 @@ impl WorldSession {
         None
     }
 
-    pub(in crate::handlers::loot) async fn load_item_template_addon_loot_metadata_for_item_ids_like_cpp<I>(
+    pub(in crate::handlers::loot) async fn load_item_template_addon_loot_metadata_for_item_ids_like_cpp<
+        I,
+    >(
         &self,
         item_ids: I,
     ) -> HashMap<u32, ItemTemplateAddonLootMetadataLikeCpp>

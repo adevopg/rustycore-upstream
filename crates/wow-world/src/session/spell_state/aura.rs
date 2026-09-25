@@ -37,10 +37,10 @@ fn represented_aura_visual_without_caster_like_cpp(
     0
 }
 
-#[path = "aura/spell_hit_authority.rs"]
-mod spell_hit_authority;
 #[path = "aura/effect_queries.rs"]
 mod effect_queries;
+#[path = "aura/spell_hit_authority.rs"]
+mod spell_hit_authority;
 
 impl WorldSession {
     pub(crate) fn spell_area_for_aura_map_bounds_like_cpp(
@@ -54,7 +54,7 @@ impl WorldSession {
             .unwrap_or_default()
     }
 
-/// C++ `Unit::HasAuraState(flag)` for the represented Caster: the union of
+    /// C++ `Unit::HasAuraState(flag)` for the represented Caster: the union of
     /// the unit's aura-driven state bits and its health-derived bits.
     pub(in crate::session) fn represented_has_aura_state_like_cpp(&self, aura_state: u32) -> bool {
         let Some(flag) = u8::try_from(aura_state).ok().filter(|flag| *flag != 0) else {
@@ -69,7 +69,7 @@ impl WorldSession {
             .is_some_and(|bit| mask & bit != 0)
     }
 
-/// C++ `Unit::m_unitData->AuraState` for the canonical session player: the
+    /// C++ `Unit::m_unitData->AuraState` for the canonical session player: the
     /// aura-driven bits owned by the represented aura subsystem plus the
     /// alive-health bits `Unit::Update` maintains (WOUNDED_* / HEALTHY_75).
     ///
@@ -90,7 +90,7 @@ impl WorldSession {
         )
     }
 
-/// C++ `Unit::m_unitData->AuraState` for any represented unit: the canonical
+    /// C++ `Unit::m_unitData->AuraState` for any represented unit: the canonical
     /// session player or a world creature. `0` when the unit cannot be resolved.
     pub(in crate::session) fn represented_unit_aura_state_mask_like_cpp(
         &self,
@@ -124,7 +124,7 @@ impl WorldSession {
             .unwrap_or(0)
     }
 
-/// Whether any effect of the spell applies `SPELL_AURA_MOD_SHAPESHIFT`, the
+    /// Whether any effect of the spell applies `SPELL_AURA_MOD_SHAPESHIFT`, the
     /// gate for the C++ form-change recalculation.
     pub(crate) fn represented_spell_has_mod_shapeshift_effect_like_cpp(
         &self,
@@ -140,7 +140,7 @@ impl WorldSession {
             })
     }
 
-/// C++ `AuraEffect::HandleAuraModShapeshift` form ownership
+    /// C++ `AuraEffect::HandleAuraModShapeshift` form ownership
     /// (`SpellAuraEffects.cpp:1838-1866`): applying a `SPELL_AURA_MOD_SHAPESHIFT`
     /// aura sets the unit's form to the effect's `GetMiscValue`, and removing it
     /// clears the form only when no other active aura still applies one.
@@ -179,7 +179,7 @@ impl WorldSession {
         })
     }
 
-/// C++ `Player::GetShapeshiftForm`'s `SpellShapeshiftFormEntry`:
+    /// C++ `Player::GetShapeshiftForm`'s `SpellShapeshiftFormEntry`:
     /// `Player::CalculateMinMaxDamage` (`StatSystem.cpp:461-467`) rescales the
     /// base weapon damage and `Player::_ApplyWeaponDamage` (`Player.cpp:8018-8020`)
     /// suppresses the item-delay attack time while a form carries a
@@ -191,7 +191,7 @@ impl WorldSession {
         (form.combat_round_time > 0).then(|| f32::from(form.combat_round_time))
     }
 
-/// C++ `AuraEffect::HandleModAttackSpeed`/`HandleModMeleeSpeedPct`/
+    /// C++ `AuraEffect::HandleModAttackSpeed`/`HandleModMeleeSpeedPct`/
     /// `HandleModCombatSpeedPct`/`HandleAuraModRangedHaste`
     /// (`SpellAuraEffects.cpp:4353-4393`): the per-attack `m_modAttackSpeedPct`
     /// product over the player's active attack-speed auras.
@@ -242,7 +242,7 @@ impl WorldSession {
         multipliers
     }
 
-/// Re-install the represented attack-time multipliers on the canonical
+    /// Re-install the represented attack-time multipliers on the canonical
     /// Player after any aura mutation, mirroring the C++ aura handlers that call
     /// `Unit::ApplyAttackTimePercentMod` at apply/remove time.
     /// C++ `Unit::ApplyCastTimePercentMod` (`Unit.cpp:10229-10252`), reached from
@@ -522,7 +522,7 @@ impl WorldSession {
         loaded
     }
 
-#[allow(dead_code)]
+    #[allow(dead_code)]
     pub(crate) fn represented_mount_aura_display_candidates_like_cpp(
         &self,
         spell_id: u32,
@@ -557,7 +557,7 @@ impl WorldSession {
             .collect()
     }
 
-#[allow(dead_code)]
+    #[allow(dead_code)]
     pub(crate) fn select_represented_mount_aura_display_like_cpp(
         &mut self,
         spell_id: u32,
@@ -568,7 +568,7 @@ impl WorldSession {
             .copied()
     }
 
-/// Whether the represented application carries an active
+    /// Whether the represented application carries an active
     /// `SPELL_AURA_TRANSFORM` effect, the trigger C++ routes to
     /// `AuraEffect::HandleAuraTransform`.
     fn represented_application_has_transform_effect_like_cpp(
@@ -587,7 +587,7 @@ impl WorldSession {
         })
     }
 
-/// C++ `AuraEffect::HandleAuraTransform` apply path
+    /// C++ `AuraEffect::HandleAuraTransform` apply path
     /// (`SpellAuraEffects.cpp:1935-1951`) for the canonical Player: the applied
     /// transform aura updates `Unit::m_transformSpell` when there is no current
     /// transform spell info, when the new spell is not positive, or when the
@@ -646,7 +646,7 @@ impl WorldSession {
         true
     }
 
-/// C++ `AuraEffect::HandleAuraTransform` remove path
+    /// C++ `AuraEffect::HandleAuraTransform` remove path
     /// (`SpellAuraEffects.cpp:2129-2131`): only the aura that owns the current
     /// transform spell clears it.
     pub(in crate::session) fn remove_represented_transform_aura_like_cpp(
@@ -678,7 +678,7 @@ impl WorldSession {
         true
     }
 
-/// C++ `Unit::IsPolymorphed` (`Unit.cpp:9993-10004`): the active
+    /// C++ `Unit::IsPolymorphed` (`Unit.cpp:9993-10004`): the active
     /// `m_transformSpell` classifies as `SPELL_SPECIFIC_MAGE_POLYMORPH`.
     ///
     /// C++ `SpellInfo::_LoadSpellSpecific` derives that specific only from the
@@ -714,7 +714,6 @@ impl WorldSession {
         Some(family_matches && effect_zero_is_confuse)
     }
 }
-
 
 /// The `GetMiscValue` of a spell's first `SPELL_AURA_MOD_SHAPESHIFT` effect, the
 /// C++ `ShapeshiftForm` the aura installs.

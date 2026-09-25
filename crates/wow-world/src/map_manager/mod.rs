@@ -65,7 +65,6 @@ use wow_recastdetour::{
     SIZE_OF_GRIDS_LIKE_CPP, ThreadUnsafeMapData, create_path_query_filter_like_cpp,
 };
 
-
 /// A creature stored in the global map system.
 #[derive(Debug)]
 pub struct WorldCreature {

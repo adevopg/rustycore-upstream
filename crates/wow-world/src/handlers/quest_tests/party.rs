@@ -1,8 +1,8 @@
 //! Canonical party and group fixtures for quest-sharing scenarios.
 
 use super::{add_active_quest_in_slot_with_status, make_session};
-use crate::session::directory::PlayerRegistry;
 use crate::session::WorldSession;
+use crate::session::directory::PlayerRegistry;
 use std::sync::Arc;
 use wow_core::{ObjectGuid, Position};
 use wow_social::group::{GroupInfo, GroupRegistry, PendingInvites};

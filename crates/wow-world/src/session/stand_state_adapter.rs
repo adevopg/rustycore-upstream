@@ -441,6 +441,8 @@ impl WorldSession {
     pub(crate) fn represented_titan_grip_penalty_actions_like_cpp(
         &self,
     ) -> &[TitanGripPenaltyAction] {
-        &self.player_item_test_fixture_like_cpp.represented_titan_grip_penalty_actions_like_cpp
+        &self
+            .player_item_test_fixture_like_cpp
+            .represented_titan_grip_penalty_actions_like_cpp
     }
 }

@@ -9,8 +9,8 @@
 // `use super::*`, and the persistence inventory cannot resolve a glob, so
 // without these every database access in the file is invisible to the
 // ratchet (see #277).
-use wow_entities::Item;
 use super::*;
+use wow_entities::Item;
 use wow_entities::ItemObjectUpdateLikeCpp;
 
 mod release;
@@ -390,7 +390,6 @@ impl WorldSession {
                 .get(&owner_guid)
                 .is_some_and(|opened| *opened == claim.generation_like_cpp())
     }
-
 
     #[cfg(test)]
     pub(super) async fn store_claimed_direct_loot_item_from_owner_like_cpp(

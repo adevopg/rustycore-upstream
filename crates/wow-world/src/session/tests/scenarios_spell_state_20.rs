@@ -38,7 +38,8 @@ fn spell_acquisition_snapshot_adapter_is_exact_or_fails_closed() {
         ])
     );
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .insert(100, 7);
     session
         .represented_override_spells_like_cpp
@@ -180,7 +181,9 @@ fn spell_acquisition_snapshot_adapter_is_exact_or_fails_closed() {
         "the controller receives the exact skill rows and contributes its character identity"
     );
 
-    session.player_skill_test_fixture_like_cpp.player_skill_records_complete_like_cpp = false;
+    session
+        .player_skill_test_fixture_like_cpp
+        .player_skill_records_complete_like_cpp = false;
     assert_eq!(
         session.spell_acquisition_snapshot_like_cpp(
             PlayerAcquisitionLifecycleLikeCpp::InWorld,
@@ -189,9 +192,13 @@ fn spell_acquisition_snapshot_adapter_is_exact_or_fails_closed() {
         ),
         Err(SpellAcquisitionSnapshotAdapterErrorLikeCpp::IncompleteSkillRows)
     );
-    session.player_skill_test_fixture_like_cpp.player_skill_records_complete_like_cpp = true;
+    session
+        .player_skill_test_fixture_like_cpp
+        .player_skill_records_complete_like_cpp = true;
 
-    session.player_skill_test_fixture_like_cpp.player_skill_occupied_slots_like_cpp = None;
+    session
+        .player_skill_test_fixture_like_cpp
+        .player_skill_occupied_slots_like_cpp = None;
     assert_eq!(
         session.spell_acquisition_snapshot_like_cpp(
             PlayerAcquisitionLifecycleLikeCpp::InWorld,
@@ -200,13 +207,17 @@ fn spell_acquisition_snapshot_adapter_is_exact_or_fails_closed() {
         ),
         Err(SpellAcquisitionSnapshotAdapterErrorLikeCpp::MissingSkillSlotOccupancy)
     );
-    session.player_skill_test_fixture_like_cpp.player_skill_occupied_slots_like_cpp = Some(2);
+    session
+        .player_skill_test_fixture_like_cpp
+        .player_skill_occupied_slots_like_cpp = Some(2);
 
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .insert(999, 8);
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .insert(998, 9);
     assert_eq!(
         session.spell_acquisition_snapshot_like_cpp(
@@ -217,14 +228,17 @@ fn spell_acquisition_snapshot_adapter_is_exact_or_fails_closed() {
         Err(SpellAcquisitionSnapshotAdapterErrorLikeCpp::OrphanTraitDefinition { spell_id: 998 })
     );
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .remove(&999);
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .remove(&998);
 
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .insert(100, 0);
     assert_eq!(
         session.spell_acquisition_snapshot_like_cpp(
@@ -240,7 +254,8 @@ fn spell_acquisition_snapshot_adapter_is_exact_or_fails_closed() {
         )
     );
     session
-        .player_spell_test_fixture_like_cpp.represented_spell_trait_definition_ids_like_cpp
+        .player_spell_test_fixture_like_cpp
+        .represented_spell_trait_definition_ids_like_cpp
         .insert(100, 7);
 
     session
@@ -784,7 +799,12 @@ async fn spell_effect_uncage_battle_pet_rejects_disappeared_cast_item_like_cpp()
         .await
         .expect("represented cast should finish without applying a missing cast item");
 
-    assert!(session.battle_pet_test_fixture_like_cpp.represented_battle_pets_like_cpp.is_empty());
+    assert!(
+        session
+            .battle_pet_test_fixture_like_cpp
+            .represented_battle_pets_like_cpp
+            .is_empty()
+    );
     assert_eq!(
         drain_server_opcodes(&send_rx),
         vec![ServerOpcodes::SpellGo, ServerOpcodes::CooldownEvent]

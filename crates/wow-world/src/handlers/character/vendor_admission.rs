@@ -5,8 +5,8 @@
 
 //! Vendor stock and C++-slot catalog admission.
 
-use super::*;
 use super::vendor::rules::vendor_buy_stock_refill_count;
+use super::*;
 
 impl WorldSession {
     pub(super) fn vendor_item_current_count(
@@ -66,5 +66,4 @@ impl WorldSession {
         );
         new_count
     }
-
 }

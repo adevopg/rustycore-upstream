@@ -82,10 +82,4 @@ impl MapInstance {
     pub fn min_height_like_cpp(&self, _x: f32, _y: f32) -> f32 {
         DEFAULT_MIN_HEIGHT_LIKE_CPP
     }
-
-
-
-
-
-
 }

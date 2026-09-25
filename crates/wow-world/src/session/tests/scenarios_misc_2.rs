@@ -806,12 +806,22 @@ fn send_time_sync_uses_cpp_timer_sequence() {
     session.send_time_sync();
     assert_eq!(session.time_synchronization.next_counter, 1);
     assert_eq!(session.time_synchronization.timer_ms, 5_000);
-    assert!(session.time_synchronization.pending_requests.contains_key(&0));
+    assert!(
+        session
+            .time_synchronization
+            .pending_requests
+            .contains_key(&0)
+    );
 
     session.send_time_sync();
     assert_eq!(session.time_synchronization.next_counter, 2);
     assert_eq!(session.time_synchronization.timer_ms, 10_000);
-    assert!(session.time_synchronization.pending_requests.contains_key(&1));
+    assert!(
+        session
+            .time_synchronization
+            .pending_requests
+            .contains_key(&1)
+    );
 }
 #[tokio::test]
 async fn dynamic_object_values_snapshot_not_in_world_player_no_send_like_cpp() {

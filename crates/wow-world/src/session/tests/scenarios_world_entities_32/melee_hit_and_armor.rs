@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// C++ `Unit::RollMeleeOutcomeAgainst`'s miss, dodge, parry and crit bands for
 /// a creature attacker against a player victim, through the production
 /// ownership path.

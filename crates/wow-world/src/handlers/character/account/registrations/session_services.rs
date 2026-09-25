@@ -1,6 +1,5 @@
 use super::*;
 
-
 inventory::submit! {
     PacketHandlerEntry {
         opcode: ClientOpcodes::ServerTimeOffsetRequest,

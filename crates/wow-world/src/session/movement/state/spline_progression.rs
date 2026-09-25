@@ -226,7 +226,7 @@ impl WorldSession {
         action
     }
 
-#[cfg(test)]
+    #[cfg(test)]
     pub(crate) fn move_spline_done_taxi_events_like_cpp(
         &self,
     ) -> &[MoveSplineDoneTaxiEventLikeCpp] {

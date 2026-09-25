@@ -11,8 +11,7 @@ impl MapInstance {
     pub fn remove_grid(&mut self, x: i16, y: i16) -> bool {
         let coord = GridCoord::new(x, y);
         let removed = self.grids.remove(&coord).is_some();
-        if removed {
-        }
+        if removed {}
         removed
     }
 
@@ -23,8 +22,6 @@ impl MapInstance {
             false
         }
     }
-
-
 
     // ── Respawn queue (Slice 4A.2a) ───────────────────────────────────────────
     //

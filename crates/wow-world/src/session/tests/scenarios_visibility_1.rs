@@ -627,7 +627,9 @@ async fn dynamic_object_values_snapshot_dynamic_object_seer_near_same_phase_send
         7,
     );
     prepare_dynamic_object_values_snapshot_like_cpp(&canonical, 571, 7, dynamic_guid, 39.5);
-    session.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(seer_guid);
+    session
+        .visibility_test_fixture_like_cpp
+        .represented_seer_guid_like_cpp = Some(seer_guid);
     session.client_visible_guids_like_cpp.insert(dynamic_guid);
 
     assert_eq!(

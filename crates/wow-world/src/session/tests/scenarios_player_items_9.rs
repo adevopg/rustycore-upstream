@@ -7,7 +7,7 @@ use super::*;
 
 #[path = "scenarios_player_items_9/durability_scenarios.rs"]
 mod durability_scenarios;
-#[path = "scenarios_player_items_9/item_template_rules.rs"]
-mod item_template_rules;
 #[path = "scenarios_player_items_9/inventory_position_and_open_item.rs"]
 mod inventory_position_and_open_item;
+#[path = "scenarios_player_items_9/item_template_rules.rs"]
+mod item_template_rules;

@@ -290,10 +290,14 @@ impl WorldSession {
             return false;
             #[cfg(test)]
             {
-                if !self.battle_pet_test_fixture_like_cpp.represented_battle_pet_slots_authority_complete_like_cpp {
+                if !self
+                    .battle_pet_test_fixture_like_cpp
+                    .represented_battle_pet_slots_authority_complete_like_cpp
+                {
                     return false;
                 }
-                self.battle_pet_test_fixture_like_cpp.represented_battle_pet_slots_like_cpp
+                self.battle_pet_test_fixture_like_cpp
+                    .represented_battle_pet_slots_like_cpp
                     .iter()
                     .map(RepresentedBattlePetSlotLikeCpp::packet_slot_like_cpp)
                     .collect()

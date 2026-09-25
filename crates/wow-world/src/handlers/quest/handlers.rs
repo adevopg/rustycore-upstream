@@ -8,10 +8,10 @@
 use super::*;
 use wow_packet::ClientPacket;
 
-mod sharing;
 mod acceptance;
 mod queries;
 mod reward_flow;
+mod sharing;
 
 inventory::submit! {
     PacketHandlerEntry {
@@ -463,6 +463,4 @@ impl WorldSession {
             "Quest abandoned via represented explicit quest-log slot"
         );
     }
-
-
 }

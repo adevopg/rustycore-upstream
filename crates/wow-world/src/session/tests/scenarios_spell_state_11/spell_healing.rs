@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 #[tokio::test]
 async fn spell_direct_heal_applies_spell_power_and_healing_percent_like_cpp() {
     let (mut session, _, _) = make_session();

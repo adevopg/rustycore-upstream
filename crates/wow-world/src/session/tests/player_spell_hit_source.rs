@@ -179,13 +179,13 @@ fn complete_empty_player_spell_hit_authority_fixture_like_cpp() -> WorldSession 
 
 #[path = "player_spell_hit_source/identity_and_lifetime.rs"]
 mod identity_and_lifetime;
-#[path = "player_spell_hit_source/trait_glyph_and_zone_gates.rs"]
-mod trait_glyph_and_zone_gates;
 #[path = "player_spell_hit_source/outdoor_pvp_and_area_ancestry.rs"]
 mod outdoor_pvp_and_area_ancestry;
 #[path = "player_spell_hit_source/pet_and_login_sources.rs"]
 mod pet_and_login_sources;
-#[path = "player_spell_hit_source/spell_area_requirements.rs"]
-mod spell_area_requirements;
 #[path = "player_spell_hit_source/source_mutation_invalidation.rs"]
 mod source_mutation_invalidation;
+#[path = "player_spell_hit_source/spell_area_requirements.rs"]
+mod spell_area_requirements;
+#[path = "player_spell_hit_source/trait_glyph_and_zone_gates.rs"]
+mod trait_glyph_and_zone_gates;

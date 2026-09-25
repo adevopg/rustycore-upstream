@@ -5,53 +5,53 @@
 //! Relocated under #1233; canonical state, phase order and public paths are unchanged.
 
 #[cfg(test)]
-use super::empty_character_power_snapshot_like_cpp;
-#[cfg(test)]
 use super::BattlePetTestFixtureLikeCpp;
+use super::DEFAULT_PLAYER_SAVE_INTERVAL_MS_LIKE_CPP;
+use super::PlayerInteractionDataLikeCpp;
 #[cfg(test)]
-use super::quest::test_fixtures::QuestTestFixtureLikeCpp;
-#[cfg(test)]
-use super::player_items::test_fixtures::PlayerItemTestFixtureLikeCpp;
+use super::empty_character_power_snapshot_like_cpp;
 #[cfg(test)]
 use super::instances::test_fixtures::InstanceTestFixtureLikeCpp;
 #[cfg(test)]
-use super::social::test_fixtures::TradeTestFixtureLikeCpp;
+use super::persistence::test_fixtures::LoadedPlayerFlagsTestFixtureLikeCpp;
 #[cfg(test)]
-use super::social::test_fixtures::GuildTestFixtureLikeCpp;
+use super::player_items::test_fixtures::PlayerItemTestFixtureLikeCpp;
+#[cfg(test)]
+use super::progression::PlayerSkillTestFixtureLikeCpp;
+#[cfg(test)]
+use super::quest::test_fixtures::QuestTestFixtureLikeCpp;
+#[cfg(test)]
+use super::rest_progression::RestMgrTestFixtureLikeCpp;
 #[cfg(test)]
 use super::social::test_fixtures::CalendarTestFixtureLikeCpp;
 #[cfg(test)]
 use super::social::test_fixtures::DuelTestFixtureLikeCpp;
 #[cfg(test)]
-use super::test_support::test_fixtures::PlayerBootstrapCatalogTestFixtureLikeCpp;
+use super::social::test_fixtures::GuildTestFixtureLikeCpp;
 #[cfg(test)]
-use super::persistence::test_fixtures::LoadedPlayerFlagsTestFixtureLikeCpp;
+use super::social::test_fixtures::TradeTestFixtureLikeCpp;
+#[cfg(test)]
+use super::spell_state::PlayerSpellAndTraitTestFixtureLikeCpp;
 #[cfg(test)]
 use super::support_features::test_fixtures::SupportFeatureTestFixtureLikeCpp;
+#[cfg(test)]
+use super::test_support::test_fixtures::PlayerBootstrapCatalogTestFixtureLikeCpp;
+use super::time_synchronization::TimeSynchronizationStateLikeCpp;
+#[cfg(test)]
+use super::visibility::test_fixtures::VisibilityTestFixtureLikeCpp;
 use super::{Arc, AtomicBool, BTreeMap, BTreeSet};
 use super::{ChatFloodConfigLikeCpp, ChatFloodThrottleDataLikeCpp, ChatLevelRequirementsLikeCpp};
 use super::{ChatListenRangesLikeCpp, CreatureClassificationHealthRatesLikeCpp};
-use super::DEFAULT_PLAYER_SAVE_INTERVAL_MS_LIKE_CPP;
 use super::{DurableItemLootPersistenceTrackerLikeCpp, DurableLootMoneyPersistenceTrackerLikeCpp};
 use super::{Duration, HashMap, HashSet, Instant};
 use super::{LegacyCreatureAggroConfigLikeCpp, LootDropRatesLikeCpp, MAX_SPECIALIZATIONS_LIKE_CPP};
 use super::{MMapRuntimeConfigLikeCpp, MovementFlag, ObjectGuid};
 use super::{PLAYER_EXPLORED_ZONES_SIZE_LIKE_CPP, PacketSpoofConfigLikeCpp, PetStable, PhaseShift};
-use super::PlayerInteractionDataLikeCpp;
 use super::{RepresentedBattlePetSlotLikeCpp, ReputationRatesLikeCpp, Rng, RngCore, SeedableRng};
 use super::{SessionState, SharedClientVisibleGuidsLikeCpp, SocketTimeoutsLikeCpp, StdRng};
 use super::{UnitFlags, UnitMoveTypeLikeCpp, UnitStandStateType};
 use super::{VecDeque, WorldPacket, WorldSession, build_dispatch_table, connection};
 use super::{default_account_data_like_cpp, lifecycle};
-#[cfg(test)]
-use super::progression::PlayerSkillTestFixtureLikeCpp;
-#[cfg(test)]
-use super::rest_progression::RestMgrTestFixtureLikeCpp;
-#[cfg(test)]
-use super::spell_state::PlayerSpellAndTraitTestFixtureLikeCpp;
-#[cfg(test)]
-use super::visibility::test_fixtures::VisibilityTestFixtureLikeCpp;
-use super::time_synchronization::TimeSynchronizationStateLikeCpp;
 
 impl WorldSession {
     pub(in crate::session) const MIN_ITEM_LEVEL_LIKE_CPP: u32 = 1;

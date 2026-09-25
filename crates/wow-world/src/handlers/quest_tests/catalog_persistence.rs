@@ -59,10 +59,7 @@ impl ItemTemplateAddonCatalogPersistencePortLikeCpp for ItemTemplateAddonCatalog
     }
 }
 
-pub(crate) fn quest_poi_blob_row_like_cpp(
-    quest_id: i32,
-    idx1: i32,
-) -> QuestPoiBlobLoadRowLikeCpp {
+pub(crate) fn quest_poi_blob_row_like_cpp(quest_id: i32, idx1: i32) -> QuestPoiBlobLoadRowLikeCpp {
     QuestPoiBlobLoadRowLikeCpp {
         quest_id,
         blob_index: 1,

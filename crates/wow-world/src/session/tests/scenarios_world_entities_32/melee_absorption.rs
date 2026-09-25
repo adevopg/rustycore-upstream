@@ -2,7 +2,6 @@
 
 use super::*;
 
-
 /// C++ `Unit::CalculateMeleeDamage`'s school-absorb stage for a player victim
 /// (`Unit.cpp:1449-1466`, `Unit::CalcAbsorbResist` `Unit.cpp:1789-1880`).
 ///

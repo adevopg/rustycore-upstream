@@ -16,17 +16,55 @@ const BANNED_IN_DOMAIN: &[&str] = &["tokio", "parking_lot", "sqlx", "rand"];
 
 fn layer_of(name: &str) -> Option<u8> {
     let l0 = [
-        "wow-core", "wow-constants", "wow-config", "wow-crypto", "wow-logging", "wow-math",
-        "wow-proto", "wow-collections", "wow-module-api",
+        "wow-core",
+        "wow-constants",
+        "wow-config",
+        "wow-crypto",
+        "wow-logging",
+        "wow-math",
+        "wow-proto",
+        "wow-collections",
+        "wow-module-api",
     ];
-    let l1 = ["wow-data", "wow-persistence", "wow-database", "rustycore-db", "wow-recastdetour"];
-    let l2 = ["wow-entities", "wow-map", "wow-movement", "wow-packet", "wow-network"];
+    let l1 = [
+        "wow-data",
+        "wow-persistence",
+        "wow-database",
+        "rustycore-db",
+        "wow-recastdetour",
+    ];
+    let l2 = [
+        "wow-entities",
+        "wow-map",
+        "wow-movement",
+        "wow-packet",
+        "wow-network",
+    ];
     let l3 = [
-        "wow-combat", "wow-conditions", "wow-spell", "wow-spell-acquisition", "wow-loot",
-        "wow-quest", "wow-items", "wow-pets", "wow-social", "wow-economy", "wow-instances",
-        "wow-battlegrounds", "wow-dungeon-finding", "wow-progression", "wow-ai",
-        "wow-account-collections", "wow-anticheat", "wow-chat", "wow-script", "wow-scripts",
-        "wow-session", "wow-handler", "capture-diff", "xtask",
+        "wow-combat",
+        "wow-conditions",
+        "wow-spell",
+        "wow-spell-acquisition",
+        "wow-loot",
+        "wow-quest",
+        "wow-items",
+        "wow-pets",
+        "wow-social",
+        "wow-economy",
+        "wow-instances",
+        "wow-battlegrounds",
+        "wow-dungeon-finding",
+        "wow-progression",
+        "wow-ai",
+        "wow-account-collections",
+        "wow-anticheat",
+        "wow-chat",
+        "wow-script",
+        "wow-scripts",
+        "wow-session",
+        "wow-handler",
+        "capture-diff",
+        "xtask",
     ];
     if l0.contains(&name) {
         Some(0)
@@ -393,7 +431,9 @@ fn context(root: &Path, phase: &str) -> i32 {
         println!("  {p}");
     }
     println!("rules: one phase one commit; `cargo check -p <crate>` is the only loop;");
-    println!("       movement and behaviour in separate commits; never raise a ceiling or drop a test;");
+    println!(
+        "       movement and behaviour in separate commits; never raise a ceiling or drop a test;"
+    );
     println!("       unforeseen work goes into the programme before it is done.");
     println!("verify:  cargo run -p xtask -- check-scope {phase}");
     println!("         cargo run -p xtask -- check-layers && cargo run -p xtask -- check-deps");
@@ -436,7 +476,10 @@ fn check_scope(root: &Path, phase: &str) -> i32 {
         println!("check-scope: PASS ({changed} changed paths, all inside {phase})");
         0
     } else {
-        println!("check-scope: FAIL, {} changed paths outside {phase}:", outside.len());
+        println!(
+            "check-scope: FAIL, {} changed paths outside {phase}:",
+            outside.len()
+        );
         for p in outside {
             println!("  {p}");
         }
@@ -463,7 +506,9 @@ fn main() {
         "check-scope" => check_scope(&root, args.get(1).map(String::as_str).unwrap_or("")),
         other => {
             println!("unknown command `{other}`");
-            println!("usage: xtask structure-audit|check-layers|check-deps|context <phase>|check-scope <phase>");
+            println!(
+                "usage: xtask structure-audit|check-layers|check-deps|context <phase>|check-scope <phase>"
+            );
             1
         }
     };

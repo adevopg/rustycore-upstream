@@ -66,7 +66,12 @@ async fn post_add_flushes_deferred_rest_flag_update_after_world_states_like_cpp(
         "the deferred zone rest transition flushes as one final PlayerFlags update"
     );
     assert!(rest_update_indices[0] > init_world_states_index);
-    assert_eq!(session.rest_mgr_test_fixture_like_cpp.represented_rest_flag_mask_like_cpp, 0);
+    assert_eq!(
+        session
+            .rest_mgr_test_fixture_like_cpp
+            .represented_rest_flag_mask_like_cpp,
+        0
+    );
 }
 
 #[tokio::test]
@@ -90,7 +95,9 @@ async fn far_sight_process_pending_canonical_clear_resets_session_seer_like_cpp(
         0,
     ));
     add_canonical_test_player_on_map(&canonical, player_guid, player_position, 571, 0);
-    session.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(stale_dynamic_object_guid);
+    session
+        .visibility_test_fixture_like_cpp
+        .represented_seer_guid_like_cpp = Some(stale_dynamic_object_guid);
     session.last_visibility_pos = Some(player_position);
 
     session.process_pending().await;
@@ -141,7 +148,9 @@ async fn far_sight_process_pending_non_logged_in_keeps_session_seer_like_cpp() {
         0,
     ));
     add_canonical_test_player_on_map(&canonical, player_guid, player_position, 571, 0);
-    session.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(stale_dynamic_object_guid);
+    session
+        .visibility_test_fixture_like_cpp
+        .represented_seer_guid_like_cpp = Some(stale_dynamic_object_guid);
     session.last_visibility_pos = Some(player_position);
 
     session.process_pending().await;
@@ -188,7 +197,9 @@ async fn far_sight_process_pending_non_empty_canonical_keeps_session_seer_like_c
     ));
     add_canonical_test_player_on_map(&canonical, player_guid, player_position, 571, 0);
     set_canonical_player_farsight_object_like_cpp(&canonical, player_guid, dynamic_object_guid);
-    session.visibility_test_fixture_like_cpp.represented_seer_guid_like_cpp = Some(dynamic_object_guid);
+    session
+        .visibility_test_fixture_like_cpp
+        .represented_seer_guid_like_cpp = Some(dynamic_object_guid);
     session.last_visibility_pos = Some(player_position);
 
     session.process_pending().await;
