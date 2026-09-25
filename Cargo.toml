@@ -52,6 +52,7 @@ members = [
     "tools/wow-vmap-extractor",
     "tools/wow-vmap-assembler",
     "tools/wow-mmaps-generator",
+    "tools/wow-client-downloader",
 ]
 exclude = [
     "tools/wow-test-bot",

@@ -3181,6 +3181,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wow-client-downloader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+ "wow-casc",
+]
+
+[[package]]
 name = "wow-collections"
 version = "0.1.0"
 dependencies = [
