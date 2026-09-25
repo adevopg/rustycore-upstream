@@ -116,6 +116,11 @@ fn in_world_list_carries_groups_entries_products_and_prices() {
     let card = mount.display_info.as_ref().unwrap();
     assert_eq!(card.name1, "Big Blizzard Bear");
     assert_eq!(card.file_data_id, Some(298586));
+    assert_eq!(
+        card.flags,
+        Some(0),
+        "the store Lua reads sharedData.flags on every card"
+    );
     assert_eq!(card.visuals.len(), 1);
     assert_eq!(card.visuals[0].visual_id, 4);
     let product = &list.products[0];

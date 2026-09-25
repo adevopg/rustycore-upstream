@@ -337,3 +337,31 @@ toys API, RMAH, gold, script products, and the LegionCore custom addon chat mess
 (`NOVA_WOW_STORE_BALANCE`). No mail fallback exists: item products need the character in
 the world with enough bag space, checked before charging. Race restrictions of items are
 not filtered (only `AllowableClass` and learned-spell ownership).
+
+### 8.6 Store "Loading" gate and currency (live test follow-up)
+
+- `StoreFrame_UpdateActivePanel` (`Blizzard_StoreUISecure.lua:1738-1790`) keeps
+  `BLIZZARD_STORE_LOADING` until `HasPurchaseList() and HasProductList() and
+  HasDistributionList()`. RustyCore now sends, for an available shop,
+  `SMSG_DISPLAY_PROMOTION` (0) + an empty `SMSG_BATTLE_PAY_GET_DISTRIBUTION_LIST_RESPONSE`
+  (Result 0, 0 objects) right after the character-select init burst (LegionCore
+  `InitializeSessionCallback` → `SendDisplayPromo`, after the tutorial flags), and the empty
+  distribution list again after every product list. A disabled shop sends neither, so the
+  login burst is unchanged.
+- The next gates are `#GetStoreProductGroups() > 0` (at character select the seed groups are
+  `IngameOnly = 1`, so the glue store shows "no items", as in LegionCore), free bag slots in
+  game, and `SecureCurrencyUtil.GetActiveCurrencyInfo()`. Every card evaluates
+  `bit.band(sharedData.flags, …)`, so display infos now always carry `Flags` (0 when unset).
+- `C_StoreSecure.GetCurrencyInfo` (client `0x141a46770`) takes the `CurrencyID` of the last
+  product list (global `0x1431f780c`), looks it up in `BattlepayCurrency.db2` (FileDataID
+  5549327, store `0x142e3ac10`, meta name `BattlepayCurrency`) and builds
+  `{regionID, formatShort, formatLong, licenseAcceptText, flags}` from the row. `regionID`
+  (global `0x1431f7810`, computed by `0x141a45de0`) is 98 when the row code is `XTS`, else the
+  first `Cfg_Regions` row 1..5 whose `RegionGroupMask` bit (`1 << (mask-1)`, field 3; rows 1-5
+  have masks 1-5) is set in the currency row's 4-bit field 7. Dumped from the 54261 CASC
+  (read-only, `wow-casc`): row 1 USD (ISO 840, field 7 = 833 → bit 1 → region 1 US),
+  2 GBP (826), 3 KRW (410), **4 EUR (ISO 978, field 7 = 836 → bit 4 → region 3 EU)**,
+  5 RUB (643), 6 COP, 7 PEN, 8 ARS, 9 CLP, 10 MXN, 11 BRL, 12 AUD, …. So the LegionCore ids
+  used by `Bpay.Currency` (USD 1, GBP 2, KRW 3, EUR 4, RUB 5) are valid in 54261, and EUR
+  resolves to `REGION_EU`, which `SecureCurrencyUtil.currencySpecific` defines. The currency
+  does not depend on any other server packet.

@@ -32,10 +32,11 @@ use wow_packet::ServerPacket;
 use wow_packet::packets::battlepay::{
     BattlePayAckFailed, BattlePayAckFailedResponse, BattlePayCancelOpenCheckout,
     BattlePayConfirmPurchase, BattlePayConfirmPurchaseResponse, BattlePayDeliveryEnded,
-    BattlePayDeliveryStarted, BattlePayGetProductListResponse, BattlePayGetPurchaseListResponse,
-    BattlePayMountDelivered, BattlePayOpenCheckout, BattlePayPurchase, BattlePayPurchaseSubmitted,
-    BattlePayPurchaseUpdate, BattlePayStartCheckout, BattlePayStartPurchase,
-    BattlePayStartPurchaseResponse, EnumVasPurchaseStatesResponse, GenerateSsoTokenResponse,
+    BattlePayDeliveryStarted, BattlePayGetDistributionListResponse,
+    BattlePayGetProductListResponse, BattlePayGetPurchaseListResponse, BattlePayMountDelivered,
+    BattlePayOpenCheckout, BattlePayPurchase, BattlePayPurchaseSubmitted, BattlePayPurchaseUpdate,
+    BattlePayStartCheckout, BattlePayStartPurchase, BattlePayStartPurchaseResponse,
+    DisplayPromotion, EnumVasPurchaseStatesResponse, GenerateSsoTokenResponse,
 };
 use wow_packet::packets::item::ItemInstance;
 use wow_persistence::{
@@ -214,6 +215,39 @@ pub(crate) async fn send_product_list<S: BattlePaySessionLikeCpp>(
     true
 }
 
+/// `SMSG_BATTLE_PAY_GET_DISTRIBUTION_LIST_RESPONSE` with no distributions
+/// (LegionCore `BattlepayManager::SendDistributionList`; boosts are not ported).
+///
+/// The 54261 store keeps its "Loading" alert until `C_StoreSecure.HasPurchaseList()`,
+/// `HasProductList()` and `HasDistributionList()` are all true
+/// (`Blizzard_StoreUISecure.lua` `StoreFrame_UpdateActivePanel`), so the client must
+/// receive this list even when it is empty.
+pub(crate) fn send_distribution_list<S: BattlePaySessionLikeCpp>(session: &S) {
+    session.send_battle_pay_packet(&BattlePayGetDistributionListResponse {
+        result: error::OK,
+        distribution_objects: Vec::new(),
+    });
+}
+
+/// LegionCore `WorldSession::SendDisplayPromo`, called from
+/// `InitializeSessionCallback` right after the tutorial flags: `SMSG_DISPLAY_PROMOTION`
+/// (promotion 0) and, when the shop is available, the distribution list. RustyCore
+/// sends both only for an available shop so a disabled shop leaves the login
+/// packet sequence unchanged.
+pub(crate) fn send_session_init<S: BattlePaySessionLikeCpp>(
+    session: &S,
+    service: &BattlePayServiceLikeCpp,
+) {
+    if !service
+        .config
+        .is_available_for_like_cpp(session.battle_pay_identity().security)
+    {
+        return;
+    }
+    session.send_battle_pay_packet(&DisplayPromotion { promotion_id: 0 });
+    send_distribution_list(session);
+}
+
 /// `CMSG_BATTLE_PAY_GET_PRODUCT_LIST` (LegionCore `HandleGetProductList`).
 ///
 /// LegionCore only ran `DeliverPaidWebPurchases` in web mode; paid token orders
@@ -224,6 +258,9 @@ pub(crate) async fn handle_get_product_list<S: BattlePaySessionLikeCpp>(
     item_guid_generator: &ObjectGuidGenerator,
 ) {
     if send_product_list(session, service).await {
+        // Safety net for a client that missed the session-init copy (for example a
+        // shop enabled while it sat at character select): an empty list is idempotent.
+        send_distribution_list(session);
         deliver_paid_purchases(session, service, item_guid_generator).await;
     }
 }

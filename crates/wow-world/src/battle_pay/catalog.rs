@@ -335,7 +335,10 @@ impl BattlePayCatalogLikeCpp {
         };
         Some(BattlePayDisplayInfo {
             file_data_id: (info.file_data_id != 0).then_some(info.file_data_id),
-            flags: (info.flags != 0).then_some(info.flags),
+            // Always present: the 54261 store Lua does `bit.band(sharedData.flags, ...)`
+            // on every card (Blizzard_StoreUISecure.lua StoreFrame_UpdateCard,
+            // StoreFrame_FilterEntries); LegionCore omitted a zero value.
+            flags: Some(info.flags),
             name1: name(0, (1 << 10) - 1),
             name2: name(1, (1 << 10) - 1),
             name3: name(2, (1 << 13) - 1),

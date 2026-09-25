@@ -25,6 +25,15 @@ pub use constants::BattlePayConfigLikeCpp;
 pub use service::BattlePayServiceLikeCpp;
 
 pub(crate) use constants::PRODUCT_DELIVERY_DELAY_SECS_LIKE_CPP;
+
+/// Shop packets of the session-init burst (LegionCore `SendDisplayPromo`); sent right
+/// after the character-select init packets.
+pub fn send_session_init_packets_like_cpp(
+    session: &crate::session::WorldSession,
+    service: &BattlePayServiceLikeCpp,
+) {
+    flow::send_session_init(session, service);
+}
 pub(crate) use flow::{
     handle_ack_failed_response, handle_cancel_open_checkout, handle_confirm_purchase_response,
     handle_get_product_list, handle_get_purchase_list, handle_open_checkout,

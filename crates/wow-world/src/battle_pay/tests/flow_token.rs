@@ -21,6 +21,8 @@ const DELIVERY_STARTED: u16 = ServerOpcodes::BattlePayDeliveryStarted as u16;
 const DELIVERY_ENDED: u16 = ServerOpcodes::BattlePayDeliveryEnded as u16;
 const MOUNT_DELIVERED: u16 = ServerOpcodes::BattlePayMountDelivered as u16;
 const PRODUCT_LIST: u16 = ServerOpcodes::BattlePayGetProductListResponse as u16;
+const DISTRIBUTION_LIST: u16 = ServerOpcodes::BattlePayGetDistributionListResponse as u16;
+const DISPLAY_PROMOTION: u16 = ServerOpcodes::DisplayPromotion as u16;
 
 pub(super) fn start_request(product_id: u32) -> BattlePayStartPurchase {
     BattlePayStartPurchase {
@@ -407,7 +409,10 @@ async fn delivered_but_unmarked_order_is_only_remarked() {
         h.account.only_order().status,
         BATTLE_PAY_PURCHASE_STATUS_DELIVERED_LIKE_CPP
     );
-    assert_eq!(opcodes(&relogged.take_sent()), [PRODUCT_LIST]);
+    assert_eq!(
+        opcodes(&relogged.take_sent()),
+        [PRODUCT_LIST, DISTRIBUTION_LIST]
+    );
 }
 
 #[tokio::test]
@@ -456,4 +461,55 @@ async fn moderators_see_the_shop_without_the_player_feature_switch() {
     handle_get_product_list(&mut session, &h.service, &h.generator).await;
     let sent = session.take_sent();
     assert_eq!(payload(&sent[0]).read_uint32().unwrap(), 0);
+}
+
+#[tokio::test]
+async fn open_shop_answers_every_list_the_store_ui_waits_for() {
+    // StoreFrame_UpdateActivePanel keeps "Loading" until the purchase, product and
+    // distribution lists have all arrived.
+    let h = harness(token_config(), FakeAccount::with_balance(0));
+    let mut session = FakeSession::in_world();
+    handle_get_purchase_list(&session);
+    handle_get_product_list(&mut session, &h.service, &h.generator).await;
+    let sent = session.take_sent();
+    assert_eq!(
+        opcodes(&sent),
+        [
+            ServerOpcodes::BattlePayGetPurchaseListResponse as u16,
+            PRODUCT_LIST,
+            DISTRIBUTION_LIST
+        ]
+    );
+    let mut list = payload(&sent[2]);
+    assert_eq!(list.read_uint32().unwrap(), 0, "Result OK");
+    assert_eq!(list.read_bits(11).unwrap(), 0, "no distributions");
+    assert_eq!(sent[2].len(), 2 + 4 + 2);
+}
+
+#[test]
+fn session_init_sends_promotion_and_empty_distributions_only_for_an_open_shop() {
+    let h = harness(token_config(), FakeAccount::with_balance(0));
+    let session = FakeSession::in_world();
+    send_session_init(&session, &h.service);
+    let sent = session.take_sent();
+    assert_eq!(opcodes(&sent), [DISPLAY_PROMOTION, DISTRIBUTION_LIST]);
+    assert_eq!(payload(&sent[0]).read_uint32().unwrap(), 0);
+
+    let closed = harness(
+        BattlePayConfigLikeCpp::default(),
+        FakeAccount::with_balance(0),
+    );
+    send_session_init(&session, &closed.service);
+    assert!(
+        session.take_sent().is_empty(),
+        "disabled shop keeps the login burst unchanged"
+    );
+
+    let mut glue = FakeSession::in_world();
+    glue.identity.player = None;
+    send_session_init(&glue, &h.service);
+    assert_eq!(
+        opcodes(&glue.take_sent()),
+        [DISPLAY_PROMOTION, DISTRIBUTION_LIST]
+    );
 }
