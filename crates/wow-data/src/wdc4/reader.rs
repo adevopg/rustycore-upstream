@@ -40,7 +40,11 @@ impl Wdc4Reader {
     pub fn open(path: &Path) -> Result<Self> {
         let data =
             std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+        Self::from_bytes(&data)
+    }
 
+    /// Parse a WDC4 file already held in memory (e.g. read from CASC storage).
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
         ensure!(data.len() >= HEADER_SIZE, "file too small for WDC4 header");
 
         let header = parse_header(&data)?;
