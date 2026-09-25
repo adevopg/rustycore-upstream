@@ -6,11 +6,41 @@
 > task order, percentages and validation gates do not govern new work.
 
 > **C++ canonical path:** `/home/server/woltk-trinity-legacy/src/tools/`
-> **Rust target crate(s):** *none yet* — would be a separate `tools/` workspace member or set of standalone CLI binaries (proposal: `tools/wow-map-extractor`, `tools/wow-vmap-extractor`, `tools/wow-vmap-assembler`, `tools/wow-mmaps-generator`, plus a shared `crates/wow-casc` library).
+> **Rust target crate(s):** `crates/wow-casc`, `crates/wow-vmap`, `tools/wow-map-extractor`, `tools/wow-vmap-extractor`, `tools/wow-vmap-assembler`, `tools/wow-mmaps-generator` (ported from TrinityCore tag `TDB343.24081`, client 3.4.3.54261).
 > **Layer:** build-time tooling (sits *outside* the runtime layer stack — produces inputs that the runtime expects on disk).
-> **Status:** ❌ not started
+> **Status:** 🟡 implemented — see [§0 Port status](#0-port-status-2026-09-25); not yet run end-to-end on a 3.4.3.54261 client.
 > **Audited vs C++:** ✅ complete (this document)
-> **Last updated:** 2026-05-01
+> **Last updated:** 2026-09-25
+
+
+## 0. Port status (2026-09-25)
+
+Source of truth for the port: TrinityCore tag `TDB343.24081` (commit `92796557f9`), the
+last state of the 3.4.3 line — its parent `f80a05f805` set the allowed build to 3.4.3.54261.
+The current upstream `wotlk_classic` branch was rebuilt from the Cataclysm line in 2025
+and targets 3.4.4, so it is **not** the reference. File formats match the runtime:
+`.map` `MAPS` v10 (`wow-map/src/grid_map.rs`), `.mmap/.mmtile` `MMAP` v15 (`wow-recastdetour`).
+
+| Rust target | Ports | Evidence |
+|---|---|---|
+| `crates/wow-casc` | `extractor_common` CASC wrapper + CascLib subset (local installs only) | Unit tests; opened a real `wow_classic_beta` 70009 install (root, index, ENCODING, BLTE, Salsa20, name hashes). TSFM root v2 added from upstream CascLib layout (not in the TDB343.24081 CascLib copy). |
+| `crates/wow-vmap` + `tools/wow-vmap-assembler` | `src/common/Collision` formats + `vmap4_assembler` | Byte-identical to the C++ compiled from the same sources: 306 random BIH builds, 5 random `Buildings/` trees, and real Azeroth/Kalimdor data from the beta client (5286 files, 0 differences). |
+| `tools/wow-vmap-extractor` | `vmap4_extractor` | Byte-identical to the C++ on a synthetic data set (small and `-l` modes); parsed all 736 Azeroth + 988 Kalimdor tiles of the beta client without errors. |
+| `tools/wow-map-extractor` | `map_extractor` | Unit tests incl. round trip through `wow_map::grid_map::GridMap`; layout rules checked against 3413 TrinityCore `.map` files; game tables extracted from the beta client. |
+| `tools/wow-mmaps-generator` | `mmaps_generator` (Recast/Detour builder vendored from TrinityCore `dep/recastnavigation`) | Byte-identical to the C++ tool on 5 synthetic scenarios (liquids, holes, child maps, off-mesh, debug output, thread counts). x86-64 only. |
+
+Pipeline (run from the client directory or pass `-i`/`-d`):
+
+~~~bash
+wow-map-extractor -i <client> -o <out>          # dbc/, gt/, cameras/, maps/
+wow-vmap-extractor -d <client>                  # Buildings/
+wow-vmap-assembler Buildings <out>/vmaps        # vmaps/
+cd <out> && wow-mmaps-generator --threads 8     # mmaps/ (needs maps/, vmaps/, dbc/)
+~~~
+
+Remaining boundary: no run on a 3.4.3.54261 client yet (DB2 steps need WDC4; the available
+beta client ships WDC5), remote CASC (`-c`) is not ported, and WDT lookup by name depends on
+root name hashes (absent for DB2/WDT paths in TSFM v2 roots).
 
 ---
 

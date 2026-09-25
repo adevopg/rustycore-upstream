@@ -1,2 +1,4 @@
 # Unified diff context lines intentionally retain their required leading space.
 crates/capture-diff/flows/creature-spell-casting/fixture/cpp-reference.patch -whitespace
+# Third-party sources vendored verbatim from TrinityCore dep/recastnavigation.
+tools/wow-mmaps-generator/vendor/** -whitespace

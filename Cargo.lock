@@ -3167,6 +3167,8 @@ name = "wow-casc"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flate2",
+ "md-5",
  "thiserror",
 ]
 
@@ -3344,6 +3346,8 @@ dependencies = [
  "anyhow",
  "thiserror",
  "wow-casc",
+ "wow-data",
+ "wow-map",
 ]
 
 [[package]]
@@ -3358,7 +3362,9 @@ name = "wow-mmaps-generator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cc",
  "thiserror",
+ "wow-data",
  "wow-vmap",
 ]
 
@@ -3506,10 +3512,8 @@ dependencies = [
 name = "wow-vmap-extractor"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "thiserror",
  "wow-casc",
- "wow-vmap",
+ "wow-data",
 ]
 
 [[package]]
