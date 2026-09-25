@@ -181,7 +181,7 @@ Frames carry protobuf messages. The serviceHash + methodId pair determines the c
 | `connection.v1.Connect / Bind / Echo / KeepAlive` | bidirectional | `ConnectionService` |
 | `authentication.v1.Logon` ↔ `LogonResult` | client → server, then server → client | `AuthenticationService` |
 | `game_utilities.v1.ProcessClientRequest` (`Command_RealmListRequest_v1`, `Command_RealmJoinRequest_v1`) | client → server | `GameUtilitiesService` |
-| `account.v1.GetAccountState / GetGameAccountState` | client → server | `AccountService` (mostly stubs returning placeholder data) |
+| `account.v1.GetAccountState / GetGameAccountState` | client → server | `AccountService` (`rpc/services/account.rs`, mirrors TC `HandleGetAccountState`/`HandleGetGameAccountState`) |
 
 ### Port 8081 — `LoginREST` (HTTPS, JSON / protobuf-JSON)
 HTTP routes (verb + path):
@@ -607,7 +607,7 @@ Resolved since the original audit: `extract_auth_ticket` now mirrors TC's `Extra
 | Error codes on auth failure | `ERROR_DENIED=3`, `ERROR_TIMED_OUT=2`, `ERROR_RISK_ACCOUNT_LOCKED=0xA413`, `ERROR_GAME_ACCOUNT_BANNED=0x34`, `ERROR_GAME_ACCOUNT_SUSPENDED=0x35` | Rust now returns the same RPC status codes for missing/invalid/expired tickets, IP/country lock mismatch, and permanent/temporary BNet account bans. | ✅ |
 | `GameUtilitiesService.ProcessClientRequest` (RealmList / RealmJoin / LastCharPlayed / RealmListTicket) | full | full | ✅ |
 | `GameUtilitiesService.GetAllValuesForAttribute` (sub-region enumeration) | full | full | ✅ |
-| `AccountService.GetAccountState/GetGameAccountState` | stubs | stubs | ✅ |
+| `AccountService.GetAccountState/GetGameAccountState` | `Session::HandleGetAccountState` / `HandleGetGameAccountState`: `_authed` gate, privacy info, `GameLevelInfo{name=DisplayName "WoW<N>", program=5730135}`, `GameStatus{is_suspended=IsBanned, is_banned=IsPermanenetlyBanned, suspension_expires=UnbanDate*1e6}` + tags | `rpc/services/account.rs` `*_like_cpp` builders mirror it; `account_types.proto` field numbers aligned with TC `account_types.pb.h` (previously `GameLevelInfo.name`=3 instead of 8 etc., which left the 3.4.3 login game-account dropdown empty); wire bytes pinned by unit tests | ✅ |
 | `session_key_bnet` / `UPD_BNET_GAME_ACCOUNT_LOGIN_INFO` write | TC writes 64 raw bytes via `setBinary` | Rust writes `client_secret ‖ server_secret` as raw bytes via `set_bytes` and rejects malformed non-32-byte secrets | ✅ |
 
 ### 13.5 Cookie / token signing

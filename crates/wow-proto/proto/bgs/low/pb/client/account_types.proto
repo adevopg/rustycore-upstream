@@ -5,10 +5,14 @@ package bgs.protocol.account.v1;
 
 import "bgs/low/pb/client/entity_types.proto";
 
+// Field numbers must match TrinityCore wotlk_classic
+// src/server/proto/Client/account_types.pb.h (k*FieldNumber constants); only the
+// fields RustyCore uses are declared, unknown fields are skipped by the client.
+
 // -- Account state structures used in AccountService responses --
 
 message AccountState {
-  optional PrivacyInfo privacy_info = 5;
+  optional PrivacyInfo privacy_info = 2;
 }
 
 message PrivacyInfo {
@@ -19,12 +23,12 @@ message PrivacyInfo {
 
 message GameAccountState {
   optional GameLevelInfo game_level_info = 1;
-  optional GameStatus game_status = 2;
+  optional GameStatus game_status = 3;
 }
 
 message GameLevelInfo {
-  optional string name = 3;
-  optional fixed32 program = 4;
+  optional string name = 8;
+  optional fixed32 program = 9;
 }
 
 message GameStatus {
@@ -37,25 +41,25 @@ message GameStatus {
 // -- Field tags used for caching/state versioning --
 
 message AccountFieldTags {
-  optional fixed32 privacy_info_tag = 8;
+  optional fixed32 privacy_info_tag = 3;
 }
 
 message GameAccountFieldTags {
   optional fixed32 game_level_info_tag = 2;
-  optional fixed32 game_status_tag = 3;
+  optional fixed32 game_status_tag = 4;
 }
 
 // -- Options for what fields to request --
 
 message AccountFieldOptions {
   optional bool all_fields = 1;
-  optional bool field_privacy_info = 5;
+  optional bool field_privacy_info = 3;
 }
 
 message GameAccountFieldOptions {
   optional bool all_fields = 1;
   optional bool field_game_level_info = 2;
-  optional bool field_game_status = 3;
+  optional bool field_game_status = 4;
 }
 
 // -- Notification messages (server -> client via AccountListener 0x54DFDA17) --
