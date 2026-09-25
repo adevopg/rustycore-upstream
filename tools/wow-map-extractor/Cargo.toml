@@ -14,6 +14,11 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 wow-casc = { path = "../../crates/wow-casc" }
+wow-data = { path = "../../crates/wow-data" }
+
+[dev-dependencies]
+# RustyCore's runtime `.map` reader, used to prove written tiles load.
+wow-map = { path = "../../crates/wow-map" }
 
 [lints]
 workspace = true
