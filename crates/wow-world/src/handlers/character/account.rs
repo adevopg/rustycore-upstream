@@ -46,6 +46,8 @@ inventory::submit! {
                         session
                             .handle_create_character_with_generator_like_cpp(
                                 catalogs.id_generators.player.as_ref(),
+                                catalogs.id_generators.item.as_ref(),
+                                catalogs.player_bootstrap.create_items.as_ref(),
                                 create,
                             )
                             .await

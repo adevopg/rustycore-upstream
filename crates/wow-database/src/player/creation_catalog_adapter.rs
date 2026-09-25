@@ -6,15 +6,17 @@ use anyhow::{Context, Result};
 use wow_persistence::{
     PersistenceFutureLikeCpp, PlayerCreateCastSpellPersistenceRowLikeCpp,
     PlayerCreateCustomSpellPersistenceRowLikeCpp, PlayerCreateInfoPersistenceRowLikeCpp,
-    PlayerCreationCatalogLoadOutcomeLikeCpp, PlayerCreationCatalogPersistencePortLikeCpp,
+    PlayerCreateItemPersistenceRowLikeCpp, PlayerCreationCatalogLoadOutcomeLikeCpp,
+    PlayerCreationCatalogPersistencePortLikeCpp,
 };
 
 use crate::{SqlResult, WorldDatabase, WorldStatements};
 
-const STARTUP_STATEMENTS_LIKE_CPP: [WorldStatements; 3] = [
+const STARTUP_STATEMENTS_LIKE_CPP: [WorldStatements; 4] = [
     WorldStatements::SEL_PLAYER_CREATEINFO,
     WorldStatements::SEL_PLAYER_CREATEINFO_CAST_SPELL,
     WorldStatements::SEL_PLAYER_CREATEINFO_CUSTOM_SPELL,
+    WorldStatements::SEL_PLAYER_CREATEINFO_ITEM,
 ];
 
 fn read_integer_checked_like_cpp(
@@ -174,6 +176,31 @@ fn player_create_custom_spell_row_like_cpp(
     })
 }
 
+fn player_create_item_row_like_cpp(
+    result: &SqlResult,
+) -> Result<PlayerCreateItemPersistenceRowLikeCpp> {
+    // C++ reads race/class with GetUInt8, itemid with GetUInt32 and amount
+    // with GetInt8 (`ObjectMgr::LoadPlayerInfo` item overrides).
+    Ok(PlayerCreateItemPersistenceRowLikeCpp {
+        race: integer_checked_like_cpp(
+            read_integer_checked_like_cpp(result, 0, "PlayerCreateItem.Race")?,
+            "PlayerCreateItem.Race",
+        )?,
+        class: integer_checked_like_cpp(
+            read_integer_checked_like_cpp(result, 1, "PlayerCreateItem.Class")?,
+            "PlayerCreateItem.Class",
+        )?,
+        item_id: integer_checked_like_cpp(
+            read_integer_checked_like_cpp(result, 2, "PlayerCreateItem.ItemId")?,
+            "PlayerCreateItem.ItemId",
+        )?,
+        amount: integer_checked_like_cpp(
+            read_integer_checked_like_cpp(result, 3, "PlayerCreateItem.Amount")?,
+            "PlayerCreateItem.Amount",
+        )?,
+    })
+}
+
 async fn query_rows_like_cpp<T>(
     db: &WorldDatabase,
     statement: WorldStatements,
@@ -268,6 +295,24 @@ impl PlayerCreationCatalogPersistencePortLikeCpp
             )
         })
     }
+
+    fn load_player_create_item_rows_like_cpp(
+        &self,
+    ) -> PersistenceFutureLikeCpp<
+        '_,
+        PlayerCreationCatalogLoadOutcomeLikeCpp<PlayerCreateItemPersistenceRowLikeCpp>,
+    > {
+        Box::pin(async move {
+            classify_rows_like_cpp(
+                query_rows_like_cpp(
+                    &self.world_db,
+                    STARTUP_STATEMENTS_LIKE_CPP[3],
+                    player_create_item_row_like_cpp,
+                )
+                .await,
+            )
+        })
+    }
 }
 
 #[cfg(test)]
@@ -283,7 +328,12 @@ mod tests {
                 WorldStatements::SEL_PLAYER_CREATEINFO,
                 WorldStatements::SEL_PLAYER_CREATEINFO_CAST_SPELL,
                 WorldStatements::SEL_PLAYER_CREATEINFO_CUSTOM_SPELL,
+                WorldStatements::SEL_PLAYER_CREATEINFO_ITEM,
             ]
+        );
+        assert_eq!(
+            WorldStatements::SEL_PLAYER_CREATEINFO_ITEM.sql(),
+            "SELECT race, class, itemid, amount FROM playercreateinfo_item"
         );
         assert!(
             WorldStatements::SEL_PLAYER_CREATEINFO

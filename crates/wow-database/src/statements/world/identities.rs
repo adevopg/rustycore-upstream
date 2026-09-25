@@ -204,6 +204,8 @@ pub enum WorldStatements {
     SEL_PLAYER_CREATEINFO_CAST_SPELL,
     /// C++ `ObjectMgr::LoadPlayerInfo` playercreateinfo_spell_custom startup query.
     SEL_PLAYER_CREATEINFO_CUSTOM_SPELL,
+    /// C++ `ObjectMgr::LoadPlayerInfo` playercreateinfo_item override query.
+    SEL_PLAYER_CREATEINFO_ITEM,
     /// Gossip MenuID for a creature entry (creature_template_gossip).
     SEL_CREATURE_GOSSIP_MENU,
     /// Gossip menu text ID (gossip_menu).

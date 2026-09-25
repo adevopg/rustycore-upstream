@@ -7347,7 +7347,7 @@
           "kind": "method",
           "name": "handle_create_character_with_generator_like_cpp",
           "visibility": "pub",
-          "signature": "async fn handle_create_character_with_generator_like_cpp (& mut self , generator : & wow_core :: ObjectGuidGenerator , pkt : CreateCharacter ,)",
+          "signature": "async fn handle_create_character_with_generator_like_cpp (& mut self , generator : & wow_core :: ObjectGuidGenerator , item_generator : & wow_core :: ObjectGuidGenerator , create_items : & wow_data :: PlayerCreateInfoItemStoreLikeCpp , pkt : CreateCharacter ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [

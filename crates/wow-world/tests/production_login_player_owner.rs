@@ -401,6 +401,7 @@ async fn hydrate(
         talent_tabs: Arc::new(wow_data::TalentTabStore::from_entries([])),
         trait_node_entries: Arc::new(wow_data::trait_tree::TraitNodeEntryStore::from_entries([])),
         custom_spells: Arc::new(PlayerCreateInfoCustomSpellStoreLikeCpp::default()),
+        create_items: Arc::new(wow_data::PlayerCreateInfoItemStoreLikeCpp::default()),
         start_all_spells: false,
         start_all_explored: false,
         start_all_reputation: false,

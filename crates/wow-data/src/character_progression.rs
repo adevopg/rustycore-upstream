@@ -288,6 +288,12 @@ macro_rules! db2_store {
                 self.entries.get(&id)
             }
 
+            /// All rows in unspecified order; callers needing C++ DB2 store
+            /// iteration order must sort by `id`.
+            pub fn entries(&self) -> impl Iterator<Item = &$entry> {
+                self.entries.values()
+            }
+
             pub fn len(&self) -> usize {
                 self.entries.len()
             }
@@ -581,10 +587,6 @@ impl ChrModelStore {
 }
 
 impl ChrRaceXChrModelStore {
-    pub fn entries(&self) -> impl Iterator<Item = &ChrRaceXChrModelEntry> {
-        self.entries.values()
-    }
-
     pub fn load(data_dir: &str, locale: &str) -> Result<Self> {
         load_store(data_dir, locale, "ChrRaceXChrModel.db2", |id, idx, r| {
             ChrRaceXChrModelEntry {

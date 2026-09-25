@@ -342,6 +342,11 @@ pub use phasing::{
     PhaseAreaInfo, PhaseConditionAttachmentReport, PhaseConditionContainer, PhaseInfoStore,
     PhaseInfoStruct, PhaseNameStoreLikeCpp,
 };
+pub use player::{
+    CHARACTER_LOADOUT_PURPOSE_NEW_CHARACTER_LIKE_CPP, PlayerCreateInfoItemLikeCpp,
+    PlayerCreateInfoItemLoadReportLikeCpp, PlayerCreateInfoItemOverrideRowLikeCpp,
+    PlayerCreateInfoItemStoreLikeCpp, PlayerCreateItemTemplateLikeCpp,
+};
 pub use player::{ClassPowerIndexRecord, Db2PlayerPowerIndexResolver, PlayerClassPowerIndexStore};
 pub use player::{
     PLAYER_CREATE_MODE_MAX_LIKE_CPP, PLAYER_CREATE_MODE_NORMAL_LIKE_CPP,

@@ -380,6 +380,8 @@ pub struct PlayerBootstrapCatalogsLikeCpp {
     pub trait_node_entries: Arc<TraitNodeEntryStore>,
     pub cast_spells: Arc<PlayerCreateInfoCastSpellStoreLikeCpp>,
     pub custom_spells: Arc<PlayerCreateInfoCustomSpellStoreLikeCpp>,
+    /// C++ `PlayerInfo::item`/`itemContext`, consumed by `Player::Create`.
+    pub create_items: Arc<wow_data::PlayerCreateInfoItemStoreLikeCpp>,
     /// C++ `World` policy consumed by `Player::LearnCustomSpells`.
     pub start_all_spells: bool,
     /// C++ `World` policy consumed by the first-login `Player` path.
@@ -604,6 +606,7 @@ impl Default for PlayerBootstrapCatalogsLikeCpp {
             trait_node_entries: Arc::new(TraitNodeEntryStore::from_entries([])),
             cast_spells: Arc::new(PlayerCreateInfoCastSpellStoreLikeCpp::default()),
             custom_spells: Arc::new(PlayerCreateInfoCustomSpellStoreLikeCpp::default()),
+            create_items: Arc::new(wow_data::PlayerCreateInfoItemStoreLikeCpp::default()),
             start_all_spells: false,
             start_all_explored: false,
             start_all_reputation: false,
