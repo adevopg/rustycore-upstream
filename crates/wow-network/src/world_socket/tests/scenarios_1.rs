@@ -469,3 +469,13 @@ fn account_country_lock_rejects_like_cpp_world_auth() {
     assert!(!account_country_lock_rejects_like_cpp("es", "es"));
     assert!(account_country_lock_rejects_like_cpp("es", "fr"));
 }
+
+#[test]
+fn log_disconnect_reason_reads_uint32_after_opcode_like_cpp() {
+    let opcode = (ClientOpcodes::LogDisconnect as u16).to_le_bytes();
+    let mut data = opcode.to_vec();
+    data.extend_from_slice(&14u32.to_le_bytes());
+    assert_eq!(log_disconnect_reason_like_cpp(&data), Some(14));
+    assert_eq!(log_disconnect_reason_like_cpp(&data[..5]), None);
+    assert_eq!(log_disconnect_reason_like_cpp(&opcode), None);
+}

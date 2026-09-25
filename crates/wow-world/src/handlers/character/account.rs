@@ -1542,13 +1542,27 @@ impl WorldSession {
 
     /// Handle ConnectToFailed — client couldn't connect to instance port.
     ///
-    /// Retry with the next serial, or fall back to direct login if all retries
-    /// are exhausted.
+    /// C++ `WorldSocket::HandleConnectToFailed` (3.4.3-era TrinityCore,
+    /// `eecdba9e01` `WorldSocket.cpp:967`): only while a login is loading,
+    /// resend `SMSG_CONNECT_TO` with the next WorldAttempt serial; abort the
+    /// login with `NoWorld` after WorldAttempt5; ignore every other serial.
     pub async fn handle_connect_to_failed(&mut self, pkt: ConnectToFailed) {
         warn!(
-            "ConnectToFailed (serial={:?}) from account {}",
-            pkt.serial, self.account_id
+            "ConnectToFailed (serial={:?}, con={}) from account {}",
+            pkt.serial, pkt.con, self.account_id
         );
+
+        let is_world_attempt = matches!(
+            pkt.serial,
+            ConnectToSerial::WorldAttempt1
+                | ConnectToSerial::WorldAttempt2
+                | ConnectToSerial::WorldAttempt3
+                | ConnectToSerial::WorldAttempt4
+                | ConnectToSerial::WorldAttempt5
+        );
+        if self.player_loading().is_none() || !is_world_attempt {
+            return;
+        }
 
         // Clean up the pending entry from SessionManager
         if let Some(mgr) = self.session_mgr() {

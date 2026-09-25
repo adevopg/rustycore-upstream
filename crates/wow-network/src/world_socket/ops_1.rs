@@ -512,11 +512,7 @@ impl WorldSocket {
 
         if opcode != ClientOpcodes::EnterEncryptedModeAck as u16 {
             if opcode == ClientOpcodes::LogDisconnect as u16 {
-                let reason = if pkt.data().len() >= 6 {
-                    u32::from_le_bytes([pkt.data()[2], pkt.data()[3], pkt.data()[4], pkt.data()[5]])
-                } else {
-                    0
-                };
+                let reason = log_disconnect_reason_like_cpp(pkt.data()).unwrap_or(0);
                 warn!(
                     "Client {} sent CMSG_LOG_DISCONNECT while waiting for EnterEncryptedModeAck: reason={reason} len={}",
                     self.addr,

@@ -645,3 +645,117 @@ fn login_passive_parry_and_block_capabilities_feed_first_stat_projection_like_cp
     assert!(limited.ranged_crit_pct <= 1.0);
     assert!(limited.offhand_crit_pct <= 1.0);
 }
+
+// ── ConnectTo / ConnectToFailed (3.4.3-era C++ `eecdba9e01`) ──────────────
+
+fn connect_to_failed_session_like_cpp(
+    loading: bool,
+) -> (
+    WorldSession,
+    flume::Receiver<Vec<u8>>,
+    Arc<wow_network::session_mgr::SessionManager>,
+) {
+    let (mut session, send_rx) = make_session_with_send_capacity(16);
+    let mgr = Arc::new(wow_network::session_mgr::SessionManager::new());
+    session.set_session_mgr(Arc::clone(&mgr));
+    session.set_instance_endpoint([127, 0, 0, 1], 8096);
+    if loading {
+        session.set_player_loading(Some(ObjectGuid::create_player(1, 4242)));
+    }
+    (session, send_rx, mgr)
+}
+
+fn connect_to_failed_like_cpp(
+    serial: wow_packet::packets::auth::ConnectToSerial,
+) -> wow_packet::packets::auth::ConnectToFailed {
+    wow_packet::packets::auth::ConnectToFailed { serial, con: 1 }
+}
+
+fn sent_opcodes_like_cpp(send_rx: &flume::Receiver<Vec<u8>>) -> Vec<Vec<u8>> {
+    send_rx.try_iter().collect()
+}
+
+#[tokio::test]
+async fn connect_to_failed_retries_next_world_attempt_like_cpp() {
+    use wow_packet::packets::auth::ConnectToSerial;
+    let (mut session, send_rx, _mgr) = connect_to_failed_session_like_cpp(true);
+
+    session
+        .handle_connect_to_failed(connect_to_failed_like_cpp(ConnectToSerial::WorldAttempt1))
+        .await;
+
+    let sent = sent_opcodes_like_cpp(&send_rx);
+    assert_eq!(sent.len(), 1);
+    let packet = &sent[0];
+    assert_eq!(
+        u16::from_le_bytes([packet[0], packet[1]]),
+        ServerOpcodes::ConnectTo as u16
+    );
+    // opcode(2) + signature(256) + type(1) + ipv4(4) + port(2) → serial u32.
+    let serial = u32::from_le_bytes(packet[265..269].try_into().unwrap());
+    assert_eq!(serial, ConnectToSerial::WorldAttempt2 as u32);
+    assert_eq!(packet[269], 1, "Con = CONNECTION_TYPE_INSTANCE");
+    assert!(session.player_loading().is_some());
+    assert!(session.is_awaiting_instance_link());
+}
+
+#[tokio::test]
+async fn connect_to_failed_after_world_attempt5_aborts_login_like_cpp() {
+    use wow_packet::packets::auth::ConnectToSerial;
+    let (mut session, send_rx, _mgr) = connect_to_failed_session_like_cpp(true);
+
+    session
+        .handle_connect_to_failed(connect_to_failed_like_cpp(ConnectToSerial::WorldAttempt5))
+        .await;
+
+    let sent = sent_opcodes_like_cpp(&send_rx);
+    assert_eq!(sent.len(), 1);
+    assert_eq!(
+        u16::from_le_bytes([sent[0][0], sent[0][1]]),
+        ServerOpcodes::CharacterLoginFailed as u16
+    );
+    assert!(session.player_loading().is_none());
+}
+
+#[tokio::test]
+async fn connect_to_failed_ignores_non_world_serials_and_idle_sessions_like_cpp() {
+    use wow_packet::packets::auth::ConnectToSerial;
+    for serial in [ConnectToSerial::None, ConnectToSerial::Realm] {
+        let (mut session, send_rx, _mgr) = connect_to_failed_session_like_cpp(true);
+        session
+            .handle_connect_to_failed(connect_to_failed_like_cpp(serial))
+            .await;
+        assert!(sent_opcodes_like_cpp(&send_rx).is_empty(), "{serial:?}");
+        assert!(session.player_loading().is_some(), "{serial:?}");
+    }
+
+    // C++ only reacts while `PlayerLoading()`.
+    for serial in [
+        ConnectToSerial::WorldAttempt1,
+        ConnectToSerial::WorldAttempt5,
+    ] {
+        let (mut session, send_rx, _mgr) = connect_to_failed_session_like_cpp(false);
+        session
+            .handle_connect_to_failed(connect_to_failed_like_cpp(serial))
+            .await;
+        assert!(sent_opcodes_like_cpp(&send_rx).is_empty(), "{serial:?}");
+        assert!(!session.is_awaiting_instance_link(), "{serial:?}");
+    }
+}
+
+#[tokio::test]
+async fn player_login_with_foreign_character_kicks_like_cpp() {
+    let (mut session, send_rx, _mgr) = connect_to_failed_session_like_cpp(false);
+    session.set_legit_characters(vec![ObjectGuid::create_player(1, 1)]);
+
+    session
+        .handle_player_login(PlayerLogin {
+            guid: ObjectGuid::create_player(1, 2),
+            far_clip: 0.0,
+        })
+        .await;
+
+    assert_eq!(session.state(), crate::session::SessionState::Disconnecting);
+    assert!(sent_opcodes_like_cpp(&send_rx).is_empty());
+    assert!(session.player_loading().is_none());
+}

@@ -604,6 +604,20 @@ impl SocketReader {
                 continue;
             }
 
+            // C++ `WorldSocket::ReadDataHandler` consumes CMSG_LOG_DISCONNECT at
+            // the socket (3.4.3-era `eecdba9e01` `WorldSocket.cpp:444`); no
+            // session handler exists. Log the client's reason: it is the only
+            // server-side evidence of why the client is leaving.
+            if opcode == ClientOpcodes::LogDisconnect as u16 {
+                info!(
+                    "Client {} sent CMSG_LOG_DISCONNECT reason={:?} len={}",
+                    self.addr,
+                    log_disconnect_reason_like_cpp(&data),
+                    data.len()
+                );
+                continue;
+            }
+
             // Forward to session
             if self.session_tx.send(pkt).is_err() {
                 warn!("Session channel closed for {}", self.addr);
@@ -842,6 +856,12 @@ pub(super) fn account_country_lock_rejects_like_cpp(lock_country: &str, ip_count
         && lock_country != "00"
         && !ip_country.is_empty()
         && lock_country != ip_country
+}
+
+/// `uint32 disconnectReason` of a CMSG_LOG_DISCONNECT (opcode-prefixed data).
+pub(super) fn log_disconnect_reason_like_cpp(data: &[u8]) -> Option<u32> {
+    let reason = data.get(2..6)?;
+    Some(u32::from_le_bytes(reason.try_into().ok()?))
 }
 
 pub(super) fn should_compress_server_packet_like_cpp(data: &[u8]) -> bool {
