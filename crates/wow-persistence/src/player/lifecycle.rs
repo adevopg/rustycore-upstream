@@ -3,8 +3,8 @@
 
 use crate::{
     AccountCollectionLoadOutcomeLikeCpp, AccountCollectionLoadRequestLikeCpp,
-    AccountCollectionSaveLikeCpp, LogicalDatabaseLikeCpp, PersistenceFutureLikeCpp,
-    PersistenceOutcomeLikeCpp, PlayerBankSlotPurchaseRequestLikeCpp,
+    AccountCollectionSaveLikeCpp, AccountLastPlayedCharacterSaveLikeCpp, LogicalDatabaseLikeCpp,
+    PersistenceFutureLikeCpp, PersistenceOutcomeLikeCpp, PlayerBankSlotPurchaseRequestLikeCpp,
     PlayerBuybackClearRequestLikeCpp, PlayerCharacterBaseLoadOutcomeLikeCpp,
     PlayerCharacterBaseLoadRequestLikeCpp, PlayerCharacterSaveRequestLikeCpp,
     PlayerCharacterSaveResultLikeCpp, PlayerCurrencySaveRequestLikeCpp,
@@ -252,6 +252,25 @@ pub trait PlayerLifecyclePortLikeCpp: Send + Sync {
         &'a self,
         save: AccountCollectionSaveLikeCpp,
     ) -> PersistenceFutureLikeCpp<'a, PersistenceOutcomeLikeCpp>;
+
+    /// Replace the account's last played character for this realm's
+    /// sub-region (C++ `Player::SaveToDB` Login-transaction tail). Like the
+    /// collections, it commits in its own Login transaction (#187).
+    ///
+    /// Ports without Login-database access keep the default, which reports
+    /// the write as not performed.
+    fn save_last_played_character_like_cpp<'a>(
+        &'a self,
+        save: AccountLastPlayedCharacterSaveLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'a, PersistenceOutcomeLikeCpp> {
+        let _ = save;
+        Box::pin(async {
+            PersistenceOutcomeLikeCpp::Failed {
+                reason: "last played character persistence is not supported by this port"
+                    .to_owned(),
+            }
+        })
+    }
 
     /// Persist one semantic Player snapshot in one Characters-database
     /// transaction. No dirty state may be published until `Applied`.

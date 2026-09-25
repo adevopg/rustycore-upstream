@@ -223,6 +223,8 @@ impl WorldSession {
         let mut cancellation_fence =
             PlayerMoneyCommitCancellationFenceLikeCpp::new(Arc::clone(&money_tracker));
         let guid = prepared.header.guid;
+        let last_played_character =
+            self.last_played_character_save_like_cpp(guid, prepared.request.wall_clock_unix_secs);
         // Only the request crosses the asynchronous persistence boundary; the
         // receipt remains owned by this operation and contains no borrowed guard.
         let result = player_lifecycle_port
@@ -271,11 +273,59 @@ impl WorldSession {
         };
         drop(money_mutation_lock);
         drop(money_save_fence);
+        // C++ commits the Login transaction right after the Characters one,
+        // independently of its outcome (`Player::SaveToDB(bool)`).
+        if let Some(save) = last_played_character {
+            self.save_last_played_character_like_cpp(&player_lifecycle_port, save)
+                .await;
+        }
         self.drain_represented_quest_objective_progress_with_generator_like_cpp(
             item_guid_generator,
         )
         .await;
         outcome
+    }
+
+    /// C++ `Player::SaveToDB` last-character row
+    /// (`LOGIN_INS_BNET_LAST_PLAYER_CHARACTERS`): this realm's
+    /// `RealmHandle`, the character name/GUID counter and `GameTime::GetGameTime()`.
+    pub(in crate::session) fn last_played_character_save_like_cpp(
+        &self,
+        guid: wow_core::ObjectGuid,
+        now_unix_secs: i64,
+    ) -> Option<wow_persistence::AccountLastPlayedCharacterSaveLikeCpp> {
+        let Some(character_name) = self.player_name_like_cpp() else {
+            warn!(
+                account = self.account_id,
+                player_guid = guid.counter(),
+                "Skipping last played character save because the player name is unavailable"
+            );
+            return None;
+        };
+        Some(wow_persistence::AccountLastPlayedCharacterSaveLikeCpp {
+            account_id: self.account_id,
+            region: self.realm_region,
+            battlegroup: self.realm_battlegroup,
+            realm_id: u32::from(self.realm_id),
+            character_name,
+            character_guid: guid.counter() as u64,
+            last_played_time: now_unix_secs.clamp(0, i64::from(u32::MAX)) as u32,
+        })
+    }
+
+    async fn save_last_played_character_like_cpp(
+        &self,
+        port: &Arc<dyn wow_persistence::PlayerLifecyclePortLikeCpp>,
+        save: wow_persistence::AccountLastPlayedCharacterSaveLikeCpp,
+    ) {
+        match port.save_last_played_character_like_cpp(save).await {
+            wow_persistence::PersistenceOutcomeLikeCpp::Applied { .. } => {}
+            wow_persistence::PersistenceOutcomeLikeCpp::Failed { reason }
+            | wow_persistence::PersistenceOutcomeLikeCpp::Unknown { reason } => warn!(
+                account = self.account_id,
+                "Failed to save last played character: {reason}"
+            ),
+        }
     }
 
     #[cfg(test)]

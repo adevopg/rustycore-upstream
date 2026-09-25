@@ -352,6 +352,9 @@ pub(super) struct SessionRealmCapabilitiesLikeCpp {
     pub(super) realm_external_address: [u8; 4],
     /// Local (LAN) IP from `realmlist.localAddress`.
     pub(super) realm_local_address: [u8; 4],
+    /// C++ `sRealmList` for the worldserver Battle.net `GameUtilitiesService`.
+    pub(super) realm_list_service:
+        Arc<super::realm_list_service::WorldserverRealmListServiceLikeCpp>,
 }
 
 impl SessionCoreCapabilitiesLikeCpp {
@@ -560,5 +563,6 @@ impl SessionRealmCapabilitiesLikeCpp {
     pub(super) fn install_into_session_like_cpp(&self, session: &mut WorldSession) {
         session.set_realm_handle_like_cpp(self.realm_region, self.realm_battlegroup, self.realm_id);
         session.set_realm_names_like_cpp(self.realm_names.iter().cloned());
+        session.set_worldserver_realm_list_like_cpp(Arc::clone(&self.realm_list_service) as _);
     }
 }

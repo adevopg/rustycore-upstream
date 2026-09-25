@@ -3724,8 +3724,15 @@ async fn run_inner(
         format_ipv4(realm_local_address),
     );
 
+    let realm_build_info = realm_list_service::load_realm_build_info_like_cpp(&login_db).await?;
     // Share the Login DB only with account-owned composition adapters.
     let login_db = Arc::new(login_db);
+    let realm_list_service = Arc::new(realm_list_service::WorldserverRealmListServiceLikeCpp::new(
+        Arc::clone(&realm_list),
+        realm_build_info,
+        realm_build,
+        Arc::clone(&login_db),
+    ));
     let battle_pet_account_registry = Arc::new(BattlePetAccountRegistryLikeCpp::new(
         Arc::new(LoginBattlePetPersistenceLikeCpp::new(Arc::clone(&login_db))),
         Arc::clone(&battle_pet_species_entry_store),
@@ -5138,6 +5145,7 @@ async fn run_inner(
             realm_names,
             realm_external_address,
             realm_local_address,
+            realm_list_service: Arc::clone(&realm_list_service),
         },
     };
     let session_resources = Arc::new(session_resources);

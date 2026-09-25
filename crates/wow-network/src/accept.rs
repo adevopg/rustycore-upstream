@@ -498,6 +498,7 @@ mod tests {
     fn account_info_fixture() -> AccountInfo {
         AccountInfo {
             id: 42,
+            account_name: "42#1".to_owned(),
             session_key_hex: "A1B2C3D4".to_owned(),
             last_ip: "192.0.2.10".to_owned(),
             is_locked_to_ip: true,
@@ -532,6 +533,7 @@ mod tests {
 
     fn assert_account_info_matches(actual: &AccountInfo, expected: &AccountInfo) {
         assert_eq!(actual.id, expected.id);
+        assert_eq!(actual.account_name, expected.account_name);
         assert_eq!(actual.session_key_hex, expected.session_key_hex);
         assert_eq!(actual.last_ip, expected.last_ip);
         assert_eq!(actual.is_locked_to_ip, expected.is_locked_to_ip);

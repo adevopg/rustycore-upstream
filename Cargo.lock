@@ -3190,6 +3190,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "flume",
+ "rand",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3210,6 +3211,7 @@ dependencies = [
  "wow-network",
  "wow-packet",
  "wow-persistence",
+ "wow-proto",
  "wow-scripts",
  "wow-social",
  "wow-world",
@@ -3518,9 +3520,12 @@ name = "wow-proto"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "flate2",
  "prost",
  "prost-build",
  "prost-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3614,6 +3619,7 @@ dependencies = [
  "inventory",
  "num-traits",
  "parking_lot",
+ "prost",
  "rand",
  "serde",
  "serde_json",
@@ -3638,6 +3644,7 @@ dependencies = [
  "wow-network",
  "wow-packet",
  "wow-persistence",
+ "wow-proto",
  "wow-recastdetour",
  "wow-script",
  "wow-session",

@@ -1306,3 +1306,35 @@ async fn appearances_and_illusions_are_saved_through_the_port_like_cpp() {
         assert_eq!(save.logical_database(), LogicalDatabaseLikeCpp::Login);
     }
 }
+
+#[test]
+fn last_played_character_save_uses_realm_handle_and_player_identity_like_cpp() {
+    let (mut session, _, _) = make_session();
+    session.set_realm_handle_like_cpp(1, 2, 3);
+    session.player_name = Some("Innaa".to_string());
+    let guid = ObjectGuid::create_player(3, 42);
+
+    let save = session
+        .last_played_character_save_like_cpp(guid, 1_758_800_000)
+        .expect("named player produces a last-played row");
+
+    assert_eq!(
+        save,
+        wow_persistence::AccountLastPlayedCharacterSaveLikeCpp {
+            account_id: session.account_id,
+            region: 1,
+            battlegroup: 2,
+            realm_id: 3,
+            character_name: "Innaa".to_owned(),
+            character_guid: 42,
+            last_played_time: 1_758_800_000,
+        }
+    );
+
+    session.player_name = None;
+    assert!(
+        session
+            .last_played_character_save_like_cpp(guid, 1_758_800_000)
+            .is_none()
+    );
+}

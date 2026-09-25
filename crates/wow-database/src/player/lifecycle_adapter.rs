@@ -19,9 +19,9 @@ use wow_persistence::PlayerCurrencySaveKindLikeCpp;
 use wow_persistence::{
     AccountCollectionLoadOutcomeLikeCpp, AccountCollectionLoadRequestLikeCpp,
     AccountCollectionLoadedLikeCpp, AccountCollectionRowsLikeCpp, AccountCollectionSaveLikeCpp,
-    AccountHeirloomLoadRowLikeCpp, AccountMaskBlockLikeCpp, AccountMountLoadRowLikeCpp,
-    AccountToyLoadRowLikeCpp, PersistenceFutureLikeCpp, PersistenceOutcomeLikeCpp,
-    PlayerActionButtonLoadRowLikeCpp, PlayerBagInventoryLoadRowLikeCpp,
+    AccountHeirloomLoadRowLikeCpp, AccountLastPlayedCharacterSaveLikeCpp, AccountMaskBlockLikeCpp,
+    AccountMountLoadRowLikeCpp, AccountToyLoadRowLikeCpp, PersistenceFutureLikeCpp,
+    PersistenceOutcomeLikeCpp, PlayerActionButtonLoadRowLikeCpp, PlayerBagInventoryLoadRowLikeCpp,
     PlayerBankSlotPurchaseRequestLikeCpp, PlayerBattlegroundLocationLoadRowLikeCpp,
     PlayerBuybackClearRequestLikeCpp, PlayerCharacterAuraEffectLoadRowLikeCpp,
     PlayerCharacterAuraLoadRowLikeCpp, PlayerCharacterBaseLoadOutcomeLikeCpp,
@@ -73,7 +73,9 @@ mod save_plan;
 mod save_steps;
 use save_plan::player_character_save_statements_like_cpp;
 mod collections;
-use collections::account_collection_load_statements_like_cpp;
+use collections::{
+    account_collection_load_statements_like_cpp, last_played_character_statements_like_cpp,
+};
 mod login_reads;
 use login_reads::{
     nonnegative_i32_to_u32_like_cpp, nonnegative_i64_to_u64_like_cpp,
@@ -1567,6 +1569,25 @@ impl PlayerLifecyclePortLikeCpp for MariaDbPlayerLifecycleAdapterLikeCpp {
                     .commit_transaction_with_outcome_like_cpp(tx)
                     .await,
                 rows as u64,
+            )
+        })
+    }
+
+    fn save_last_played_character_like_cpp<'a>(
+        &'a self,
+        save: AccountLastPlayedCharacterSaveLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'a, PersistenceOutcomeLikeCpp> {
+        Box::pin(async move {
+            let mut tx = SqlTransaction::new();
+            for statement in last_played_character_statements_like_cpp(&save) {
+                tx.append(statement);
+            }
+            // Own Login transaction, like the collection saves (#187).
+            collections::account_collection_commit_outcome_like_cpp(
+                self.login_db
+                    .commit_transaction_with_outcome_like_cpp(tx)
+                    .await,
+                2,
             )
         })
     }

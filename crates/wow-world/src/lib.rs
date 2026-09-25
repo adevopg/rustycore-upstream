@@ -8,6 +8,7 @@
 pub mod battle_pay;
 pub(crate) mod battle_pet_account;
 pub(crate) mod battle_pet_purchase;
+pub mod bnet_services;
 pub mod canonical_player_access;
 mod canonical_player_sync;
 mod character_administration;

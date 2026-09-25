@@ -4,18 +4,18 @@
 
 use anyhow::Result;
 use bitflags::bitflags;
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
 use crate::state::AppState;
 use wow_database::LoginStatements;
 use wow_proto::bgs::protocol::Variant;
+use wow_proto::realm_list_json::{
+    self, ClientVersion, IpAddress, RealmCharacterCountEntry, RealmCharacterCountList, RealmEntry,
+    RealmIpAddressFamily, RealmListServerIpAddresses, RealmListUpdates, RealmState,
+};
 
 const SEC_ADMINISTRATOR: u8 = 3;
 const DEFAULT_VERSION_MAJOR: u32 = 6;
@@ -240,96 +240,90 @@ impl RealmManager {
             .unwrap_or(0)
     }
 
+    /// Build the C++ `JSON::RealmList::RealmEntry` for one realm.
+    ///
+    /// Legacy TrinityCore (`78bcc3f5`) `RealmList::GetRealmList` and
+    /// `GetRealmEntryJSON` fill the same fields; only the flag/population
+    /// inputs differ between the two callers.
+    fn realm_entry_like_cpp(&self, r: &Realm, flags: u32, population_state: u32) -> RealmEntry {
+        let build_info = self.get_build_info(r.build);
+        RealmEntry {
+            wow_realm_address: RealmHandleLikeCpp::new_like_cpp(r.region, r.battlegroup, r.id)
+                .get_address_like_cpp(),
+            cfg_timezones_id: 1,
+            population_state,
+            cfg_categories_id: u32::from(r.timezone),
+            version: ClientVersion {
+                version_major: build_info.map_or(DEFAULT_VERSION_MAJOR, |b| b.major_version),
+                version_minor: build_info.map_or(DEFAULT_VERSION_MINOR, |b| b.minor_version),
+                version_revision: build_info.map_or(DEFAULT_VERSION_REVISION, |b| b.bugfix_version),
+                version_build: r.build,
+            },
+            cfg_realms_id: r.id,
+            flags,
+            name: r.name.clone(),
+            cfg_configs_id: u32::from(r.icon.get_config_id_like_cpp()),
+            cfg_languages_id: 1,
+        }
+    }
+
     /// Generate compressed JSON realm list for a specific build and sub-region.
     ///
-    /// Matches C# RealmManager.GetRealmList() logic:
-    /// - All realms are included (not filtered by build)
+    /// Matches C++ `RealmList::GetRealmList`:
+    /// - only realms of the requested sub-region are included
     /// - VersionMismatch flag (0x01) added dynamically if build doesn't match
     /// - PopulationState = 0 if offline, else max(population_level, 1)
     pub fn get_realm_list_json(
         &self,
         build: u32,
-        _sub_region: &str,
+        sub_region: &str,
         char_counts: &HashMap<u32, u8>,
     ) -> (Vec<u8>, Vec<u8>) {
-        let updates: Vec<RealmListUpdate> = self
+        let updates: Vec<RealmState> = self
             .realms
             .values()
             .filter(|r| {
                 RealmHandleLikeCpp::new_like_cpp(r.region, r.battlegroup, r.id)
                     .get_sub_region_address_like_cpp()
-                    == _sub_region
+                    == sub_region
             })
             .map(|r| {
-                let build_info = self.get_build_info(r.build);
-
                 // Dynamically add VersionMismatch if client build != realm build
                 let mut flags = r.flag;
                 if r.build != build {
                     flags.insert(RealmFlagsLikeCpp::VERSION_MISMATCH);
                 }
 
-                // Population: 0 if offline, else max(population_level, 1)
-                let is_offline = flags.contains(RealmFlagsLikeCpp::OFFLINE);
-                let population_state = if is_offline {
+                // C++ tests the stored realm flags, not the version-adjusted copy.
+                let population_state = if r.flag.contains(RealmFlagsLikeCpp::OFFLINE) {
                     0
                 } else {
-                    (r.population as i32).max(1)
+                    (r.population as u32).max(1)
                 };
 
-                RealmListUpdate {
-                    update: RealmEntry {
-                        wow_realm_address: RealmHandleLikeCpp::new_like_cpp(
-                            r.region,
-                            r.battlegroup,
-                            r.id,
-                        )
-                        .get_address_like_cpp() as i32,
-                        cfg_timezones_id: 1,
-                        population_state,
-                        cfg_categories_id: i32::from(r.timezone),
-                        version: ClientVersion {
-                            version_major: build_info
-                                .map_or(DEFAULT_VERSION_MAJOR as i32, |b| b.major_version as i32),
-                            version_build: r.build as i32,
-                            version_minor: build_info
-                                .map_or(DEFAULT_VERSION_MINOR as i32, |b| b.minor_version as i32),
-                            version_revision: build_info
-                                .map_or(DEFAULT_VERSION_REVISION as i32, |b| {
-                                    b.bugfix_version as i32
-                                }),
-                        },
-                        cfg_realms_id: r.id as i32,
-                        flags: i32::from(flags.bits()),
-                        name: r.name.clone(),
-                        cfg_configs_id: i32::from(r.icon.get_config_id_like_cpp()),
-                        cfg_languages_id: 1,
-                    },
+                RealmState {
+                    update: self.realm_entry_like_cpp(r, u32::from(flags.bits()), population_state),
                     deleting: false,
                 }
             })
             .collect();
 
-        let realm_list = RealmListUpdates { updates };
-        let realm_json = format!(
-            "JSONRealmListUpdates:{}\0",
-            serde_json::to_string(&realm_list).unwrap_or_default()
+        let compressed_realms = realm_list_json::compress_prefixed_like_cpp(
+            realm_list_json::REALM_LIST_UPDATES_PREFIX,
+            &RealmListUpdates { updates },
         );
-        let compressed_realms = zlib_compress(realm_json.as_bytes());
 
         let counts: Vec<RealmCharacterCountEntry> = char_counts
             .iter()
-            .map(|(&realm_id, &count)| RealmCharacterCountEntry {
-                wow_realm_address: realm_id as i32,
-                count: i32::from(count),
+            .map(|(&realm_address, &count)| RealmCharacterCountEntry {
+                wow_realm_address: realm_address,
+                count: u32::from(count),
             })
             .collect();
-        let count_list = RealmCharacterCountList { counts };
-        let count_json = format!(
-            "JSONRealmCharacterCountList:{}\0",
-            serde_json::to_string(&count_list).unwrap_or_default()
+        let compressed_counts = realm_list_json::compress_prefixed_like_cpp(
+            realm_list_json::REALM_CHARACTER_COUNT_LIST_PREFIX,
+            &RealmCharacterCountList { counts },
         );
-        let compressed_counts = zlib_compress(count_json.as_bytes());
 
         (compressed_realms, compressed_counts)
     }
@@ -344,37 +338,15 @@ impl RealmManager {
             return Vec::new();
         }
 
-        let build_info = self.get_build_info(realm.build);
-        let realm_entry = RealmEntry {
-            wow_realm_address: RealmHandleLikeCpp::new_like_cpp(
-                realm.region,
-                realm.battlegroup,
-                realm.id,
-            )
-            .get_address_like_cpp() as i32,
-            cfg_timezones_id: 1,
-            population_state: (realm.population as i32).max(1),
-            cfg_categories_id: i32::from(realm.timezone),
-            version: ClientVersion {
-                version_major: build_info
-                    .map_or(DEFAULT_VERSION_MAJOR as i32, |b| b.major_version as i32),
-                version_build: realm.build as i32,
-                version_minor: build_info
-                    .map_or(DEFAULT_VERSION_MINOR as i32, |b| b.minor_version as i32),
-                version_revision: build_info
-                    .map_or(DEFAULT_VERSION_REVISION as i32, |b| b.bugfix_version as i32),
-            },
-            cfg_realms_id: realm.id as i32,
-            flags: i32::from(realm.flag.bits()),
-            name: realm.name.clone(),
-            cfg_configs_id: i32::from(realm.icon.get_config_id_like_cpp()),
-            cfg_languages_id: 1,
-        };
-        let json = format!(
-            "JamJSONRealmEntry:{}\0",
-            serde_json::to_string(&realm_entry).unwrap_or_default()
+        let realm_entry = self.realm_entry_like_cpp(
+            realm,
+            u32::from(realm.flag.bits()),
+            (realm.population as u32).max(1),
         );
-        zlib_compress(json.as_bytes())
+        realm_list_json::compress_prefixed_like_cpp(
+            realm_list_json::REALM_ENTRY_PREFIX,
+            &realm_entry,
+        )
     }
 
     /// Generate compressed JSON for server IP addresses of a realm.
@@ -406,19 +378,18 @@ impl RealmManager {
             local_networks,
         );
         let addresses = RealmListServerIpAddresses {
-            families: vec![AddressFamily {
+            families: vec![RealmIpAddressFamily {
                 family: 1,
                 addresses: vec![IpAddress {
                     ip: selected_ip,
-                    port: i32::from(realm.port),
+                    port: u32::from(realm.port),
                 }],
             }],
         };
-        let json = format!(
-            "JSONRealmListServerIPAddresses:{}\0",
-            serde_json::to_string(&addresses).unwrap_or_default()
-        );
-        zlib_compress(json.as_bytes())
+        realm_list_json::compress_prefixed_like_cpp(
+            realm_list_json::REALM_LIST_SERVER_IP_ADDRESSES_PREFIX,
+            &addresses,
+        )
     }
 
     /// Prepare the realm-owned part of C++ RealmList::JoinRealm.
@@ -711,84 +682,6 @@ fn parse_auth_seed_like_cpp(hex: &str) -> [u8; 16] {
         *byte = parsed;
     }
     bytes
-}
-
-fn zlib_compress(data: &[u8]) -> Vec<u8> {
-    // Prepend 4-byte little-endian uncompressed size
-    let uncompressed_len = data.len() as u32;
-    let mut result = uncompressed_len.to_le_bytes().to_vec();
-
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(data).expect("zlib write failed");
-    let compressed = encoder.finish().expect("zlib finish failed");
-    result.extend_from_slice(&compressed);
-    result
-}
-
-// ── JSON types for realm list (matching C# RealmList JSON structures) ───────
-
-#[derive(Serialize)]
-struct RealmListUpdates {
-    updates: Vec<RealmListUpdate>,
-}
-
-#[derive(Serialize)]
-struct RealmListUpdate {
-    update: RealmEntry,
-    deleting: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RealmEntry {
-    wow_realm_address: i32,
-    cfg_timezones_id: i32,
-    population_state: i32,
-    cfg_categories_id: i32,
-    version: ClientVersion,
-    cfg_realms_id: i32,
-    flags: i32,
-    name: String,
-    cfg_configs_id: i32,
-    cfg_languages_id: i32,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ClientVersion {
-    version_major: i32,
-    version_build: i32,
-    version_minor: i32,
-    version_revision: i32,
-}
-
-#[derive(Serialize)]
-struct RealmCharacterCountList {
-    counts: Vec<RealmCharacterCountEntry>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RealmCharacterCountEntry {
-    wow_realm_address: i32,
-    count: i32,
-}
-
-#[derive(Serialize)]
-struct RealmListServerIpAddresses {
-    families: Vec<AddressFamily>,
-}
-
-#[derive(Serialize)]
-struct AddressFamily {
-    family: i32,
-    addresses: Vec<IpAddress>,
-}
-
-#[derive(Serialize)]
-struct IpAddress {
-    ip: String,
-    port: i32,
 }
 
 #[cfg(test)]

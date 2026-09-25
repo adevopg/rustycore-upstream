@@ -1142,6 +1142,7 @@ impl AccountLookup for DbAccountLookup {
 
             Some(AccountInfo {
                 id: account_id,
+                account_name: ticket.clone(),
                 session_key_hex,
                 last_ip,
                 is_locked_to_ip: is_locked != 0,
@@ -2101,6 +2102,7 @@ fn install_canonical_spawn_group_initializer_like_cpp(
 
 mod session_factory;
 use session_factory::*;
+mod realm_list_service;
 
 mod runtime;
 use runtime::*;

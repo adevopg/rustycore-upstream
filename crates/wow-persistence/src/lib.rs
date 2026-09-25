@@ -454,9 +454,9 @@ mod account_collections;
 pub use account_collections::{
     AccountCollectionLoadOutcomeLikeCpp, AccountCollectionLoadRequestLikeCpp,
     AccountCollectionLoadedLikeCpp, AccountCollectionRowsLikeCpp, AccountCollectionSaveLikeCpp,
-    AccountHeirloomLoadRowLikeCpp, AccountHeirloomRowLikeCpp, AccountMaskBlockLikeCpp,
-    AccountMountLoadRowLikeCpp, AccountMountRowLikeCpp, AccountToyLoadRowLikeCpp,
-    AccountToyRowLikeCpp,
+    AccountHeirloomLoadRowLikeCpp, AccountHeirloomRowLikeCpp,
+    AccountLastPlayedCharacterSaveLikeCpp, AccountMaskBlockLikeCpp, AccountMountLoadRowLikeCpp,
+    AccountMountRowLikeCpp, AccountToyLoadRowLikeCpp, AccountToyRowLikeCpp,
 };
 
 pub use player::{

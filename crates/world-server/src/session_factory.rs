@@ -340,7 +340,7 @@ pub(super) async fn create_session(
 
     let mut session = WorldSession::new(
         account.id,
-        String::new(), // account_name
+        account.account_name.clone(),
         account.security,
         active_expansion,
         account_expansion, // AccountExpansionLevel: raw from DB, like C#
@@ -375,6 +375,10 @@ pub(super) async fn create_session(
     session.set_recruiter_id_like_cpp(account.recruiter);
     session.set_is_a_recruiter_like_cpp(account.is_a_recruiter);
     session.set_mute_time_like_cpp(account.mute_time);
+    session.set_client_os_and_timezone_like_cpp(
+        account.os.clone(),
+        i16::try_from(account.timezone_offset).unwrap_or_default(),
+    );
     resources
         .inventory
         .install_into_session_like_cpp(&mut session);
@@ -400,6 +404,13 @@ pub(super) async fn create_session(
             .and_then(|metadata| metadata.waypoint_paths_like_cpp().get(path_id).cloned())
     }));
     resources.realm.install_into_session_like_cpp(&mut session);
+    session.set_realm_character_counts_like_cpp(
+        resources
+            .realm
+            .realm_list_service
+            .load_realm_character_counts_like_cpp(account.id)
+            .await,
+    );
     match battle_pet_account_registry
         .attach_like_cpp(account.battlenet_account_id)
         .await

@@ -77,6 +77,28 @@ pub struct AccountHeirloomLoadRowLikeCpp {
     pub flags: u32,
 }
 
+/// C++ `Player::SaveToDB` last-character metadata for the Battle.net
+/// "auto-join last realm" flow: `LOGIN_DEL_BNET_LAST_PLAYER_CHARACTERS`
+/// followed by `LOGIN_INS_BNET_LAST_PLAYER_CHARACTERS` in the Login
+/// transaction (TrinityCore `78bcc3f5` `Player.cpp:20152-20166`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountLastPlayedCharacterSaveLikeCpp {
+    /// `GetSession()->GetAccountId()` (game account).
+    pub account_id: u32,
+    /// `realm.Id.Region`.
+    pub region: u8,
+    /// `realm.Id.Site` (battlegroup).
+    pub battlegroup: u8,
+    /// `realm.Id.Realm`.
+    pub realm_id: u32,
+    /// `GetName()`.
+    pub character_name: String,
+    /// `GetGUID().GetCounter()`.
+    pub character_guid: u64,
+    /// `GameTime::GetGameTime()`.
+    pub last_played_time: u32,
+}
+
 /// One row of an account-wide collection, ready to persist.
 ///
 /// These are Battle.net account collections, not character-table state. C++

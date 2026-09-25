@@ -41,6 +41,8 @@ wow-session = { workspace = true }
 wow-instances = { workspace = true }
 wow-script = { workspace = true }
 wow-social = { workspace = true }
+wow-proto = { workspace = true }
+prost = { workspace = true }
 
 [dev-dependencies]
 wow-session = { workspace = true, features = ["test-support"] }

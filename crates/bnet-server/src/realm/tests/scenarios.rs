@@ -227,10 +227,10 @@ fn realm_list_json_filters_subregion_and_uses_cpp_fields() {
 
     let update = &updates[0]["update"];
     assert_eq!(update["wowRealmAddress"], 0x0506_0009);
-    assert_eq!(update["cfgTimezonesId"], 1);
-    assert_eq!(update["cfgCategoriesId"], 3);
-    assert_eq!(update["cfgConfigsId"], 2);
-    assert_eq!(update["cfgRealmsId"], 9);
+    assert_eq!(update["cfgTimezonesID"], 1);
+    assert_eq!(update["cfgCategoriesID"], 3);
+    assert_eq!(update["cfgConfigsID"], 2);
+    assert_eq!(update["cfgRealmsID"], 9);
     assert_eq!(update["version"]["versionMajor"], 3);
     assert_eq!(update["version"]["versionMinor"], 4);
     assert_eq!(update["version"]["versionRevision"], 3);
@@ -272,7 +272,7 @@ fn realm_list_json_uses_cpp_fallback_version_and_type_normalization() {
     let update = &json["updates"][0]["update"];
 
     assert_eq!(update["flags"], RealmFlagsLikeCpp::VERSION_MISMATCH.bits());
-    assert_eq!(update["cfgConfigsId"], 2);
+    assert_eq!(update["cfgConfigsID"], 2);
     assert_eq!(update["version"]["versionMajor"], DEFAULT_VERSION_MAJOR);
     assert_eq!(update["version"]["versionMinor"], DEFAULT_VERSION_MINOR);
     assert_eq!(
@@ -313,8 +313,8 @@ fn realm_entry_json_matches_cpp_envelope_and_empty_gates() {
     let entry = inflate_payload(&entry);
     let json = parse_enveloped_json(&entry, "JamJSONRealmEntry:");
     assert_eq!(json["wowRealmAddress"], 0x0506_0009);
-    assert_eq!(json["cfgTimezonesId"], 1);
-    assert_eq!(json["cfgCategoriesId"], 3);
+    assert_eq!(json["cfgTimezonesID"], 1);
+    assert_eq!(json["cfgCategoriesID"], 3);
     assert_eq!(json["populationState"], 2);
     assert_eq!(json["version"]["versionBuild"], 51943);
 

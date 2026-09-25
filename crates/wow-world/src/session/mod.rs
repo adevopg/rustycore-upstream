@@ -5362,6 +5362,16 @@ pub struct WorldSession {
     pub account_id: u32,
     battlenet_account_id: u32,
     realm_list_secret_like_cpp: [u8; 32],
+    /// C++ `WorldSession::_realmCharacterCounts` (realm address -> count),
+    /// loaded from `LOGIN_SEL_BNET_CHARACTER_COUNTS_BY_ACCOUNT_ID`.
+    realm_character_counts_like_cpp: std::collections::BTreeMap<u32, u8>,
+    /// C++ `WorldSession::_os` (`account.os`).
+    os_like_cpp: String,
+    /// C++ `WorldSession::_timezoneOffset` in minutes (`account.timezone_offset`).
+    timezone_offset_minutes_like_cpp: i16,
+    /// C++ `sRealmList` as seen by the worldserver Battle.net services.
+    worldserver_realm_list_like_cpp:
+        Option<Arc<dyn crate::bnet_services::WorldserverRealmListPortLikeCpp>>,
     recruiter_id_like_cpp: u32,
     is_a_recruiter_like_cpp: bool,
     pub account_name: String,
@@ -7831,6 +7841,10 @@ impl WorldSession {
             account_id,
             battlenet_account_id: account_id,
             realm_list_secret_like_cpp: [0; 32],
+            realm_character_counts_like_cpp: std::collections::BTreeMap::new(),
+            os_like_cpp: String::new(),
+            timezone_offset_minutes_like_cpp: 0,
+            worldserver_realm_list_like_cpp: None,
             recruiter_id_like_cpp: 0,
             is_a_recruiter_like_cpp: false,
             account_name,
@@ -10432,6 +10446,54 @@ impl WorldSession {
 
     pub(crate) fn realm_list_secret_like_cpp(&self) -> &[u8; 32] {
         &self.realm_list_secret_like_cpp
+    }
+
+    /// C++ `InitializeSessionCallback` fills `_realmCharacterCounts` from
+    /// `GLOBAL_REALM_CHARACTER_COUNTS` (realm address -> numchars).
+    pub fn set_realm_character_counts_like_cpp(
+        &mut self,
+        counts: impl IntoIterator<Item = (u32, u8)>,
+    ) {
+        self.realm_character_counts_like_cpp = counts.into_iter().collect();
+    }
+
+    /// C++ `WorldSession::GetRealmCharacterCounts`.
+    pub(crate) fn realm_character_counts_like_cpp(&self) -> &std::collections::BTreeMap<u32, u8> {
+        &self.realm_character_counts_like_cpp
+    }
+
+    /// C++ `WorldSession` constructor stores `os` and `timezoneOffset` from
+    /// the authenticated account row.
+    pub fn set_client_os_and_timezone_like_cpp(
+        &mut self,
+        os: String,
+        timezone_offset_minutes: i16,
+    ) {
+        self.os_like_cpp = os;
+        self.timezone_offset_minutes_like_cpp = timezone_offset_minutes;
+    }
+
+    pub(crate) fn os_like_cpp(&self) -> &str {
+        &self.os_like_cpp
+    }
+
+    pub(crate) fn timezone_offset_minutes_like_cpp(&self) -> i16 {
+        self.timezone_offset_minutes_like_cpp
+    }
+
+    /// Install the worldserver `sRealmList` capability used by
+    /// `Battlenet::GameUtilitiesService`.
+    pub fn set_worldserver_realm_list_like_cpp(
+        &mut self,
+        realm_list: Arc<dyn crate::bnet_services::WorldserverRealmListPortLikeCpp>,
+    ) {
+        self.worldserver_realm_list_like_cpp = Some(realm_list);
+    }
+
+    pub(crate) fn worldserver_realm_list_like_cpp(
+        &self,
+    ) -> Option<&Arc<dyn crate::bnet_services::WorldserverRealmListPortLikeCpp>> {
+        self.worldserver_realm_list_like_cpp.as_ref()
     }
 
     pub fn set_mute_time_like_cpp(&mut self, mute_time: i64) {

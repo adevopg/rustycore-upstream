@@ -25,6 +25,7 @@ pub use constants::BattlePayConfigLikeCpp;
 pub use service::BattlePayServiceLikeCpp;
 
 pub(crate) use constants::PRODUCT_DELIVERY_DELAY_SECS_LIKE_CPP;
+pub(crate) use constants::locale_index_from_name_like_cpp;
 
 /// Shop packets of the session-init burst (LegionCore `SendDisplayPromo`); sent right
 /// after the character-select init packets.
