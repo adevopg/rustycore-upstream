@@ -349,44 +349,44 @@ impl<'a> VmapExport<'a> {
 /// The Map.db2 part of `main`: record order, copy rows, parent partitioning.
 ///
 /// Returns `(map_ids, maps_that_are_parents)`.
-pub fn read_map_entries(reader: &wow_data::wdc4::Wdc4Reader) -> (Vec<MapEntry>, HashSet<u32>) {
+pub(crate) fn read_map_entries(db2: &db2::Db2Table) -> (Vec<MapEntry>, HashSet<u32>) {
+    let reader = &db2.reader;
     let mut map_ids: Vec<MapEntry> = Vec::with_capacity(reader.record_count());
     let mut maps_that_are_parents = HashSet::new();
     let mut id_to_index: HashMap<u32, usize> = HashMap::new();
-    let mut record_to_entry: HashMap<usize, usize> = HashMap::new();
 
-    let record_count = reader.record_count();
-    for (row, (id, record_idx)) in reader.iter_records().enumerate() {
-        if row < record_count {
-            let mut map = MapEntry {
-                id,
-                parent_map_id: reader.get_field_i16(record_idx, db2::MAP_FIELD_PARENT_MAP_ID),
-                name: reader.get_field_string(record_idx, db2::MAP_FIELD_MAP_NAME),
-                directory: reader.get_field_string(record_idx, db2::MAP_FIELD_DIRECTORY),
-            };
+    for (id, record_idx) in db2.records() {
+        let mut map = MapEntry {
+            id,
+            // int16(record.GetUInt16("ParentMapID")): RecordGetVarInt sign-extends
+            // SignedImmediate columns
+            parent_map_id: reader.get_field_i16(record_idx, db2::MAP_FIELD_PARENT_MAP_ID),
+            name: db2.get_string(record_idx, db2::MAP_FIELD_MAP_NAME),
+            directory: db2.get_string(record_idx, db2::MAP_FIELD_DIRECTORY),
+        };
 
-            if map.parent_map_id < 0 {
-                map.parent_map_id =
-                    reader.get_field_i16(record_idx, db2::MAP_FIELD_COSMETIC_PARENT_MAP_ID);
-            }
+        if map.parent_map_id < 0 {
+            map.parent_map_id =
+                reader.get_field_i16(record_idx, db2::MAP_FIELD_COSMETIC_PARENT_MAP_ID);
+        }
 
-            if map.parent_map_id >= 0 {
-                maps_that_are_parents.insert(map.parent_map_id as u32);
-            }
+        if map.parent_map_id >= 0 {
+            maps_that_are_parents.insert(map.parent_map_id as u32);
+        }
 
-            id_to_index.insert(map.id, map_ids.len());
-            record_to_entry.insert(record_idx, map_ids.len());
-            map_ids.push(map);
-        } else {
-            // DB2RecordCopy: `iter_records` resolves the source row id to its record
-            let Some(&source) = record_to_entry.get(&record_idx) else {
-                continue;
-            };
+        id_to_index.insert(map.id, map_ids.len());
+        map_ids.push(map);
+    }
+
+    for &(new_row_id, source_row_id) in db2.copies() {
+        if let Some(&source) = id_to_index.get(&source_row_id) {
             let src = map_ids[source].clone();
-            map_ids.push(MapEntry { id, ..src });
+            map_ids.push(MapEntry {
+                id: new_row_id,
+                ..src
+            });
         }
     }
-    let _ = id_to_index;
 
     // force parent maps to be extracted first (std::stable_partition)
     let (mut parents, others): (Vec<MapEntry>, Vec<MapEntry>) = map_ids

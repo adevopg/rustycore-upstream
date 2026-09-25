@@ -68,11 +68,13 @@ impl VmapExport<'_> {
             }
         };
 
-        let records: Vec<(u32, u32)> = (0..db2.record_count())
-            .map(|rec| {
+        let records: Vec<(u32, u32)> = db2
+            .records()
+            .map(|(id, rec)| {
                 (
-                    db2.record_id(rec),
-                    db2.get_field_u32(rec, db2::GAMEOBJECT_DISPLAY_INFO_FIELD_FILE_DATA_ID),
+                    id,
+                    db2.reader
+                        .get_field_u32(rec, db2::GAMEOBJECT_DISPLAY_INFO_FIELD_FILE_DATA_ID),
                 )
             })
             .collect();

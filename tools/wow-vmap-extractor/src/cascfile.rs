@@ -10,9 +10,10 @@
 
 use wow_casc::Storage;
 
-/// CascLib `CASC_LOCALE_ALL_WOW` (all locales except enCN/enTW), used by every
-/// `OpenFile` call of the vmap extractor.
-pub const CASC_LOCALE_ALL_WOW: u32 = 0x0001_F3F6;
+/// Per-call locale mask passed to `wow-casc`. The C++ passes `CASC_LOCALE_ALL_WOW`
+/// (`DB2CascFileSource`: `CASC_LOCALE_NONE`), which `CascOpenFile` ignores: the storage's
+/// open mask decides. In `wow-casc` a mask of 0 is exactly that behavior.
+const OPEN_LOCALE_MASK: u32 = 0;
 
 /// CascLib `CASC_INVALID_ID`.
 const CASC_INVALID_ID: u32 = 0xFFFF_FFFF;
@@ -30,6 +31,14 @@ pub trait CascSource {
     /// `CASC::Storage::OpenFile(uint32 fileDataId, ...)` followed by a full read.
     /// `Ok(None)` is CascLib `ERROR_FILE_NOT_FOUND`.
     fn open_by_id(&self, file_data_id: u32) -> Result<Option<Vec<u8>>, String>;
+
+    /// `DB2CascFileSource`: `OpenFile(fileDataId, CASC_LOCALE_NONE, printErrors,
+    /// zerofillEncryptedParts = true)` followed by a full read; frames encrypted with an
+    /// unknown key read as zeros.
+    fn open_db2(&self, file_data_id: u32) -> Result<Option<Vec<u8>>, String>;
+
+    /// `CASC::Storage::HasTactKey`.
+    fn has_tact_key(&self, key_name: u64) -> bool;
 }
 
 /// CascLib `IsFileDataIdName` (`common/Common.cpp`): `CascOpenFile(CASC_OPEN_BY_NAME)`
@@ -81,15 +90,24 @@ impl CascSource for Storage {
         // generated `FILE%08X.xxx` names never have a name hash, so resolving them as
         // FileDataIDs first is equivalent.
         let result = match file_data_id_from_name(name) {
-            Some(id) => self.read_file_by_id(id, CASC_LOCALE_ALL_WOW),
-            None => self.read_file_by_name(name, CASC_LOCALE_ALL_WOW),
+            Some(id) => self.read_file_by_id(id, OPEN_LOCALE_MASK),
+            None => self.read_file_by_name(name, OPEN_LOCALE_MASK),
         };
         result.map_err(|e| human_readable_casc_error(&e))
     }
 
     fn open_by_id(&self, file_data_id: u32) -> Result<Option<Vec<u8>>, String> {
-        self.read_file_by_id(file_data_id, CASC_LOCALE_ALL_WOW)
+        self.read_file_by_id(file_data_id, OPEN_LOCALE_MASK)
             .map_err(|e| human_readable_casc_error(&e))
+    }
+
+    fn open_db2(&self, file_data_id: u32) -> Result<Option<Vec<u8>>, String> {
+        self.read_file_by_id_zerofill_encrypted(file_data_id, OPEN_LOCALE_MASK)
+            .map_err(|e| human_readable_casc_error(&e))
+    }
+
+    fn has_tact_key(&self, key_name: u64) -> bool {
+        Storage::has_tact_key(self, key_name)
     }
 }
 
@@ -282,6 +300,14 @@ pub mod tests {
 
         fn open_by_id(&self, file_data_id: u32) -> Result<Option<Vec<u8>>, String> {
             Ok(self.by_id.get(&file_data_id).cloned())
+        }
+
+        fn open_db2(&self, file_data_id: u32) -> Result<Option<Vec<u8>>, String> {
+            self.open_by_id(file_data_id)
+        }
+
+        fn has_tact_key(&self, _key_name: u64) -> bool {
+            false
         }
     }
 

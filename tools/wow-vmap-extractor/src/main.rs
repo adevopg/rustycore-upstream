@@ -32,6 +32,8 @@ mod wdtfile;
 mod wmo;
 
 #[cfg(test)]
+mod real_data_tests;
+#[cfg(test)]
 mod scenario_tests;
 
 use std::io::Write;
