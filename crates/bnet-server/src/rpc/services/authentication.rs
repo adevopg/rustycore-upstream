@@ -11,6 +11,7 @@ use wow_proto::{service_hash, status};
 use crate::realm::{realm_address_like_cpp, realm_sub_region_address_like_cpp};
 use crate::rpc::session::{RpcSession, RpcStatusError};
 use crate::state::{AccountInfo, GameAccountInfo, LastPlayedCharInfo};
+use crate::web_token;
 use std::collections::HashMap;
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -402,7 +403,7 @@ async fn handle_generate_web_credentials<S: AsyncRead + AsyncWrite + Unpin>(
     session: &mut RpcSession<S>,
     payload: &[u8],
 ) -> Result<Option<Vec<u8>>> {
-    let _request = GenerateWebCredentialsRequest::decode(payload)?;
+    let request = GenerateWebCredentialsRequest::decode(payload)?;
 
     if !session.authed {
         return Ok(None);
@@ -426,10 +427,65 @@ async fn handle_generate_web_credentials<S: AsyncRead + AsyncWrite + Unpin>(
     }
 
     let ticket: String = result.read(0);
+
+    // In-game browser (LegionCore Browser.Enabled): the web validates whatever the
+    // client presents against battlenet_account_web_token, so persist the same
+    // credential we hand out as a kind 0 token. The returned value stays the login
+    // ticket because the 3.4.3 client also caches it for LogonRequest.
+    if session.state().browser_enabled {
+        let issue = web_credentials_token_issue_like_legioncore(
+            account.id,
+            session.selected_game_account_id,
+            request.program,
+            &session.addr().ip().to_string(),
+            session.state().browser_token_lifetime,
+        );
+        let login_db = &session.state().login_db;
+        match web_token::insert_web_token(login_db, &ticket, &issue).await {
+            Ok(()) => {
+                web_token::purge_expired_web_tokens_best_effort(login_db).await;
+                tracing::debug!(
+                    "Account {} issued in-game browser token (kind {}, program 0x{:X})",
+                    account.id,
+                    issue.kind as u8,
+                    issue.program
+                );
+            }
+            Err(error) => {
+                tracing::error!(
+                    "Failed to persist in-game browser token for account {}: {error}",
+                    account.id
+                );
+            }
+        }
+    }
+
     let response = GenerateWebCredentialsResponse {
         web_credentials: Some(ticket.into_bytes()),
     };
     Ok(Some(response.encode_to_vec()))
+}
+
+/// `LegionCore` `IssueToken(program, kind = 0)` column values as bnetserver knows them:
+/// no world session, so realm and character are 0 and the game account is the one
+/// selected by `RealmListTicketIdentity` if any.
+fn web_credentials_token_issue_like_legioncore(
+    battlenet_account: u32,
+    selected_game_account_id: Option<u32>,
+    program: Option<u32>,
+    ip: &str,
+    lifetime_secs: u32,
+) -> web_token::WebTokenIssue {
+    web_token::WebTokenIssue {
+        battlenet_account,
+        account: selected_game_account_id.unwrap_or(0),
+        realm: 0,
+        character_guid: 0,
+        program: program.unwrap_or(0),
+        kind: web_token::WebTokenKind::WebCredentials,
+        ip: ip.to_string(),
+        lifetime_secs,
+    }
 }
 
 fn bnet_country_lock_rejects_like_cpp(lock_country: &str, ip_country: &str) -> bool {
@@ -518,6 +574,40 @@ mod tests {
             bnet_account_ban_status_like_cpp(true, false),
             Some(status::ERROR_GAME_ACCOUNT_SUSPENDED)
         );
+    }
+
+    #[test]
+    fn web_credentials_token_issue_uses_kind_0_and_legioncore_defaults() {
+        let issue = web_credentials_token_issue_like_legioncore(
+            42,
+            Some(7),
+            Some(0x0057_6F57),
+            "203.0.113.10",
+            3600,
+        );
+
+        assert_eq!(
+            issue,
+            web_token::WebTokenIssue {
+                battlenet_account: 42,
+                account: 7,
+                realm: 0,
+                character_guid: 0,
+                program: 0x0057_6F57,
+                kind: web_token::WebTokenKind::WebCredentials,
+                ip: "203.0.113.10".to_string(),
+                lifetime_secs: 3600,
+            }
+        );
+    }
+
+    #[test]
+    fn web_credentials_token_issue_defaults_missing_program_and_game_account_to_zero() {
+        let issue = web_credentials_token_issue_like_legioncore(42, None, None, "::1", 60);
+
+        assert_eq!(issue.account, 0);
+        assert_eq!(issue.program, 0);
+        assert_eq!(issue.lifetime_secs, 60);
     }
 
     #[test]

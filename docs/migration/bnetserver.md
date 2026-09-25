@@ -648,6 +648,31 @@ Add these to §9 (existing tasks #BNET.1–#BNET.14 stand):
 - [x] **#BNET.23** Match `HandlePostRefreshLoginTicket` response shape: `{ login_ticket_expiry: <unix> }` or `{ is_expired: true }`, not `{ login_ticket: "…" }`.
 - [x] **#BNET.24** Resolve `LoginREST.{External,Local}Address` via DNS at startup. Rust now mirrors TC by resolving both hostnames as IPv4 using the REST port and failing startup if either cannot resolve, while preserving the original hostname strings for URLs/cookies.
 
-### 13.8 Header status update
+### 13.8 In-game browser URL map and web tokens (2026-09-25, LegionCore port)
+
+Source: LegionCore 7.3.5 fork `src/server/bnetserver/REST/LoginRESTService.cpp`
+(`HandleGet` routing, `SendBrowserUrlMap`) and
+`src/server/game/Services/WorldserverService.cpp` (`Battlenet::AuthenticationService::IssueToken`,
+`HandleGenerateWebCredentials`); SQL from `sql/updates/auth/2026_09_04_00_browser_url_map.sql`.
+This is an intentional extension beyond TrinityCore 3.4.3, not a parity item.
+
+| Piece | Rust | Notes |
+|---|---|---|
+| `GET /bnetserver/browser/urlmap/` | `rest/handlers/browser.rs::get_browser_url_map` (prefix match like C++ `strstr(path, ...) == path`) | `SEL_BROWSER_URL_MAP` (`SELECT host, target FROM browser_url_map ORDER BY host`), hand-built `{"host":"target",...}` with the C++ escape lambda (`"`/`\` backslashed, bytes `< 0x20` dropped), `Content-Type: application/json;charset=utf-8`. No query result (no rows or DB error) answers `{}` like C++. Queried per request, no cache. |
+| Web token helpers | `web_token.rs` (`make_web_token_like_cpp` 32 random bytes → 64 uppercase hex, `insert_web_token`, `issue_web_token`, `validate_web_token`, `purge_expired_web_tokens`) | Statements `INS_BNET_WEB_TOKEN` (upsert on `token`), `SEL_BNET_WEB_TOKEN`, `DEL_BNET_WEB_TOKENS_EXPIRED` live in `wow-database` `login.rs` so world-server can port `GenerateSSOToken` (kind 1) against the same SQL. Expiry follows the C++ purge predicate `expires < NOW()`, evaluated against the DB clock returned by the select. |
+| `GenerateWebCredentials` (method 8) | `rpc/services/authentication.rs::handle_generate_web_credentials` | Unchanged when `Browser.Enabled = 0`. With `Browser.Enabled = 1` the login ticket that is returned is also upserted as a kind 0 token (`account` = game account selected by `RealmListTicketIdentity` or 0, `realm`/`character_guid` 0, `program` from the request, `ip` = session peer, `expires = NOW() + Browser.TokenLifetime`), then expired tokens are purged. A persistence failure is logged and the response is still sent. |
+| Config | `main.rs` → `AppState::with_browser_config` | `Browser.Enabled` (default 0), `Browser.TokenLifetime` (default 3600) read from bnetserver.conf. |
+
+Deviation from LegionCore: there the worldserver answers `GenerateWebCredentials` with a fresh
+64-hex token (and `ERROR_NOT_IMPLEMENTED` when disabled). RustyCore's bnetserver keeps returning
+the login ticket, because the 3.4.3 client caches that value as `LogonRequest.cached_web_credentials`
+and `VerifyWebCredentials` resolves it through `battlenet_accounts.LoginTicket`; persisting the same
+value keeps both the reconnect path and the web validation working. Hence the upsert.
+
+Tests: `rest/handlers/tests/mod.rs` (`browser_url_map_*`, including a route test on a lazily
+connected pool and an `#[ignore]` live test driven by `RUSTYCORE_DB_IT_USER/HOST/PORT/PASS/AUTH_DB`),
+`web_token.rs` unit tests, `authentication.rs` `web_credentials_token_issue_*`.
+
+### 13.9 Header status update
 
 Header status changed from `❌ not audited` → `⚠️ audited (2026-05-01)`. Functional state remains `⚠️ partial` because broader runtime/RPC gaps remain tracked above; the modern encrypted-PKCS#8 `PrivateKeyPassword` path is now covered.

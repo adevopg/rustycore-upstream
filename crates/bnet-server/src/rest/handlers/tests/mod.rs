@@ -246,3 +246,168 @@ fn login_refresh_result_serializes_expired_ticket_shape_like_cpp() {
 
     assert_eq!(body, r#"{"is_expired":true}"#);
 }
+
+// ── GET /bnetserver/browser/urlmap/ (LegionCore LoginRESTService::SendBrowserUrlMap) ──
+
+#[test]
+fn browser_url_map_escape_matches_cpp_lambda() {
+    assert_eq!(
+        escape_browser_url_map_value_like_cpp(r#"a"b\c"#),
+        r#"a\"b\\c"#
+    );
+    assert_eq!(
+        escape_browser_url_map_value_like_cpp("tab\there\nnewline\u{1f}x"),
+        "tabherenewlinex"
+    );
+    assert_eq!(
+        escape_browser_url_map_value_like_cpp("https://shop.example.com:8443/prefix?q=1&r=/"),
+        "https://shop.example.com:8443/prefix?q=1&r=/"
+    );
+    // Non-ASCII passes through unchanged (C++ only touches bytes < 0x20, '"' and '\\').
+    assert_eq!(escape_browser_url_map_value_like_cpp("ñ€"), "ñ€");
+    assert_eq!(escape_browser_url_map_value_like_cpp(""), "");
+}
+
+#[test]
+fn browser_url_map_json_is_plain_object_in_query_order_like_cpp() {
+    let entries = vec![
+        (
+            "*.battle.net".to_string(),
+            "https://shop.example.com".to_string(),
+        ),
+        (
+            "us.actual.battle.net".to_string(),
+            "https://shop.example.com:8443/us".to_string(),
+        ),
+    ];
+
+    assert_eq!(
+        browser_url_map_json_like_cpp(&entries),
+        r#"{"*.battle.net":"https://shop.example.com","us.actual.battle.net":"https://shop.example.com:8443/us"}"#
+    );
+    assert_eq!(browser_url_map_json_like_cpp(&[]), "{}");
+}
+
+#[test]
+fn browser_url_map_json_escapes_and_stays_parseable() {
+    let entries = vec![("quo\"te".to_string(), "back\\slash\u{7}bell".to_string())];
+
+    let json = browser_url_map_json_like_cpp(&entries);
+    assert_eq!(json, r#"{"quo\"te":"back\\slashbell"}"#);
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["quo\"te"], "back\\slashbell");
+}
+
+#[test]
+fn browser_url_map_response_uses_json_content_type_like_cpp() {
+    let response = browser_url_map_response_like_cpp(&[]);
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.status_text, "OK");
+    assert_eq!(response.headers, browser_url_map_headers_like_cpp());
+    assert_eq!(
+        response.headers,
+        vec![("Content-Type", "application/json;charset=utf-8".to_string())]
+    );
+    assert_eq!(response.body, "{}");
+}
+
+#[test]
+fn browser_url_map_path_matches_cpp_prefix_rule() {
+    assert!(is_browser_url_map_path_like_cpp(BROWSER_URL_MAP_PATH));
+    assert!(is_browser_url_map_path_like_cpp(
+        "/bnetserver/browser/urlmap/?v=2"
+    ));
+    assert!(!is_browser_url_map_path_like_cpp(
+        "/bnetserver/browser/urlmap"
+    ));
+    assert!(!is_browser_url_map_path_like_cpp("/bnetserver/login/"));
+}
+
+#[tokio::test]
+async fn browser_url_map_route_answers_empty_object_when_database_is_unreachable_like_cpp() {
+    // C++ returns "{}" whenever LoginDatabase.Query yields no result, including a failed query.
+    let state = AppState::for_tests_without_database();
+    let mut connection_state = RestConnectionState::default();
+
+    let response = route(
+        &state,
+        "GET",
+        BROWSER_URL_MAP_PATH,
+        &HashMap::new(),
+        None,
+        &mut connection_state,
+    )
+    .await;
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.headers, browser_url_map_headers_like_cpp());
+    assert_eq!(response.body, "{}");
+}
+
+#[tokio::test]
+async fn browser_url_map_route_rejects_post_like_cpp_handle_post() {
+    let state = AppState::for_tests_without_database();
+    let mut connection_state = RestConnectionState::default();
+
+    let response = route(
+        &state,
+        "POST",
+        BROWSER_URL_MAP_PATH,
+        &HashMap::new(),
+        Some(b"{}"),
+        &mut connection_state,
+    )
+    .await;
+
+    assert_eq!(response.status_code, 404);
+}
+
+#[tokio::test]
+#[ignore = "requires a live auth database with browser_url_map; set RUSTYCORE_DB_IT_USER and optional HOST/PORT/PASS/AUTH_DB"]
+async fn live_browser_url_map_route_serves_auth_browser_url_map() {
+    let Some(user) = std::env::var("RUSTYCORE_DB_IT_USER").ok() else {
+        eprintln!("skipping: RUSTYCORE_DB_IT_USER is not set");
+        return;
+    };
+    let host = std::env::var("RUSTYCORE_DB_IT_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port = std::env::var("RUSTYCORE_DB_IT_PORT").unwrap_or_else(|_| "3306".into());
+    let password = std::env::var("RUSTYCORE_DB_IT_PASS").unwrap_or_default();
+    let database = std::env::var("RUSTYCORE_DB_IT_AUTH_DB").unwrap_or_else(|_| "auth".into());
+    let url = format!("mysql://{user}:{password}@{host}:{port}/{database}?ssl-mode=DISABLED");
+    let pool = sqlx::mysql::MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .expect("connect to live auth database");
+    let expected: Vec<(String, String)> =
+        sqlx::query_as("SELECT host, target FROM browser_url_map ORDER BY host")
+            .fetch_all(&pool)
+            .await
+            .expect("browser_url_map must exist");
+
+    let state = AppState::for_tests_without_database();
+    let state = AppState {
+        login_db: wow_database::LoginDatabase::from_pool(pool),
+        ..state
+    };
+    let mut connection_state = RestConnectionState::default();
+
+    let response = route(
+        &state,
+        "GET",
+        BROWSER_URL_MAP_PATH,
+        &HashMap::new(),
+        None,
+        &mut connection_state,
+    )
+    .await;
+
+    assert_eq!(response.status_code, 200);
+    assert_eq!(response.headers, browser_url_map_headers_like_cpp());
+    assert_eq!(response.body, browser_url_map_json_like_cpp(&expected));
+    let parsed: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert!(parsed.is_object());
+    assert_eq!(parsed.as_object().unwrap().len(), expected.len());
+}

@@ -41,6 +41,7 @@ pub async fn route(
         ("GET", "/bnetserver/gameAccounts/") => get_game_accounts(state, headers).await,
         ("GET", "/bnetserver/portal/") => get_portal(state, headers),
         ("POST", "/bnetserver/refreshLoginTicket/") => refresh_login_ticket(state, headers).await,
+        ("GET", path) if is_browser_url_map_path_like_cpp(path) => get_browser_url_map(state).await,
         _ => {
             tracing::warn!("REST fallback: {method} {path} — no matching route");
             HttpResponse {

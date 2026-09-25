@@ -154,6 +154,18 @@ pub enum LoginStatements {
     DEL_BNET_ITEM_FAVORITE_APPEARANCE,
     SEL_BNET_TRANSMOG_ILLUSIONS,
     INS_BNET_TRANSMOG_ILLUSIONS,
+    /// In-game browser host rewrites served by `GET /bnetserver/browser/urlmap/`
+    /// (LegionCore `LOGIN_SEL_BROWSER_URL_MAP`, `LoginRESTService::SendBrowserUrlMap`).
+    SEL_BROWSER_URL_MAP,
+    /// In-game browser web/SSO tokens issued by `AuthenticationService`
+    /// (LegionCore `LOGIN_INS_BNET_WEB_TOKEN`, `Battlenet::AuthenticationService::IssueToken`).
+    /// Upsert so bnetserver can re-persist an existing login ticket as a kind 0 token.
+    INS_BNET_WEB_TOKEN,
+    /// Token lookup for web-side validation; returns the DB clock alongside `expires`
+    /// so callers compare against the same clock that `DEL_BNET_WEB_TOKENS_EXPIRED` uses.
+    SEL_BNET_WEB_TOKEN,
+    /// LegionCore `LOGIN_DEL_BNET_WEB_TOKENS_EXPIRED` (opportunistic cleanup after issue).
+    DEL_BNET_WEB_TOKENS_EXPIRED,
 }
 
 impl StatementDef for LoginStatements {
@@ -540,6 +552,20 @@ impl StatementDef for LoginStatements {
             }
             Self::INS_BNET_TRANSMOG_ILLUSIONS => {
                 "INSERT INTO battlenet_account_transmog_illusions (battlenetAccountId, blobIndex, illusionMask) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE illusionMask = illusionMask | VALUES(illusionMask)"
+            }
+            Self::SEL_BROWSER_URL_MAP => "SELECT host, target FROM browser_url_map ORDER BY host",
+            Self::INS_BNET_WEB_TOKEN => concat!(
+                "INSERT INTO battlenet_account_web_token (token, battlenet_account, account, realm, character_guid, program, kind, ip, expires) ",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND)) ",
+                "ON DUPLICATE KEY UPDATE battlenet_account = VALUES(battlenet_account), account = VALUES(account), realm = VALUES(realm), ",
+                "character_guid = VALUES(character_guid), program = VALUES(program), kind = VALUES(kind), ip = VALUES(ip), expires = VALUES(expires)",
+            ),
+            Self::SEL_BNET_WEB_TOKEN => concat!(
+                "SELECT battlenet_account, account, realm, character_guid, program, kind, UNIX_TIMESTAMP(expires), UNIX_TIMESTAMP() ",
+                "FROM battlenet_account_web_token WHERE token = ?",
+            ),
+            Self::DEL_BNET_WEB_TOKENS_EXPIRED => {
+                "DELETE FROM battlenet_account_web_token WHERE expires < NOW()"
             }
         }
     }

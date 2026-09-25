@@ -9,6 +9,7 @@ mod rest;
 mod rpc;
 mod secret_mgr;
 mod state;
+mod web_token;
 
 use anyhow::{Context, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -136,24 +137,36 @@ async fn main() -> Result<()> {
     let wrong_pass_ban_time: u32 = wow_config::get_value("WrongPass.BanTime").unwrap_or(600);
     let wrong_pass_ban_type: u32 = wow_config::get_value("WrongPass.BanType").unwrap_or(0);
     let wrong_pass_logging: bool = wow_config::get_value_default("WrongPass.Logging", false);
+    let browser_enabled: bool = wow_config::get_value_default("Browser.Enabled", false);
+    let browser_token_lifetime: u32 =
+        wow_config::get_value("Browser.TokenLifetime").unwrap_or(3600);
     let realm_update_delay: u64 = wow_config::get_value("RealmsStateUpdateDelay").unwrap_or(10);
     let ban_check_interval: u64 = wow_config::get_value("BanExpiryCheckInterval").unwrap_or(60);
     let max_ping_time_minutes: u64 = wow_config::get_value("MaxPingTime").unwrap_or(30);
     let ip_location = load_ip_location_from_config_like_cpp();
 
-    let state = Arc::new(AppState::new(
-        login_db,
-        ip_location,
-        rest_addresses.external_hostname,
-        rest_addresses.local_hostname,
-        rest_port,
-        rpc_port,
-        ticket_duration,
-        wrong_pass_max,
-        wrong_pass_ban_time,
-        wrong_pass_ban_type,
-        wrong_pass_logging,
-    ));
+    let state = Arc::new(
+        AppState::new(
+            login_db,
+            ip_location,
+            rest_addresses.external_hostname,
+            rest_addresses.local_hostname,
+            rest_port,
+            rpc_port,
+            ticket_duration,
+            wrong_pass_max,
+            wrong_pass_ban_time,
+            wrong_pass_ban_type,
+            wrong_pass_logging,
+        )
+        .with_browser_config(browser_enabled, browser_token_lifetime),
+    );
+    if browser_enabled {
+        tracing::info!(
+            token_lifetime_secs = browser_token_lifetime,
+            "In-game browser enabled: web credentials are persisted to battlenet_account_web_token"
+        );
+    }
 
     // Initialize realm manager
     realm::init_realm_manager(Arc::clone(&state), realm_update_delay).await?;

@@ -32,6 +32,10 @@ pub struct AppState {
     pub wrong_pass_ban_type: u32,
     /// Log wrong-password attempts.
     pub wrong_pass_logging: bool,
+    /// In-game browser support (`Browser.Enabled`): persist web credentials as tokens.
+    pub browser_enabled: bool,
+    /// `Browser.TokenLifetime`: seconds an in-game browser token stays valid.
+    pub browser_token_lifetime: u32,
 
     /// Realm manager (initialized after construction).
     pub realm_mgr: RwLock<RealmManager>,
@@ -63,8 +67,42 @@ impl AppState {
             wrong_pass_ban_time,
             wrong_pass_ban_type,
             wrong_pass_logging,
+            browser_enabled: false,
+            browser_token_lifetime: 3600,
             realm_mgr: RwLock::new(RealmManager::new()),
         }
+    }
+
+    /// Apply `Browser.Enabled` / `Browser.TokenLifetime` (`LegionCore` worldserver keys,
+    /// read from bnetserver.conf here because bnetserver answers `GenerateWebCredentials`).
+    pub fn with_browser_config(mut self, enabled: bool, token_lifetime: u32) -> Self {
+        self.browser_enabled = enabled;
+        self.browser_token_lifetime = token_lifetime;
+        self
+    }
+
+    /// State backed by a lazily connected pool that never reaches a server, for
+    /// handler tests that only need the non-database configuration.
+    #[cfg(test)]
+    pub(crate) fn for_tests_without_database() -> Self {
+        let pool = sqlx::mysql::MySqlPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(std::time::Duration::from_millis(200))
+            .connect_lazy("mysql://rustycore:unused@127.0.0.1:1/auth")
+            .expect("lazy pool options are static");
+        Self::new(
+            LoginDatabase::from_pool(pool),
+            IpLocationStore::default(),
+            "127.0.0.1".to_string(),
+            "127.0.0.1".to_string(),
+            8081,
+            1119,
+            3600,
+            0,
+            600,
+            0,
+            false,
+        )
     }
 
     /// Mirror TrinityCore bnetserver's pre-handshake `LOGIN_SEL_IP_INFO` check.

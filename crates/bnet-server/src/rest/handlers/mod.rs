@@ -14,6 +14,7 @@ use super::HttpResponse;
 use super::types::*;
 use crate::state::AppState;
 
+mod browser;
 mod encoding;
 mod login;
 mod responses;
@@ -23,6 +24,14 @@ mod wrong_password;
 
 pub use login::*;
 pub use tickets::*;
+
+use browser::{get_browser_url_map, is_browser_url_map_path_like_cpp};
+
+#[cfg(test)]
+use browser::{
+    BROWSER_URL_MAP_PATH, browser_url_map_headers_like_cpp, browser_url_map_json_like_cpp,
+    browser_url_map_response_like_cpp, escape_browser_url_map_value_like_cpp,
+};
 
 use encoding::{decode_base64_standard_like_cpp, hex_decode, hex_encode, hex_encode_upper};
 
