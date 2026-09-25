@@ -23,11 +23,15 @@ impl WorldSession {
             return;
         }
 
-        // Verify character ownership
+        // Verify character ownership. C++ `HandlePlayerLoginOpcode` kicks the
+        // session here (`CharacterHandler.cpp`, 3.4.3-era `eecdba9e01`).
         if !self.is_legit_character(&pkt.guid) {
             warn!(
                 "Account {} tried to login with non-owned character {:?}",
                 self.account_id, pkt.guid
+            );
+            self.kick(
+                "WorldSession::HandlePlayerLoginOpcode Trying to login with a character of another account",
             );
             return;
         }
