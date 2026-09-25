@@ -203,6 +203,15 @@ de `unsafe` (forbid en dominio/app, permitido solo en crates justificados con
 `deny(unsafe_op_in_unsafe_fn)`); y ejecutar **`cargo-machete` antes de A1** para no arreglar crates
 que A1 va a retirar.
 
+**ADR-009 — Nomenclatura de paridad (aprobada 2026-09-24, decisión del usuario).** El sufijo
+`_like_cpp` y los tipos `...LikeCpp` son legado y **no se usan en código nuevo ni en refactors**; el
+nombre dice el dominio y la procedencia C++ vive en el comentario/ancla, el mensaje de commit y el
+ADR/checkpoint. **No hay renombrado en masa del legado** en este programa: cambiaría miles de
+identificadores, todas las baselines y las superficies registradas, y su riesgo no compensa. Sí hay
+**renombrado oportunista** al extraer un dominio a su crate o al reescribir un fichero, dejando un
+alias o `adapter.rs` temporal si hace falta compatibilidad. Un renombrado masivo, si se quiere,
+será una campaña propia con su aceptación.
+
 ## 7. Primeros resultados de las comprobaciones (A0.2)
 
 `tools/xtask` (sin dependencias externas) con `structure-audit`, `check-layers`, `check-deps`,

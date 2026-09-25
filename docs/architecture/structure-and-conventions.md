@@ -85,6 +85,24 @@ wow-world/src/
 └─ runtime/                        (orquestación de ticks; el estado de mapa vive en wow-map)
 ```
 
+### 3.3 Nomenclatura de paridad (decisión del usuario, 2026-09-24)
+
+El sufijo `_like_cpp` y los tipos `...LikeCpp` son **legado**: se usaron para marcar la procedencia
+mientras se portaba. No aportan valor y **no se usan en código nuevo ni en refactors**: el
+identificador nuevo lleva el nombre del dominio.
+
+- La procedencia C++ se conserva donde sí vale: comentario de la regla, ancla
+  `Fichero.cpp:línea`, mensaje de commit y ADR/checkpoint. **La paridad es de lógica; el nombre no
+  es la paridad.**
+- **No se renombra en masa el legado** dentro de este programa: son miles de identificadores, y
+  cambiarían todas las baselines, firmas registradas y llamadores. El coste y el riesgo no
+  compensan; si algún día se quiere, será una campaña propia con su aceptación.
+- **Renombrado oportunista sí**: cuando un dominio se extrae a su crate o un fichero se reescribe
+  de verdad, sus identificadores nuevos se ponen limpios. Si hace falta compatibilidad temporal, se
+  deja un `adapter.rs` o un alias `pub use` con el nombre viejo, marcado para retirarse.
+- El mismo criterio aplica a los tests: no se añade `_like_cpp` a tests nuevos, y los existentes no
+  se renombran por estética.
+
 ## 4. Cómo se corta
 
 1. **Clasificar la hoja**: *regla pura* (no menciona el tipo de sesión, no hace I/O) → se va al
