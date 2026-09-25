@@ -5450,6 +5450,18 @@
       ],
       "impls": [
         {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": null,
+          "cfg": [],
+          "source_class": "production"
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "cfg": [],
+          "source_class": "production"
+        },
+        {
           "module": "crate::battle_pet_purchase::ops_1",
           "trait_path": null,
           "cfg": [],
@@ -5794,6 +5806,12 @@
           "source_class": "production"
         },
         {
+          "module": "crate::player::direct_item_grant",
+          "trait_path": null,
+          "cfg": [],
+          "source_class": "production"
+        },
+        {
           "module": "crate::player::quest_persistence_projection",
           "trait_path": null,
           "cfg": [],
@@ -5869,6 +5887,144 @@
         }
       ],
       "impl_items": [
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": null,
+          "kind": "method",
+          "name": "battle_pay_class_mask_like_cpp",
+          "visibility": "private",
+          "signature": "fn battle_pay_class_mask_like_cpp (& self) -> u32",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": null,
+          "kind": "method",
+          "name": "battle_pay_overlay_plan_like_cpp",
+          "visibility": "private",
+          "signature": "fn battle_pay_overlay_plan_like_cpp (& self , overlays : & mut Vec < DirectInventoryStorageOverlayLikeCpp > , entry_id : u32 , dest : & [wow_entities :: ItemPosCount] ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_can_store",
+          "visibility": "private",
+          "signature": "fn battle_pay_can_store (& self , items : & [(u32 , u32)]) -> bool",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_grant_items",
+          "visibility": "private",
+          "signature": "fn battle_pay_grant_items (& mut self , item_guid_generator : & ObjectGuidGenerator , items : & [(u32 , u32)] ,) -> impl Future < Output = Option < Vec < PlayerInventoryPersistenceRequestLikeCpp > > > + Send",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_identity",
+          "visibility": "private",
+          "signature": "fn battle_pay_identity (& self) -> BattlePayIdentityLikeCpp",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_item_allowed",
+          "visibility": "private",
+          "signature": "fn battle_pay_item_allowed (& self , item_id : u32) -> bool",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_item_is_mount",
+          "visibility": "private",
+          "signature": "fn battle_pay_item_is_mount (& self , item_id : u32) -> bool",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_item_owned",
+          "visibility": "private",
+          "signature": "fn battle_pay_item_owned (& self , item_id : u32) -> bool",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "battle_pay_quarantine",
+          "visibility": "private",
+          "signature": "fn battle_pay_quarantine (& mut self , reason : & 'static str)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
+        {
+          "module": "crate::battle_pay::session_port",
+          "trait_path": "BattlePaySessionLikeCpp",
+          "kind": "method",
+          "name": "send_battle_pay_packet",
+          "visibility": "private",
+          "signature": "fn send_battle_pay_packet < P : ServerPacket > (& self , packet : & P)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "trait_impl"
+          ]
+        },
         {
           "module": "crate::battle_pet_purchase::ops_1",
           "trait_path": null,
@@ -20119,6 +20275,20 @@
           "name": "handle_void_storage_unlock_with_generator_like_cpp",
           "visibility": "pub",
           "signature": "async fn handle_void_storage_unlock_with_generator_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator , mut pkt : WorldPacket ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl",
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::player::direct_item_grant",
+          "trait_path": null,
+          "kind": "method",
+          "name": "grant_new_inventory_item_stacks_like_cpp",
+          "visibility": "pub (crate)",
+          "signature": "async fn grant_new_inventory_item_stacks_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator , entry_id : u32 , quantity : u32 , dest : & [ItemPosCount] , context : ItemContext ,) -> Option < DirectItemGrantOutcomeLikeCpp >",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -37883,6 +38053,19 @@
           "name": "remaining_global_cooldown_ms_like_cpp",
           "visibility": "pub (crate)",
           "signature": "fn remaining_global_cooldown_ms_like_cpp (& self , spell_info : & wow_data :: SpellInfo ,) -> Option < u32 >",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "remote_address_like_cpp",
+          "visibility": "pub (crate)",
+          "signature": "fn remote_address_like_cpp (& self) -> Option < & str >",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -59411,6 +59594,26 @@
         }
       ],
       "world_session_new_sites": [
+        {
+          "module": "crate::battle_pay::tests::catalog",
+          "callee": "WorldSession::new",
+          "argument_count": 10,
+          "cfg": [
+            "cfg (test)"
+          ],
+          "source_class": "test_fixture",
+          "count": 1
+        },
+        {
+          "module": "crate::battle_pay::tests::session_port",
+          "callee": "WorldSession::new",
+          "argument_count": 10,
+          "cfg": [
+            "cfg (test)"
+          ],
+          "source_class": "test_fixture",
+          "count": 1
+        },
         {
           "module": "crate::battle_pet_purchase::executor_tests::fixtures::session",
           "callee": "WorldSession::new",

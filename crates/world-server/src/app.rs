@@ -4642,6 +4642,14 @@ async fn run_inner(
             position,
         )
     });
+    let battle_pay = catalogs::battle_pay::load_service_like_cpp(
+        &world_db,
+        &login_db,
+        &char_db,
+        &item_store,
+        &world_configs,
+    )
+    .await?;
     let session_resources = SessionResources {
         core: SessionCoreCapabilitiesLikeCpp {
             handler_catalogs: Arc::new(wow_world::session::SessionHandlerCatalogsLikeCpp {
@@ -4840,6 +4848,7 @@ async fn run_inner(
                         "CONFIG_FEATURE_SYSTEM_BPAY_STORE_ENABLED",
                         false,
                     ),
+                    bpay_store_available: battle_pay.config().enabled,
                     max_characters_per_realm: world_config_u32(
                         &world_configs,
                         "CONFIG_CHARACTERS_PER_REALM",
@@ -4869,6 +4878,7 @@ async fn run_inner(
                     equipment_set: Arc::clone(&equipment_set_guid_generator),
                     void_storage_item: Arc::clone(&void_storage_item_id_generator),
                 }),
+                battle_pay,
             }),
             gameobject_template_lifecycle_store: Arc::clone(&gameobject_template_lifecycle_store),
             persistence,

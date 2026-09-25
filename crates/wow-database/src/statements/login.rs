@@ -166,6 +166,25 @@ pub enum LoginStatements {
     SEL_BNET_WEB_TOKEN,
     /// LegionCore `LOGIN_DEL_BNET_WEB_TOKENS_EXPIRED` (opportunistic cleanup after issue).
     DEL_BNET_WEB_TOKENS_EXPIRED,
+    /// LegionCore `LOGIN_SEL_ACCOUNT_TOKENS` (shop wallet balances).
+    SEL_ACCOUNT_TOKENS,
+    /// Guarded wallet debit: never drives a balance negative (LegionCore
+    /// `LOGIN_INS_OR_UPD_TOKEN` with a negative change, made conditional).
+    UPD_ACCOUNT_TOKEN_SPEND,
+    /// LegionCore `LOGIN_INS_LOG_USE_DONATE_TOKEN`.
+    INS_ACCOUNT_DONATE_TOKEN_LOG,
+    /// LegionCore `LOGIN_INS_BPAY_PURCHASE` (web checkout order, status 0).
+    INS_BPAY_PURCHASE,
+    /// Token-wallet order recorded already paid (status 1) in the debit transaction.
+    INS_BPAY_PURCHASE_PAID,
+    /// LegionCore `LOGIN_SEL_BPAY_PURCHASE_BY_EXTERNAL_ID`.
+    SEL_BPAY_PURCHASE_BY_EXTERNAL_ID,
+    /// LegionCore `LOGIN_SEL_BPAY_PURCHASES_PAID`, scoped to the ordering realm.
+    SEL_BPAY_PURCHASES_PAID,
+    /// LegionCore `LOGIN_UPD_BPAY_PURCHASE_DELIVERED`, keyed by `external_id`.
+    UPD_BPAY_PURCHASE_DELIVERED,
+    /// LegionCore `LOGIN_UPD_BPAY_PURCHASE_FAILED`.
+    UPD_BPAY_PURCHASE_FAILED,
 }
 
 impl StatementDef for LoginStatements {
@@ -566,6 +585,40 @@ impl StatementDef for LoginStatements {
             ),
             Self::DEL_BNET_WEB_TOKENS_EXPIRED => {
                 "DELETE FROM battlenet_account_web_token WHERE expires < NOW()"
+            }
+            Self::SEL_ACCOUNT_TOKENS => {
+                "SELECT tokenType, amount FROM account_tokens WHERE account_id = ?"
+            }
+            Self::UPD_ACCOUNT_TOKEN_SPEND => {
+                "UPDATE account_tokens SET amount = amount - ? WHERE account_id = ? AND tokenType = ? AND amount >= ?"
+            }
+            Self::INS_ACCOUNT_DONATE_TOKEN_LOG => concat!(
+                "INSERT INTO account_donate_token_log (accountId, realmId, characterId, `change`, tokenType, buyType, productId) ",
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ),
+            Self::INS_BPAY_PURCHASE => concat!(
+                "INSERT INTO battlepay_purchase (external_id, signature, battlenet_account, account, realm, character_guid, ",
+                "product_id, price, currency, ip, payment_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ),
+            Self::INS_BPAY_PURCHASE_PAID => concat!(
+                "INSERT INTO battlepay_purchase (external_id, signature, battlenet_account, account, realm, character_guid, ",
+                "product_id, price, currency, ip, payment_ref, status, paid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())",
+            ),
+            Self::SEL_BPAY_PURCHASE_BY_EXTERNAL_ID => concat!(
+                "SELECT id, external_id, product_id, status, character_guid, payment_ref, web_order_id ",
+                "FROM battlepay_purchase WHERE external_id = ? AND account = ?",
+            ),
+            Self::SEL_BPAY_PURCHASES_PAID => concat!(
+                "SELECT id, external_id, product_id, status, character_guid, payment_ref, web_order_id ",
+                "FROM battlepay_purchase WHERE account = ? AND realm = ? AND status = 1 AND rmah_auction = 0 ",
+                "AND vas_target_account = 0 ORDER BY id",
+            ),
+            Self::UPD_BPAY_PURCHASE_DELIVERED => concat!(
+                "UPDATE battlepay_purchase SET status = 2, delivered = NOW(), ",
+                "web_order_id = IF(web_order_id = '', ?, web_order_id) WHERE external_id = ? AND status = 1",
+            ),
+            Self::UPD_BPAY_PURCHASE_FAILED => {
+                "UPDATE battlepay_purchase SET status = 3 WHERE external_id = ? AND account = ? AND status = 0"
             }
         }
     }

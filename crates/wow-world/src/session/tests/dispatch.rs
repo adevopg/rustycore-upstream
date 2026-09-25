@@ -122,7 +122,16 @@ fn dispatch_metadata_matches_cpp_for_registered_active_opcodes() {
     }
 
     let compatibility_exceptions = [
+        // In-game shop (docs/migration/battlepay-343-protocol.md): C++ 3.4.3 leaves
+        // every BattlePay CMSG except GetProductList on Handle_NULL; RustyCore ports
+        // the LegionCore 7.3.5 handlers, Authed/ThreadUnsafe like GetProductList.
+        "BattlePayAckFailedResponse",
+        "BattlePayCancelOpenCheckout",
+        "BattlePayConfirmPurchaseResponse",
         "BattlePayGetPurchaseList",
+        "BattlePayOpenCheckout",
+        "BattlePayRequestPriceInfo",
+        "BattlePayStartPurchase",
         "AddBattlenetFriend",
         "BattlenetChallengeResponse",
         "ChangeBagSlotFlag",
@@ -171,6 +180,9 @@ fn dispatch_metadata_matches_cpp_for_registered_active_opcodes() {
         "UpdateVasPurchaseStates",
         "UsedFollow",
     ];
+    // CMSG 0x371a exists in the 54261 client (writer 0x140766fe0) but not in the
+    // C++ 3.4.3 opcode table, so it has no C++ metadata row at all.
+    let absent_from_cpp_table = ["BattlePayPurchaseSubmitted"];
     let modern_client_non_wotlk_exceptions = [
         "BattlePetClearFanfare",
         "BattlePetRequestJournal",
@@ -186,6 +198,14 @@ fn dispatch_metadata_matches_cpp_for_registered_active_opcodes() {
     for entry in table.values() {
         let opcode_name = format!("{:?}", entry.opcode);
         if modern_client_non_wotlk_exceptions.contains(&opcode_name.as_str()) {
+            continue;
+        }
+        if absent_from_cpp_table.contains(&opcode_name.as_str()) {
+            assert!(
+                !expected.contains_key(opcode_name.as_str())
+                    && !cpp_never_or_unhandled.contains(opcode_name.as_str()),
+                "{opcode_name} is listed as absent from the C++ table but has a C++ row"
+            );
             continue;
         }
         if compatibility_exceptions.contains(&opcode_name.as_str()) {
@@ -239,7 +259,7 @@ struct DispatchTableRow {
 /// swap lost nothing: it is generated from the registry as it stood with the
 /// match arms in place, and it must keep matching once they are gone.
 ///
-/// It is an enumeration, not a sample: all 478 rows, compared as a set.
+/// It is an enumeration, not a sample: all 485 rows, compared as a set.
 #[test]
 fn every_registered_opcode_keeps_its_handler_status_and_processing_like_cpp() {
     let golden: Vec<DispatchTableRow> = serde_json::from_str(include_str!(

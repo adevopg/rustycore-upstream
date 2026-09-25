@@ -10,6 +10,7 @@
 mod account_data;
 mod arena;
 mod auction;
+mod battle_pay;
 mod battle_pet;
 mod calendar;
 mod chat;

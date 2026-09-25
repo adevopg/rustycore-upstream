@@ -400,6 +400,8 @@ fn feature_system_status_uses_cpp_config_flags() {
         support_suggestions_enabled: false,
         char_undelete_enabled: true,
         bpay_store_enabled: true,
+        bpay_store_available: true,
+        bpay_store_product_delivery_delay: 180,
     };
     let pkt = FeatureSystemStatus::from_config_like_cpp(config, true);
     let bytes = pkt.to_bytes();
@@ -410,6 +412,7 @@ fn feature_system_status_uses_cpp_config_flags() {
     assert!(!flags[0]); // VoiceEnabled
     assert!(flags[1]); // EuropaTicketSystemStatus.HasValue
     assert!(flags[2]); // BpayStoreEnabled
+    assert!(flags[3]); // BpayStoreAvailable
     assert!(flags[10]); // CharUndeleteEnabled
     assert!(flags[27]); // IsMuted = !CanSpeak()
 
@@ -444,6 +447,8 @@ fn feature_system_status_glue_screen_uses_cpp_config_fields() {
         support_suggestions_enabled: true,
         char_undelete_enabled: true,
         bpay_store_enabled: true,
+        bpay_store_available: false,
+        bpay_store_product_delivery_delay: 180,
     };
     let pkt = FeatureSystemStatusGlueScreen::from_config_like_cpp(config, 123, 9);
     let bytes = pkt.to_bytes();
@@ -451,6 +456,7 @@ fn feature_system_status_glue_screen_uses_cpp_config_fields() {
 
     let flags: Vec<bool> = (0..27).map(|_| payload.read_bit().unwrap()).collect();
     assert!(flags[0]); // BpayStoreEnabled
+    assert!(!flags[1]); // BpayStoreAvailable
     assert!(flags[3]); // CharUndeleteEnabled
     assert!(flags[19]); // EuropaTicketSystemStatus.HasValue
 
@@ -466,7 +472,7 @@ fn feature_system_status_glue_screen_uses_cpp_config_fields() {
     assert_eq!(payload.read_uint64().unwrap(), 0); // TokenBalanceAmount
     assert_eq!(payload.read_int32().unwrap(), 123); // MaxCharactersPerRealm
     assert_eq!(payload.read_uint32().unwrap(), 0); // LiveRegionCharacterCopySourceRegions
-    assert_eq!(payload.read_uint32().unwrap(), 0); // BpayStoreProductDeliveryDelay
+    assert_eq!(payload.read_uint32().unwrap(), 180); // BpayStoreProductDeliveryDelay
     assert_eq!(payload.read_int32().unwrap(), 0); // ActiveCharacterUpgradeBoostType
     assert_eq!(payload.read_int32().unwrap(), 0); // ActiveClassTrialBoostType
     assert_eq!(payload.read_int32().unwrap(), 0); // MinimumExpansionLevel

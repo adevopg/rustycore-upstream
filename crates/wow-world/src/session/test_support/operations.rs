@@ -157,6 +157,7 @@ impl WorldSession {
             suggestions_enabled: self.represented_support_suggestions_enabled_like_cpp,
             character_undelete_enabled: self.feature_system_character_undelete_enabled_like_cpp,
             bpay_store_enabled: self.feature_system_bpay_store_enabled_like_cpp,
+            bpay_store_available: false,
             max_characters_per_realm: self.characters_per_realm_like_cpp,
             declined_names_used: self.declined_names_used_like_cpp,
         }

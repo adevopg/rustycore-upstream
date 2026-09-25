@@ -512,6 +512,8 @@ pub struct SupportFeaturePolicyLikeCpp {
     pub suggestions_enabled: bool,
     pub character_undelete_enabled: bool,
     pub bpay_store_enabled: bool,
+    /// `Bpay.Enabled` (FeatureSystemStatus `BpayStoreAvailable`).
+    pub bpay_store_available: bool,
     pub max_characters_per_realm: u32,
     pub declined_names_used: bool,
 }
@@ -526,6 +528,7 @@ impl Default for SupportFeaturePolicyLikeCpp {
             suggestions_enabled: false,
             character_undelete_enabled: false,
             bpay_store_enabled: false,
+            bpay_store_available: false,
             max_characters_per_realm: 60,
             declined_names_used: false,
         }
@@ -553,6 +556,12 @@ impl SupportFeaturePolicyLikeCpp {
             support_suggestions_enabled: self.suggestions_enabled,
             char_undelete_enabled: self.character_undelete_enabled,
             bpay_store_enabled: self.bpay_store_enabled,
+            bpay_store_available: self.bpay_store_available,
+            bpay_store_product_delivery_delay: if self.bpay_store_available {
+                crate::battle_pay::PRODUCT_DELIVERY_DELAY_SECS_LIKE_CPP
+            } else {
+                0
+            },
         }
     }
 }
@@ -692,6 +701,8 @@ pub struct SessionHandlerCatalogsLikeCpp {
     pub hotfixes: Arc<HotfixBlobCache>,
     pub modules: Arc<wow_module_api::ModuleRegistry>,
     pub id_generators: Arc<SessionIdGeneratorsLikeCpp>,
+    /// In-game shop: catalog, persistence ports and each account's open purchase.
+    pub battle_pay: Arc<crate::battle_pay::BattlePayServiceLikeCpp>,
 }
 
 #[cfg(any(test, feature = "test-fixtures"))]
@@ -728,6 +739,7 @@ impl Default for SessionHandlerCatalogsLikeCpp {
             hotfixes: Arc::new(HotfixBlobCache::new()),
             modules: Arc::new(wow_module_api::ModuleRegistry::new()),
             id_generators: Arc::new(SessionIdGeneratorsLikeCpp::default()),
+            battle_pay: Arc::new(crate::battle_pay::BattlePayServiceLikeCpp::disabled()),
         }
     }
 }

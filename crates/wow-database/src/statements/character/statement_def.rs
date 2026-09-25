@@ -1590,6 +1590,13 @@ impl StatementDef for CharStatements {
             Self::INS_CHARACTER_SPELL => {
                 "INSERT IGNORE INTO character_spell (guid, spell, active, disabled) VALUES (?, ?, 1, 0)"
             }
+            Self::SEL_BATTLEPAY_DELIVERY => {
+                "SELECT 1 FROM character_battlepay_delivery WHERE external_id = ?"
+            }
+            Self::INS_BATTLEPAY_DELIVERY => concat!(
+                "INSERT INTO character_battlepay_delivery (external_id, account, guid, product_id) ",
+                "VALUES (?, ?, ?, ?)",
+            ),
             Self::GENERATED_CPP { sql, .. } => sql,
             Self::SEL_CHAR_QUEST_STATUS => {
                 "SELECT quest, status, explored, acceptTime, endTime FROM character_queststatus WHERE guid = ? AND status <> 0"

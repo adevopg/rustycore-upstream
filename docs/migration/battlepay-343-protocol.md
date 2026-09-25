@@ -248,3 +248,92 @@ Status / error tables:
 4. CMSG 0x371a semantic name/trigger: the Store module sends it (`0x141a4b030`); by 7.3.5 analogy it is the "purchase submitted" report carrying `globalOrderId` and `externalTransactionId`. Handle idempotently.
 5. 0x2884 (RustyCore `BattlePayStartDistributionAssignToTargetResponse` sibling numbers) was not in scope; 0x2784 is documented.
 6. Live capture against this server is still required to confirm the string-order assumptions in 0x2824 and 0x36d3 (the client only shows what it reads, not what the fields mean).
+
+## 8. Server implementation (RustyCore, `battlepay` branch)
+
+Code: `crates/wow-world/src/battle_pay.rs` (+ `battle_pay/{constants,catalog,service,flow,session_port}.rs`),
+handlers `crates/wow-world/src/handlers/misc/battle_pay.rs`, ports
+`crates/wow-persistence/src/battle_pay.rs`, adapters
+`crates/wow-database/src/{battle_pay_adapter.rs,catalogs/battle_pay_adapter.rs,web_token.rs}`,
+composition `crates/world-server/src/catalogs/battle_pay.rs`. Port of LegionCore
+`BattlePayMgr.cpp`, `BattlePayData.cpp`, `BattlePayHandler.cpp`, `Player::ChangeTokenCount`.
+
+### 8.1 State and ownership
+
+- Catalog: loaded once at startup (world DB, LegionCore loader order and validation:
+  `WebsiteType >= 32` skipped, items unknown to `Item.db2` or pointing at an unknown
+  display info skipped, locale rows keyed by the numeric `LocaleConstant` — LegionCore's
+  `GetLocaleByName("6")` bug is not reproduced). Immutable `Arc` in
+  `SessionHandlerCatalogsLikeCpp::battle_pay`. No `.reload battlepay` (no reload command
+  system exists); restart the world server after catalog edits.
+- The single open purchase per account (LegionCore `_actualTransaction`: ids, tokens,
+  price, lock, web checkout keys/pending) lives in the process-owned
+  `BattlePayServiceLikeCpp`, keyed by game account (the `WorldSession` field set is frozen).
+- Wallet balances are read from `auth.account_tokens` when needed (product list,
+  StartPurchase, and atomically inside the charge), never cached at login.
+
+### 8.2 Opcodes
+
+All registrations are `Authed` (usable at character select and in world);
+`ThreadUnsafe` except `UpdateVasPurchaseStates` (`Inplace`, the C++ value). All SMSG
+go on the realm connection (C++ `CONNECTION_TYPE_REALM`).
+
+| CMSG | Behaviour |
+|---|---|
+| 0x36c4 GetProductList | `IsAvailable` = `Bpay.Enabled && (FeatureSystem.BpayStore.Enabled || security >= 1)`; else result 1. Product list, then delivery of this account's `Paid` orders of this realm (both modes). |
+| 0x36c5 GetPurchaseList | empty 0x2776 (LegionCore). |
+| 0x36fb UpdateVasPurchaseStates | empty 0x27f5 (no VAS). |
+| 0x36d3 StartPurchase | LegionCore `MakePurchase` checks (character in world and = target, product, group, deliverable, wallet balance in token mode, bag space for all items together, not already owned); 0x2783 (+0x2786 Loading) then 0x2787 (token) or order insert + 0x2824 (web). |
+| 0x36d4 ConfirmPurchaseResponse | lock, server token, confirm bit and price checked; bags/owned rechecked; charge; deliver; 0x277a, 0x277c (mount items), 0x277b, 0x2786 Finish. |
+| 0x36d5 AckFailedResponse | releases the lock for the matching server token. |
+| 0x3714 OpenCheckout | 0x281e `Kind = RequestID`; `Result 0` + kind-1 SSO token only with `Browser.Enabled`, web mode and a pending checkout, else `Result 1`. |
+| 0x371a PurchaseSubmitted | must match the pending checkout; order `Paid` → deliver (web order id stored); `Created` → stays pending (submitted before paid); `Failed`/missing → 0x2788 PaymentFailed. |
+| 0x371b CancelOpenCheckout | pending + unlocked only; `Paid` → deliver; else `Created → Failed`, 0x2786 with 0 or PaymentFailed (`payment_ref` ending `;failed`). |
+| 0x3710 RequestPriceInfo | resends the product list. |
+
+Result codes are LegionCore 7.3.5 `Battlepay::Error` (Denied 1, PaymentFailed 2,
+Other 3, InsufficientBalance 28) and `UpdateStatus` (Loading 9, Finish 3):
+TODO-verify against the 54261 enum tables (section 7, question 1). `ProductInfo.unk1 = 47`
+and `CurrencyID` from LegionCore's currency enum (EUR = 4) are likewise unverified.
+
+### 8.3 Durability (charge once, deliver once)
+
+1. Token mode: one Login DB transaction = guarded debit
+   (`UPDATE account_tokens ... AND amount >= ?`, must hit 1 row), `account_donate_token_log`
+   row, and a `battlepay_purchase` row inserted already `Paid` (`currency 'TOK'`,
+   `payment_ref 'tokens:<type>'`). An unknown COMMIT is resolved by reading that row.
+   Web mode: the web tier moves the `Created` row to `Paid`.
+2. Delivery: items (the quest-reward `StoreNewItem` projection, moved to
+   `player/direct_item_grant.rs`) plus a `characters.character_battlepay_delivery`
+   receipt keyed by `external_id` commit in one Character DB transaction; an unknown
+   COMMIT is resolved by the receipt. A failed commit after the in-memory store kicks
+   the session (same policy as quest rewards).
+3. `battlepay_purchase` `Paid → Delivered` (`WHERE external_id = ? AND status = 1`).
+
+Any interruption leaves a `Paid` row; the next product-list request delivers it, and an
+existing receipt turns the retry into step 3 only. Recovery is limited to rows whose
+`realm` is this realm (the receipt lives in this realm's Character DB) — a deliberate
+departure from LegionCore, which delivered web orders on any realm.
+
+### 8.4 Configuration (`worldserver.conf`, read with `wow_config`, no registry rows)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Bpay.Enabled` | 0 | master switch; also FeatureSystemStatus `BpayStoreAvailable` (+ `BpayStoreProductDeliveryDelay` 180, LegionCore) in glue and in-world packets |
+| `FeatureSystem.BpayStore.Enabled` | 0 | existing key: `BpayStoreEnabled` bit and shop access for non-GM accounts |
+| `Bpay.WebCheckout` | 0 | 1 = real-money web checkout instead of the token wallet |
+| `Bpay.Currency` | EUR | ISO code: client currency id and `battlepay_purchase.currency` |
+| `Bpay.WalletName` | Donation points | `JamBattlePayPurchase.WalletName` |
+| `Browser.Enabled` | 0 | allow SSO tokens for the checkout browser |
+| `Browser.TokenLifetime` | 3600 | SSO token lifetime (s) |
+
+### 8.5 Not ported (documented scope)
+
+Delivered product types are LegionCore `WebsiteType` 3 (Item) and 21 (ItemMount, delivered
+as its item; LegionCore had no delivery arm for it). Everything else is neither listed nor
+sellable: character boosts/distributions (0x2777/0x2779, `DisplayPromotion` at auth),
+VAS services and character transfer, class trials, game time, battle pets, WoW Token,
+toys API, RMAH, gold, script products, and the LegionCore custom addon chat messages
+(`NOVA_WOW_STORE_BALANCE`). No mail fallback exists: item products need the character in
+the world with enough bag space, checked before charging. Race restrictions of items are
+not filtered (only `AllowableClass` and learned-spell ownership).

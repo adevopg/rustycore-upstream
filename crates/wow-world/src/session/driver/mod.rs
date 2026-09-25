@@ -414,6 +414,7 @@ impl WorldSession {
                 .clone()
                 .unwrap_or(empty_catalogs.modules),
             id_generators: Arc::new(self.id_generators_for_test_like_cpp()),
+            battle_pay: empty_catalogs.battle_pay,
         };
         catalogs
     }

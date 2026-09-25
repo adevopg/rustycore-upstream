@@ -327,6 +327,21 @@ pub use world::{
     RespawnPersistencePortLikeCpp, RespawnPersistenceRowLikeCpp,
 };
 
+mod battle_pay;
+pub use battle_pay::{
+    BATTLE_PAY_PURCHASE_STATUS_CREATED_LIKE_CPP, BATTLE_PAY_PURCHASE_STATUS_DELIVERED_LIKE_CPP,
+    BATTLE_PAY_PURCHASE_STATUS_FAILED_LIKE_CPP, BATTLE_PAY_PURCHASE_STATUS_PAID_LIKE_CPP,
+    BattlePayAccountPersistencePortLikeCpp, BattlePayCatalogLoadOutcomeLikeCpp,
+    BattlePayCatalogPersistencePortLikeCpp, BattlePayCatalogRowsLikeCpp,
+    BattlePayDeliveryPersistencePortLikeCpp, BattlePayDeliveryReceiptLikeCpp,
+    BattlePayDisplayInfoLocaleRowLikeCpp, BattlePayDisplayInfoRowLikeCpp,
+    BattlePayDisplayInfoVisualRowLikeCpp, BattlePayProductGroupLocaleRowLikeCpp,
+    BattlePayProductGroupRowLikeCpp, BattlePayProductItemRowLikeCpp, BattlePayProductRowLikeCpp,
+    BattlePayPurchaseInsertLikeCpp, BattlePayPurchaseRowLikeCpp, BattlePayShopEntryRowLikeCpp,
+    BattlePaySsoTokenIssueLikeCpp, BattlePayTokenChargeLikeCpp, BattlePayTokenChargeOutcomeLikeCpp,
+    BattlePayTokenTypeRowLikeCpp,
+};
+
 mod battle_pet;
 pub use battle_pet::{
     BATTLE_PET_GUID_COUNTER_LIMIT_LIKE_CPP, BattlePetAccountPersistencePortLikeCpp,

@@ -15,6 +15,7 @@
 |---|---|---|---|
 | world | `core:2026.09.25.00` | `sql/updates/world/wotlk_classic/2026_09_25_00_world.sql` | `670c0d36…5ec8a9` |
 | auth | `core:2026.09.25.00` | `sql/updates/auth/wotlk_classic/2026_09_25_00_auth.sql` | `10277954…ecc7db` |
+| characters | `core:2026.09.25.00` | `sql/updates/characters/wotlk_classic/2026_09_25_00_characters.sql` | `f1a652a0…f901ea` |
 
 Both are idempotent (`CREATE TABLE IF NOT EXISTS` + `INSERT IGNORE`) and carry an
 `adopt_query` in `database/migrations/manifest.toml` that recognises an already
@@ -206,6 +207,17 @@ migration.
 
 `account_raf_reward`, `rmah_payout`, `twitter_*`, `account.balans/first_ip/referer`
 changes (LegionCore-specific features outside the shop).
+
+## Characters database: delivery receipts
+
+`character_battlepay_delivery (external_id PK, account, guid, product_id, delivered)` is
+RustyCore-only. The realm commits it in the same transaction as the delivered item rows,
+before marking `auth.battlepay_purchase` delivered, so a paid order (web or token wallet)
+is delivered at most once per realm and is never lost; see
+`docs/migration/battlepay-343-protocol.md` section 8.3. Token-wallet purchases are also
+recorded in `auth.battlepay_purchase` (`currency = 'TOK'`, `payment_ref = 'tokens:<type>'`,
+inserted with status 1), which bnet-shop never selects (it looks orders up by
+`external_id` + `signature`).
 
 ## Seed catalog
 

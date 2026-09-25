@@ -33,6 +33,7 @@
 //! - [`SqlTransaction`]: Batch of statements executed atomically
 //! - Statement enums: [`LoginStatements`], [`WorldStatements`], [`CharStatements`], [`HotfixStatements`]
 
+pub mod battle_pay_adapter;
 pub mod battle_pet;
 pub mod catalogs;
 pub mod character_administration_adapter;
@@ -68,14 +69,20 @@ pub mod support_bug_report_adapter;
 pub mod transaction;
 pub mod vendor_trade_adapter;
 pub mod void_storage_adapter;
+pub mod web_token;
 pub mod world;
 
 // Re-export primary types at crate root for convenience.
+pub use battle_pay_adapter::{
+    MariaDbBattlePayAccountPersistenceAdapterLikeCpp,
+    MariaDbBattlePayDeliveryPersistenceAdapterLikeCpp,
+};
 pub use battle_pet::CharacterBattlePetPurchasePersistenceAdapterLikeCpp;
 pub use battle_pet::LoginBattlePetPersistenceLikeCpp;
 pub use battle_pet::MariaDbBattlePetSelectionCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbAreaTriggerTemplateCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbAreaTriggerWorldCatalogPersistenceAdapterLikeCpp;
+pub use catalogs::MariaDbBattlePayCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbCanonicalSpawnCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbConditionDisableCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbExplorationBaseXpCatalogPersistenceAdapterLikeCpp;

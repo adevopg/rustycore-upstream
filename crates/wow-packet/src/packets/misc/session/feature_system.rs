@@ -17,6 +17,10 @@ pub struct FeatureSystemConfigLikeCpp {
     pub support_suggestions_enabled: bool,
     pub char_undelete_enabled: bool,
     pub bpay_store_enabled: bool,
+    /// LegionCore `BpayStoreAvailable` (RustyCore `Bpay.Enabled`).
+    pub bpay_store_available: bool,
+    /// LegionCore sends 180 (`AuthHandler.cpp` / `CharacterHandler.cpp`).
+    pub bpay_store_product_delivery_delay: u32,
 }
 
 impl Default for FeatureSystemConfigLikeCpp {
@@ -28,6 +32,8 @@ impl Default for FeatureSystemConfigLikeCpp {
             support_suggestions_enabled: false,
             char_undelete_enabled: false,
             bpay_store_enabled: false,
+            bpay_store_available: false,
+            bpay_store_product_delivery_delay: 0,
         }
     }
 }
@@ -75,7 +81,7 @@ impl ServerPacket for FeatureSystemStatus {
         pkt.write_uint32(300); // TokenPollTimeSeconds
         pkt.write_uint32(0); // KioskSessionMinutes
         pkt.write_int64(0); // TokenBalanceAmount
-        pkt.write_uint32(0); // BpayStoreProductDeliveryDelay
+        pkt.write_uint32(self.config.bpay_store_product_delivery_delay); // BpayStoreProductDeliveryDelay
         pkt.write_uint32(0); // ClubsPresenceUpdateTimer
         pkt.write_uint32(0); // HiddenUIClubsPresenceUpdateTimer
 
@@ -92,7 +98,7 @@ impl ServerPacket for FeatureSystemStatus {
         pkt.write_bit(false); // VoiceEnabled
         pkt.write_bit(true); // EuropaTicketSystemStatus.HasValue
         pkt.write_bit(self.config.bpay_store_enabled); // BpayStoreEnabled
-        pkt.write_bit(false); // BpayStoreAvailable
+        pkt.write_bit(self.config.bpay_store_available); // BpayStoreAvailable
         pkt.write_bit(false); // BpayStoreDisabledByParentalControls
         pkt.write_bit(false); // ItemRestorationButtonEnabled
         pkt.write_bit(false); // BrowserEnabled
@@ -214,7 +220,7 @@ impl ServerPacket for FeatureSystemStatusGlueScreen {
     fn write(&self, pkt: &mut WorldPacket) {
         // ── 27 bit flags (exact C++ order) ──
         pkt.write_bit(self.config.bpay_store_enabled); // BpayStoreEnabled
-        pkt.write_bit(false); // BpayStoreAvailable
+        pkt.write_bit(self.config.bpay_store_available); // BpayStoreAvailable
         pkt.write_bit(false); // BpayStoreDisabledByParentalControls
         pkt.write_bit(self.config.char_undelete_enabled); // CharUndeleteEnabled
         pkt.write_bit(false); // CommerceSystemEnabled
@@ -267,7 +273,7 @@ impl ServerPacket for FeatureSystemStatusGlueScreen {
         pkt.write_int64(0); // TokenBalanceAmount
         pkt.write_int32(self.max_characters_per_realm); // MaxCharactersPerRealm
         pkt.write_int32(0); // LiveRegionCharacterCopySourceRegions.Count
-        pkt.write_uint32(0); // BpayStoreProductDeliveryDelay
+        pkt.write_uint32(self.config.bpay_store_product_delivery_delay); // BpayStoreProductDeliveryDelay
         pkt.write_int32(0); // ActiveCharacterUpgradeBoostType
         pkt.write_int32(0); // ActiveClassTrialBoostType
         pkt.write_int32(0); // MinimumExpansionLevel (Classic=0)

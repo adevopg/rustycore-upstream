@@ -110,6 +110,21 @@ SELECT IF(
 
 [[migrations]]
 component = "core"
+database = "characters"
+version = "2026.09.25.00"
+description = "battlepay delivery receipts"
+file = "../../sql/updates/characters/wotlk_classic/2026_09_25_00_characters.sql"
+sha256 = "f1a652a0c0b979bf25410613fa5327a1608fec65ba1e2dc2ec8afbe173f901ea"
+state = "active"
+adopt_query = '''
+SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'character_battlepay_delivery' AND column_name IN ('external_id','account','guid','product_id','delivered')) = 5
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'character_battlepay_delivery' AND index_name = 'PRIMARY' AND column_name = 'external_id') = 1,
+  1, 0)
+'''
+
+[[migrations]]
+component = "core"
 database = "world"
 version = "2026.09.25.00"
 description = "battlepay product catalog: products, items, groups, shop entries, display info, locales, tokens, web extension"

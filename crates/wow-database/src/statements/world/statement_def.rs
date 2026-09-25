@@ -844,6 +844,41 @@ impl StatementDef for WorldStatements {
             Self::SEL_AREATRIGGER_TEMPLATES => {
                 "SELECT Id, IsCustom, Flags FROM `areatrigger_template`"
             }
+            Self::SEL_BATTLEPAY_DISPLAY_INFOS => concat!(
+                "SELECT DisplayInfoId, CreatureDisplayInfoID, COALESCE(FileDataID, 0), Flags, Name1, Name2, Name3, Name4 ",
+                "FROM battlepay_display_info ORDER BY DisplayInfoId",
+            ),
+            Self::SEL_BATTLEPAY_DISPLAY_INFO_VISUALS => concat!(
+                "SELECT DisplayInfoId, DisplayId, VisualId, ProductName FROM battlepay_display_info_visuals ",
+                "ORDER BY DisplayInfoId, DisplayId",
+            ),
+            Self::SEL_BATTLEPAY_PRODUCTS => concat!(
+                "SELECT ProductID, CAST(ROUND(NormalPriceFixedPoint * 100) AS UNSIGNED), ",
+                "CAST(ROUND(CurrentPriceFixedPoint * 100) AS UNSIGNED), Type, COALESCE(WebsiteType, 0), ChoiceType, ",
+                "Flags, DisplayInfoID, ClassMask, ScriptName, GameTimeDays FROM battlepay_product ORDER BY ProductID",
+            ),
+            Self::SEL_BATTLEPAY_PRODUCT_ITEMS => concat!(
+                "SELECT ID, ProductID, ItemID, Quantity, COALESCE(DisplayID, 0), PetResult FROM battlepay_product_item ",
+                "ORDER BY ID",
+            ),
+            Self::SEL_BATTLEPAY_PRODUCT_GROUPS => concat!(
+                "SELECT GroupID, Name, IconFileDataID, DisplayType, Ordering, Flags, TokenType, IngameOnly, OwnsTokensOnly ",
+                "FROM battlepay_product_group ORDER BY GroupID",
+            ),
+            Self::SEL_BATTLEPAY_SHOP_ENTRIES => concat!(
+                "SELECT EntryID, GroupID, ProductID, Ordering, Flags, BannerType, DisplayInfoID FROM battlepay_shop_entry ",
+                "ORDER BY EntryID",
+            ),
+            Self::SEL_BATTLEPAY_PRODUCT_GROUP_LOCALES => {
+                "SELECT GroupID, Locale, Name FROM battlepay_product_group_locales"
+            }
+            Self::SEL_BATTLEPAY_DISPLAY_INFO_LOCALES => concat!(
+                "SELECT Id, Locale, COALESCE(Name1, ''), COALESCE(Name2, ''), COALESCE(Name3, ''), COALESCE(Name4, '') ",
+                "FROM battlepay_display_info_locales",
+            ),
+            Self::SEL_BATTLEPAY_TOKEN_TYPES => {
+                "SELECT tokenType, name, loginMessage, listIfNone FROM battlepay_tokens"
+            }
             Self::SEL_QUEST_TEMPLATE => concat!(
                 "SELECT qt.ID, qt.QuestType, qt.QuestLevel, qt.QuestMaxScalingLevel, qt.QuestPackageID, qt.MinLevel, qt.QuestSortID, ",
                 "qt.QuestInfoID, qt.SuggestedGroupNum, qt.RewardNextQuest, qt.RewardXPDifficulty, qt.RewardXPMultiplier, ",

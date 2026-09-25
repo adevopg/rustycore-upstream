@@ -1,5 +1,6 @@
 //! Catalog loaders, grouped from the *_catalog siblings under #703.
 
+pub(crate) mod battle_pay;
 pub(crate) mod battle_pet_selection;
 pub(crate) mod condition_disable;
 pub(crate) mod exploration_base_xp;

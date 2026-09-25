@@ -107,6 +107,10 @@ impl WorldSession {
     pub fn set_remote_address_like_cpp(&mut self, address: Option<String>) {
         self.remote_address_like_cpp = address;
     }
+    /// C++ `WorldSession::GetRemoteAddress`.
+    pub(crate) fn remote_address_like_cpp(&self) -> Option<&str> {
+        self.remote_address_like_cpp.as_deref()
+    }
     #[cfg(test)]
     pub(crate) fn chat_fake_message_preventing_like_cpp(&self) -> bool {
         self.chat_fake_message_preventing_like_cpp

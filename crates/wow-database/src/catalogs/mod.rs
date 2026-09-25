@@ -5,6 +5,7 @@
 
 pub mod area_trigger_template_adapter;
 pub mod area_trigger_world_adapter;
+pub mod battle_pay_adapter;
 pub mod canonical_spawn_adapter;
 pub mod condition_disable_adapter;
 pub mod exploration_base_xp_adapter;
@@ -27,6 +28,7 @@ pub mod visibility_spawn_adapter;
 
 pub use area_trigger_template_adapter::*;
 pub use area_trigger_world_adapter::*;
+pub use battle_pay_adapter::*;
 pub use canonical_spawn_adapter::*;
 pub use condition_disable_adapter::*;
 pub use exploration_base_xp_adapter::*;

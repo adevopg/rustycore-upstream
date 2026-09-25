@@ -3,6 +3,7 @@
 //! Grouped from the player_* siblings under #697; each module keeps its
 //! items and its re-exported names.
 
+pub(crate) mod direct_item_grant;
 pub mod directory_canonical_queries;
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod directory_test_fixtures;

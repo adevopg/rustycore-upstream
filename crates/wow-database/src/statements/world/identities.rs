@@ -453,4 +453,22 @@ pub enum WorldStatements {
     SEL_AREATRIGGER_CREATE_PROPERTIES_ORBIT,
     /// C++ `AreaTriggerDataStore::LoadAreaTriggerTemplates` template rows.
     SEL_AREATRIGGER_TEMPLATES,
+    /// LegionCore `BattlePayDataStoreMgr::LoadDisplayInfos`.
+    SEL_BATTLEPAY_DISPLAY_INFOS,
+    /// LegionCore `BattlePayDataStoreMgr::LoadDisplayInfoVisuals`.
+    SEL_BATTLEPAY_DISPLAY_INFO_VISUALS,
+    /// LegionCore `BattlePayDataStoreMgr::LoadProduct` (prices as whole cents).
+    SEL_BATTLEPAY_PRODUCTS,
+    /// LegionCore `BattlePayDataStoreMgr::LoadProduct` item rows.
+    SEL_BATTLEPAY_PRODUCT_ITEMS,
+    /// LegionCore `BattlePayDataStoreMgr::LoadProductGroups`.
+    SEL_BATTLEPAY_PRODUCT_GROUPS,
+    /// LegionCore `BattlePayDataStoreMgr::LoadShopEntires`.
+    SEL_BATTLEPAY_SHOP_ENTRIES,
+    /// LegionCore `BattlePayDataStoreMgr::LoadProductGroupLocales` (numeric locale).
+    SEL_BATTLEPAY_PRODUCT_GROUP_LOCALES,
+    /// LegionCore `BattlePayDataStoreMgr::LoadDisplayInfoLocales` (numeric locale).
+    SEL_BATTLEPAY_DISPLAY_INFO_LOCALES,
+    /// LegionCore `BattlePayDataStoreMgr::LoadTokenTypes`.
+    SEL_BATTLEPAY_TOKEN_TYPES,
 }

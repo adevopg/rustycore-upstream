@@ -315,18 +315,67 @@
   "handler": "handle_banker_activate"
  },
  {
+  "opcode": "BattlePayAckFailedResponse",
+  "value": 14037,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_ack_failed_response"
+ },
+ {
+  "opcode": "BattlePayCancelOpenCheckout",
+  "value": 14107,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_cancel_open_checkout"
+ },
+ {
+  "opcode": "BattlePayConfirmPurchaseResponse",
+  "value": 14036,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_confirm_purchase_response"
+ },
+ {
   "opcode": "BattlePayGetProductList",
   "value": 14020,
   "status": "Authed",
   "processing": "ThreadUnsafe",
-  "handler": "handle_battle_pay_stub"
+  "handler": "handle_battle_pay_get_product_list"
  },
  {
   "opcode": "BattlePayGetPurchaseList",
   "value": 14021,
   "status": "Authed",
   "processing": "ThreadUnsafe",
-  "handler": "handle_battle_pay_stub"
+  "handler": "handle_battle_pay_get_purchase_list"
+ },
+ {
+  "opcode": "BattlePayOpenCheckout",
+  "value": 14100,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_open_checkout"
+ },
+ {
+  "opcode": "BattlePayPurchaseSubmitted",
+  "value": 14106,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_purchase_submitted"
+ },
+ {
+  "opcode": "BattlePayRequestPriceInfo",
+  "value": 14096,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_request_price_info"
+ },
+ {
+  "opcode": "BattlePayStartPurchase",
+  "value": 14035,
+  "status": "Authed",
+  "processing": "ThreadUnsafe",
+  "handler": "handle_battle_pay_start_purchase"
  },
  {
   "opcode": "BattlePetClearFanfare",
@@ -3301,7 +3350,7 @@
   "value": 14075,
   "status": "Authed",
   "processing": "Inplace",
-  "handler": "handle_vas_stub"
+  "handler": "handle_update_vas_purchase_states"
  },
  {
   "opcode": "UseEquipmentSet",

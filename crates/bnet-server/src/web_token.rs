@@ -7,56 +7,23 @@
 //! by an opportunistic `LOGIN_DEL_BNET_WEB_TOKENS_EXPIRED`. The web validates the
 //! token against the same table.
 //!
-//! The SQL lives in `wow_database::LoginStatements` so world-server can reuse it for
-//! `GenerateSSOToken` (kind 1) without depending on this crate; the helpers here only
-//! need a `LoginDatabase` and are free of bnet-server session state.
-//!
-//! bnet-server only wires `insert_web_token` / `purge_expired_web_tokens_best_effort`
-//! (`GenerateWebCredentials`); the issue/validate helpers are the shared API the
-//! world-server `GenerateSSOToken` port and the web validation path will call.
+//! The token row type and its INSERT/DELETE helpers live in
+//! `wow_database::web_token`, shared with world-server (which issues the kind-1
+//! checkout SSO token for `CMSG_BATTLE_PAY_OPEN_CHECKOUT`). This module keeps the
+//! random generation and the web-side validation helpers.
 #![allow(dead_code)]
 
 use wow_database::{DatabaseError, LoginDatabase, LoginStatements};
 
-/// Length of a generated token: 32 random bytes as hex.
-pub const WEB_TOKEN_HEX_LEN: usize = 64;
-
-/// `battlenet_account_web_token.kind` (`LegionCore` comment: 0 web credentials, 1 sso).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum WebTokenKind {
-    /// Issued by `AuthenticationService.GenerateWebCredentials`.
-    WebCredentials = 0,
-    /// Issued by `AuthenticationService.GenerateSSOToken`.
-    Sso = 1,
-}
-
-impl WebTokenKind {
-    pub fn from_db(kind: u8) -> Option<Self> {
-        match kind {
-            0 => Some(Self::WebCredentials),
-            1 => Some(Self::Sso),
-            _ => None,
-        }
-    }
-}
-
-/// Everything `LegionCore`'s `IssueToken` writes besides the token itself.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WebTokenIssue {
-    pub battlenet_account: u32,
-    /// Game account id (0 when no game account is selected yet).
-    pub account: u32,
-    pub realm: u32,
-    /// Character GUID counter (0 outside a world session).
-    pub character_guid: u64,
-    /// `FourCC` from the request (`WoW` = 0x576F57), 0 when absent.
-    pub program: u32,
-    pub kind: WebTokenKind,
-    pub ip: String,
-    /// `Browser.TokenLifetime` in seconds.
-    pub lifetime_secs: u32,
-}
+// The token row (kind, issue metadata, INSERT/DELETE SQL) is shared with
+// world-server, which issues the kind-1 checkout SSO token; see
+// `wow_database::web_token`.
+#[cfg(test)]
+use wow_database::web_token::purge_expired_web_tokens;
+pub use wow_database::web_token::{
+    WEB_TOKEN_HEX_LEN, WebTokenIssue, WebTokenKind, insert_web_token,
+    purge_expired_web_tokens_best_effort,
+};
 
 /// Row returned by [`validate_web_token`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,16 +53,14 @@ pub enum WebTokenRejection {
 
 /// 32 random bytes as 64 uppercase hex characters, like C++ `ByteArrayToHexStr`.
 pub fn make_web_token_like_cpp() -> String {
+    wow_database::web_token::web_token_hex_like_cpp(&random_token_bytes())
+}
+
+fn random_token_bytes() -> [u8; 32] {
     use rand::Rng;
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill(&mut bytes);
     bytes
-        .iter()
-        .fold(String::with_capacity(WEB_TOKEN_HEX_LEN), |mut hex, byte| {
-            use std::fmt::Write;
-            let _ = write!(hex, "{byte:02X}");
-            hex
-        })
 }
 
 /// A token is well formed when it is exactly 64 hex digits (either case).
@@ -127,51 +92,12 @@ pub fn check_web_token_row(
     Ok(())
 }
 
-/// Insert (or refresh) `token` with the given metadata.
-///
-/// `INS_BNET_WEB_TOKEN` is an upsert on the `token` primary key so bnetserver can
-/// re-persist an existing login ticket without a duplicate-key failure.
-pub async fn insert_web_token(
-    db: &LoginDatabase,
-    token: &str,
-    issue: &WebTokenIssue,
-) -> Result<(), DatabaseError> {
-    let mut stmt = db.prepare(LoginStatements::INS_BNET_WEB_TOKEN);
-    stmt.set_string(0, token);
-    stmt.set_u32(1, issue.battlenet_account);
-    stmt.set_u32(2, issue.account);
-    stmt.set_u32(3, issue.realm);
-    stmt.set_u64(4, issue.character_guid);
-    stmt.set_u32(5, issue.program);
-    stmt.set_u8(6, issue.kind as u8);
-    stmt.set_string(7, issue.ip.as_str());
-    stmt.set_u32(8, issue.lifetime_secs);
-    db.execute(&stmt).await?;
-    Ok(())
-}
-
 /// `LegionCore` `IssueToken`: generate a fresh token, store it and purge expired rows.
 pub async fn issue_web_token(
     db: &LoginDatabase,
     issue: &WebTokenIssue,
 ) -> Result<String, DatabaseError> {
-    let token = make_web_token_like_cpp();
-    insert_web_token(db, &token, issue).await?;
-    purge_expired_web_tokens_best_effort(db).await;
-    Ok(token)
-}
-
-/// `LOGIN_DEL_BNET_WEB_TOKENS_EXPIRED`; returns the number of rows removed.
-pub async fn purge_expired_web_tokens(db: &LoginDatabase) -> Result<u64, DatabaseError> {
-    let stmt = db.prepare(LoginStatements::DEL_BNET_WEB_TOKENS_EXPIRED);
-    db.execute(&stmt).await
-}
-
-/// C++ fires the cleanup asynchronously and never observes its result.
-pub async fn purge_expired_web_tokens_best_effort(db: &LoginDatabase) {
-    if let Err(error) = purge_expired_web_tokens(db).await {
-        tracing::warn!("Failed to purge expired in-game browser tokens: {error}");
-    }
+    wow_database::web_token::issue_web_token_from_bytes(db, issue, &random_token_bytes()).await
 }
 
 /// Load a token row; `None` when it does not exist.

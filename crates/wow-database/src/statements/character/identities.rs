@@ -1777,6 +1777,12 @@ pub enum CharStatements {
     /// INSERT IGNORE INTO character_spell (guid, spell, active, disabled) VALUES (?, ?, 1, 0)
     INS_CHARACTER_SPELL,
 
+    /// BattlePay delivery receipt lookup by order `external_id` (RustyCore saga receipt).
+    SEL_BATTLEPAY_DELIVERY,
+
+    /// BattlePay delivery receipt, committed with the delivered item rows.
+    INS_BATTLEPAY_DELIVERY,
+
     /// Generated C++ `CharacterDatabase` prepared statement.
     GENERATED_CPP {
         /// C++ statement identifier, e.g. `CHAR_SEL_CHARACTER_MONEY`.
