@@ -3163,6 +3163,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "wow-casc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+]
+
+[[package]]
 name = "wow-chat"
 version = "0.1.0"
 dependencies = [
@@ -3330,10 +3338,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "wow-map-extractor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+ "wow-casc",
+]
+
+[[package]]
 name = "wow-math"
 version = "0.1.0"
 dependencies = [
  "glam",
+]
+
+[[package]]
+name = "wow-mmaps-generator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+ "wow-vmap",
 ]
 
 [[package]]
@@ -3458,6 +3484,33 @@ dependencies = [
 [[package]]
 name = "wow-spell"
 version = "0.1.0"
+
+[[package]]
+name = "wow-vmap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+]
+
+[[package]]
+name = "wow-vmap-assembler"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+ "wow-vmap",
+]
+
+[[package]]
+name = "wow-vmap-extractor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+ "wow-casc",
+ "wow-vmap",
+]
 
 [[package]]
 name = "wow-world"

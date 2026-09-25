@@ -45,6 +45,13 @@ members = [
     "crates/world-server",
     # Tooling
     "crates/capture-diff",
+    # Client data extractors (port of TrinityCore src/tools @ TDB343.24081)
+    "crates/wow-casc",
+    "crates/wow-vmap",
+    "tools/wow-map-extractor",
+    "tools/wow-vmap-extractor",
+    "tools/wow-vmap-assembler",
+    "tools/wow-mmaps-generator",
 ]
 exclude = [
     "tools/wow-test-bot",

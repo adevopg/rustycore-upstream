@@ -1,0 +1,19 @@
+[package]
+name = "wow-mmaps-generator"
+description = "Port of TrinityCore mmaps_generator: Recast/Detour navmesh tiles into mmaps/"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "wow-mmaps-generator"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+wow-vmap = { path = "../../crates/wow-vmap" }
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "wow-vmap-assembler"
+description = "Port of TrinityCore vmap4_assembler: Buildings/ into runtime vmaps/"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "wow-vmap-assembler"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+wow-vmap = { path = "../../crates/wow-vmap" }
+
+[lints]
+workspace = true

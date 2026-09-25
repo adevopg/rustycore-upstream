@@ -1,0 +1,19 @@
+[package]
+name = "wow-map-extractor"
+description = "Port of TrinityCore map_extractor: dbc/db2, gt, cameras and .map tiles from a WoW Classic 3.4.3 client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "wow-map-extractor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+wow-casc = { path = "../../crates/wow-casc" }
+
+[lints]
+workspace = true
