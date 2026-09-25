@@ -66,6 +66,8 @@ pub mod bgs {
 ///
 /// The `service_hash` field in `Header` identifies which service a request
 /// targets. These are fixed values defined by the Blizzard BNet protocol.
+pub mod realm_list_json;
+
 pub mod service_hash {
     // Server-side services (server handles client requests)
     pub const AUTHENTICATION_SERVICE: u32 = 0x0DEC_FC01;
@@ -87,6 +89,10 @@ pub mod service_hash {
     pub const REPORT_SERVICE_V2: u32 = 0x3A42_18FB;
     pub const RESOURCES_SERVICE: u32 = 0xECBE_75BA;
     pub const USER_MANAGER_SERVICE: u32 = 0x3E19_268A;
+    /// `bgs.protocol.club.v1.membership.ClubMembershipService` OriginalHash.
+    pub const CLUB_MEMBERSHIP_SERVICE: u32 = 0x94B9_4786;
+    /// `bgs.protocol.club.v1.ClubService` OriginalHash.
+    pub const CLUB_SERVICE: u32 = 0xE273_DE0E;
     pub const USER_MANAGER_LISTENER: u32 = 0xBC87_2C22;
 }
 
@@ -96,6 +102,7 @@ pub mod status {
     pub const ERROR_INTERNAL: u32 = 1;
     pub const ERROR_TIMED_OUT: u32 = 2;
     pub const ERROR_DENIED: u32 = 3;
+    pub const ERROR_RPC_INVALID_METHOD: u32 = 0x0000_0BC3;
     pub const ERROR_RPC_MALFORMED_REQUEST: u32 = 0x0000_0BC5;
     pub const ERROR_RPC_NOT_IMPLEMENTED: u32 = 0x0000_0BC7;
     pub const ERROR_BAD_PROGRAM: u32 = 0x4D;

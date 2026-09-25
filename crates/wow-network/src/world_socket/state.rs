@@ -321,6 +321,9 @@ pub(super) enum SocketState {
 #[derive(Debug, Clone)]
 pub struct AccountInfo {
     pub id: u32,
+    /// C++ `WorldSession` account name: the `RealmJoinTicket` used for the
+    /// `LOGIN_SEL_ACCOUNT_INFO_BY_NAME` lookup (game account username).
+    pub account_name: String,
     pub session_key_hex: String,
     pub last_ip: String,
     pub is_locked_to_ip: bool,

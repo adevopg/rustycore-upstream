@@ -72,7 +72,15 @@ pub struct BattlenetRequest {
 impl BattlenetRequest {
     pub fn read(pkt: &mut WorldPacket) -> Result<Self, PacketError> {
         let method = MethodCall::read(pkt)?;
-        let proto_size = pkt.read_int32()?;
+        // C++ `Battlenet::Request::Read` reads an unsigned size and throws
+        // `PacketArrayMaxCapacityException` above 0xFFFF.
+        let proto_size = pkt.read_uint32()?;
+        if proto_size > 0xFFFF {
+            return Err(PacketError::InvalidArrayCapacity {
+                requested: proto_size as usize,
+                max: 0xFFFF,
+            });
+        }
         let data = if proto_size > 0 {
             pkt.read_bytes(proto_size as usize)?
         } else {
@@ -94,23 +102,29 @@ pub enum BattlenetRpcErrorCode {
 
 /// Server → Client: response to a BattlenetRequest.
 pub struct BattlenetResponse {
-    pub status: BattlenetRpcErrorCode,
+    /// C++ `BattlenetRpcErrorCode BnetStatus`.
+    pub status: u32,
     pub method: MethodCall,
     pub data: Vec<u8>,
 }
 
 impl BattlenetResponse {
-    /// Create an error response (no data).
-    pub fn error(
-        service_hash: u32,
-        method_id: u32,
-        token: u32,
-        status: BattlenetRpcErrorCode,
-    ) -> Self {
+    /// C++ `SendBattlenetResponse(serviceHash, methodId, token, uint32 status)`.
+    pub fn error(service_hash: u32, method_id: u32, token: u32, status: u32) -> Self {
         Self {
             status,
             method: MethodCall::from_parts(service_hash, method_id, token),
             data: vec![],
+        }
+    }
+
+    /// C++ `SendBattlenetResponse(serviceHash, methodId, token, pb::Message const*)`:
+    /// `ERROR_OK` plus the serialized message.
+    pub fn message(service_hash: u32, method_id: u32, token: u32, data: Vec<u8>) -> Self {
+        Self {
+            status: BattlenetRpcErrorCode::Ok as u32,
+            method: MethodCall::from_parts(service_hash, method_id, token),
+            data,
         }
     }
 }
@@ -119,7 +133,7 @@ impl ServerPacket for BattlenetResponse {
     const OPCODE: ServerOpcodes = ServerOpcodes::BattlenetResponse;
 
     fn write(&self, pkt: &mut WorldPacket) {
-        pkt.write_uint32(self.status as u32);
+        pkt.write_uint32(self.status);
         self.method.write(pkt);
         pkt.write_uint32(self.data.len() as u32);
         if !self.data.is_empty() {
@@ -158,11 +172,13 @@ pub struct ChangeRealmTicketResponse {
 }
 
 impl ChangeRealmTicketResponse {
+    /// C++ `realmListTicket.Ticket << "WorldserverRealmListTicket";` — the
+    /// `ByteBuffer` string operator appends a NUL terminator.
     pub fn allow_worldserver_realm_list_ticket_like_cpp(token: u32) -> Self {
         Self {
             token,
             allow: true,
-            ticket: b"WorldserverRealmListTicket".to_vec(),
+            ticket: b"WorldserverRealmListTicket\0".to_vec(),
         }
     }
 }
@@ -204,8 +220,12 @@ mod tests {
 
     #[test]
     fn battlenet_response_error_writes_correctly() {
-        let resp =
-            BattlenetResponse::error(0x12345678, 1, 7, BattlenetRpcErrorCode::RpcNotImplemented);
+        let resp = BattlenetResponse::error(
+            0x12345678,
+            1,
+            7,
+            BattlenetRpcErrorCode::RpcNotImplemented as u32,
+        );
         let bytes = resp.to_bytes();
         // opcode(2) + u32 status(4) + u64 type(8) + i64 objectId(8) + u32 token(4) + u32 dataSize(4) = 30
         assert_eq!(bytes.len(), 30);
@@ -294,13 +314,38 @@ mod tests {
         );
         assert_eq!(pkt.read_uint32().unwrap(), 0x0102_0304);
         assert!(pkt.read_bit().unwrap());
+        assert_eq!(pkt.read_uint32().unwrap(), 27);
         assert_eq!(
-            pkt.read_uint32().unwrap(),
-            "WorldserverRealmListTicket".len() as u32
+            pkt.read_bytes(27).unwrap(),
+            b"WorldserverRealmListTicket\0".to_vec()
         );
+    }
+
+    #[test]
+    fn battlenet_response_message_writes_ok_status_and_payload_like_cpp() {
+        let bytes = BattlenetResponse::message(0x3FC1_274D, 10, 5, vec![0x0A, 0x00]).to_bytes();
+        let mut pkt = WorldPacket::from_bytes(&bytes);
         assert_eq!(
-            pkt.read_string("WorldserverRealmListTicket".len()).unwrap(),
-            "WorldserverRealmListTicket"
+            pkt.read_uint16().unwrap(),
+            ServerOpcodes::BattlenetResponse as u16
         );
+        assert_eq!(pkt.read_uint32().unwrap(), 0);
+        assert_eq!(pkt.read_uint64().unwrap(), (0x3FC1_274Du64 << 32) | 10);
+        assert_eq!(pkt.read_int64().unwrap(), 1);
+        assert_eq!(pkt.read_uint32().unwrap(), 5);
+        assert_eq!(pkt.read_uint32().unwrap(), 2);
+        assert_eq!(pkt.read_bytes(2).unwrap(), vec![0x0A, 0x00]);
+    }
+
+    #[test]
+    fn battlenet_request_rejects_proto_size_above_cpp_cap() {
+        let mut pkt = WorldPacket::new_server(ServerOpcodes::BattlenetResponse);
+        pkt.write_uint64(0);
+        pkt.write_int64(1);
+        pkt.write_uint32(0);
+        pkt.write_uint32(0x1_0000);
+        pkt.reset_read();
+        let _ = pkt.read_uint16();
+        assert!(BattlenetRequest::read(&mut pkt).is_err());
     }
 }

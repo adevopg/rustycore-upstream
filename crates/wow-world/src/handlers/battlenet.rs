@@ -6,8 +6,9 @@
 //! Battlenet service request handler.
 //!
 //! The client sends BattlenetRequest (CMSG 0x36FD) during character select
-//! to invoke GameUtilitiesService RPCs. We respond with RpcNotImplemented
-//! for all requests, matching C# behavior when no service handler is registered.
+//! to invoke Battle.net RPCs on the worldserver (C++
+//! `WorldSession::HandleBattlenetRequest` -> `WorldserverServiceDispatcher`).
+//! Service behavior lives in [`crate::bnet_services`].
 
 use tracing::debug;
 use wow_constants::ClientOpcodes;
@@ -58,11 +59,8 @@ inventory::submit! {
 // ── Handler implementation ──────────────────────────────────────────
 
 impl WorldSession {
-    /// Handle CMSG_BATTLENET_REQUEST — respond with RpcNotImplemented.
-    ///
-    /// C# dispatches these to GameUtilitiesService handlers. Since we don't
-    /// implement any services yet, we always return RpcNotImplemented,
-    /// which is exactly what C# does for unregistered service methods.
+    /// Handle CMSG_BATTLENET_REQUEST like C++ `WorldSession::HandleBattlenetRequest`:
+    /// `sServiceDispatcher.Dispatch(this, serviceHash, token, methodId, data)`.
     pub async fn handle_battlenet_request(&mut self, req: BattlenetRequest) {
         debug!(
             "BattlenetRequest from account {}: service=0x{:08X} method={} token={}",
@@ -72,12 +70,13 @@ impl WorldSession {
             req.method.token,
         );
 
-        self.send_packet(&BattlenetResponse::error(
+        self.dispatch_battlenet_service_like_cpp(
             req.method.service_hash(),
-            req.method.method_id(),
             req.method.token,
-            BattlenetRpcErrorCode::RpcNotImplemented,
-        ));
+            req.method.method_id(),
+            &req.data,
+        )
+        .await;
     }
 
     /// Handle CMSG_CHANGE_REALM_TICKET like C++
@@ -138,13 +137,10 @@ mod tests {
         );
         assert_eq!(pkt.read_uint32().unwrap(), 0xCAFE_BABE);
         assert!(pkt.read_bit().unwrap());
+        assert_eq!(pkt.read_uint32().unwrap(), 27);
         assert_eq!(
-            pkt.read_uint32().unwrap(),
-            "WorldserverRealmListTicket".len() as u32
-        );
-        assert_eq!(
-            pkt.read_string("WorldserverRealmListTicket".len()).unwrap(),
-            "WorldserverRealmListTicket"
+            pkt.read_bytes(27).unwrap(),
+            b"WorldserverRealmListTicket\0".to_vec()
         );
     }
 
