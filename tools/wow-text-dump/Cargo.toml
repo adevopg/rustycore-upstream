@@ -1,0 +1,10 @@
+[package]
+name = "wow-text-dump"
+version = "0.1.0"
+edition = "2021"
+description = "Vuelca la seccion de codigo ya descifrada de un WowClassic.exe en ejecucion (para analisis estatico del cliente 3.4.3.54261)"
+
+[dependencies]
+
+[profile.release]
+opt-level = 2

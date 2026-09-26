@@ -133,6 +133,10 @@ fn is_valid_locale_like_cpp(locale: &str) -> bool {
     )
 }
 
+/// `LogonResult.available_region` / `connected_region`: the region encoded in
+/// every game account `EntityId.high` (`0x0200_0002_0057_6F57`, region 2 = EU).
+const LOGON_REGION_LIKE_BLIZZARD: u32 = 2;
+
 /// Method 7: VerifyWebCredentials — validates login ticket and sends LogonResult.
 async fn handle_verify_web_credentials<S: AsyncRead + AsyncWrite + Unpin>(
     session: &mut RpcSession<S>,
@@ -349,6 +353,14 @@ async fn verify_web_credentials_like_cpp<S: AsyncRead + AsyncWrite + Unpin>(
         } else {
             Some(session.ip_country.clone())
         },
+        // RustyCore addition (C++ leaves them unset): the region the game
+        // accounts are stamped with (`game_account_id.high` byte 1 = 2, EU) and
+        // an unrestricted session, as Blizzard's LogonResult carries them. The
+        // 3.4.3 client compiles `available_region`, `connected_region` and
+        // `restricted_mode` in and may gate BattleTag features on them.
+        available_region: vec![LOGON_REGION_LIKE_BLIZZARD],
+        connected_region: Some(LOGON_REGION_LIKE_BLIZZARD),
+        restricted_mode: Some(false),
         // `battlenet_accounts.battle_tag`: the client learns its own BattleTag
         // here (`BNGetInfo()`) and only then shows the BattleTag friends panel.
         battle_tag: logon_result_battle_tag_like_cpp(&battle_tag),

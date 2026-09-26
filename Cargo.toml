@@ -58,6 +58,8 @@ exclude = [
     "tools/wow-test-bot",
     # Standalone, dependency-free client patcher (its own Cargo.lock; builds anywhere).
     "tools/wow-url-patch",
+    # Standalone, dependency-free memory dumper of the running client's decrypted .text.
+    "tools/wow-text-dump",
 ]
 
 [workspace.package]

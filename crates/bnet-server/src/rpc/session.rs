@@ -136,10 +136,18 @@ impl<S: AsyncRead + AsyncWrite + Unpin> RpcSession<S> {
                 .map(|b| format!("{b:02X}"))
                 .collect::<Vec<_>>()
                 .join("-");
+            // The payload too (capped), so an unexpected client request can be
+            // decoded offline with `protoc --decode_raw`.
+            let payload_hex = payload
+                .iter()
+                .take(256)
+                .map(|b| format!("{b:02X}"))
+                .collect::<Vec<_>>()
+                .join("");
             tracing::debug!(
                 "[BNET-RECV] service_id={} service_hash=0x{:08X} method={} token={} \
                  HasSize={} Size={} HasStatus={} Status={} \
-                 header_len={} header_hex={}",
+                 header_len={} header_hex={} payload_hex={}",
                 header.service_id,
                 header.service_hash.unwrap_or(0),
                 header.method_id.unwrap_or(0),
@@ -150,6 +158,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> RpcSession<S> {
                 header.status.unwrap_or(0),
                 header_len,
                 header_hex,
+                payload_hex,
             );
 
             // Dispatch
