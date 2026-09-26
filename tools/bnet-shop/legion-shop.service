@@ -1,0 +1,16 @@
+[Unit]
+Description=LegionCore in-game shop (SumUp checkout)
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/legion_shop
+EnvironmentFile=/home/ubuntu/legioncore/db.env
+EnvironmentFile=/home/ubuntu/legion_shop/shop.env
+ExecStart=/usr/bin/node /home/ubuntu/legion_shop/shop-server.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

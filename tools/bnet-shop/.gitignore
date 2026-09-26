@@ -1,0 +1,9 @@
+node_modules/
+shop.env
+shop.env.*
+!shop.env.dist
+certs/
+*.log
+*.out
+*.err
+*.bak*

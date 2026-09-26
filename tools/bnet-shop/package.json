@@ -1,0 +1,8 @@
+{
+  "name": "legion-bnet-shop",
+  "private": true,
+  "type": "module",
+  "description": "In-game shop web (SumUp checkout) for LegionCore 7.3.5 Bpay.WebCheckout",
+  "scripts": { "start": "node shop-server.mjs" },
+  "dependencies": { "mysql2": "^3.11.0" }
+}
