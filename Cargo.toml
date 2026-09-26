@@ -56,6 +56,8 @@ members = [
 ]
 exclude = [
     "tools/wow-test-bot",
+    # Standalone, dependency-free client patcher (its own Cargo.lock; builds anywhere).
+    "tools/wow-url-patch",
 ]
 
 [workspace.package]

@@ -1,0 +1,10 @@
+[package]
+name = "wow-url-patch"
+version = "0.1.0"
+edition = "2021"
+description = "Reescribe las URLs de la tienda/SSO incrustadas en WowClassic.exe (3.4.3.54261) sin distribuir el binario"
+
+[dependencies]
+
+[profile.release]
+opt-level = 2
