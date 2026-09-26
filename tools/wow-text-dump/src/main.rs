@@ -230,20 +230,19 @@ mod platform {
         unsafe { GetLastError() }
     }
 
-    pub fn find_process(name: &str) -> Option<u32> {
+    pub fn find_processes(name: &str) -> Vec<u32> {
+        let mut found = Vec::new();
         unsafe {
             let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
             if snapshot == INVALID_HANDLE_VALUE {
-                return None;
+                return found;
             }
             let mut entry: ProcessEntry32W = mem::zeroed();
             entry.dw_size = mem::size_of::<ProcessEntry32W>() as u32;
-            let mut found = None;
             if Process32FirstW(snapshot, &mut entry) != 0 {
                 loop {
                     if wide_to_string(&entry.sz_exe_file).eq_ignore_ascii_case(name) {
-                        found = Some(entry.th32_process_id);
-                        break;
+                        found.push(entry.th32_process_id);
                     }
                     if Process32NextW(snapshot, &mut entry) == 0 {
                         break;
@@ -251,8 +250,8 @@ mod platform {
                 }
             }
             CloseHandle(snapshot);
-            found
         }
+        found
     }
 
     /// Modulo principal (el .exe) del proceso: direccion base, tamano de la imagen y ruta.
@@ -338,14 +337,21 @@ mod platform {
 // ------------------------------------------------------------------------------------------
 #[cfg(target_os = "linux")]
 mod platform {
-    use super::{ProcessMemory, Target};
+    use super::{parse_sections, ProcessMemory, Target, PAGE};
     use std::fs;
     use std::os::unix::fs::FileExt;
 
-    pub fn find_process(name: &str) -> Option<u32> {
+    /// Base por defecto de un PE x64 de Blizzard; Wine suele mapearlo ahi sin reubicar.
+    const DEFAULT_IMAGE_BASE: usize = 0x1_4000_0000;
+
+    /// Todos los procesos que se llaman como el .exe (Wine crea mas de uno con ese nombre:
+    /// el preloader y el proceso real), de menor a mayor PID.
+    pub fn find_processes(name: &str) -> Vec<u32> {
         let mut found = Vec::new();
-        for entry in fs::read_dir("/proc").ok()? {
-            let entry = entry.ok()?;
+        let Ok(entries) = fs::read_dir("/proc") else {
+            return found;
+        };
+        for entry in entries.flatten() {
             let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
                 continue;
             };
@@ -361,7 +367,7 @@ mod platform {
             }
         }
         found.sort_unstable();
-        found.first().copied()
+        found
     }
 
     struct LinuxProcess(fs::File);
@@ -372,56 +378,148 @@ mod platform {
         }
     }
 
-    pub fn open(pid: u32) -> Result<Target, String> {
+    struct Region {
+        lo: usize,
+        hi: usize,
+        readable: bool,
+        name: String,
+    }
+
+    fn regions(pid: u32) -> Result<Vec<Region>, String> {
         let maps = fs::read_to_string(format!("/proc/{pid}/maps"))
             .map_err(|e| format!("/proc/{pid}/maps: {e}"))?;
-        // Todas las regiones respaldadas por el .exe; la base es la mas baja y el tamano llega
-        // hasta el final de la mas alta (Wine mapea la imagen completa en 0x140000000 o donde
-        // la reubique).
-        let mut base = usize::MAX;
-        let mut end = 0usize;
-        let mut path = String::new();
+        let mut out = Vec::new();
         for line in maps.lines() {
             let mut cols = line.split_whitespace();
-            let (Some(range), Some(_perms), Some(_off), Some(_dev), Some(_inode)) =
+            let (Some(range), Some(perms), Some(_off), Some(_dev), Some(_inode)) =
                 (cols.next(), cols.next(), cols.next(), cols.next(), cols.next())
             else {
                 continue;
             };
             let name: String = cols.collect::<Vec<_>>().join(" ");
-            if !name.to_ascii_lowercase().ends_with("wowclassic.exe") {
+            let Some((lo, hi)) = range.split_once('-') else {
                 continue;
-            }
-            let (lo, hi) = range.split_once('-').ok_or("maps: rango invalido")?;
-            let lo = usize::from_str_radix(lo, 16).map_err(|e| e.to_string())?;
-            let hi = usize::from_str_radix(hi, 16).map_err(|e| e.to_string())?;
-            base = base.min(lo);
-            end = end.max(hi);
-            path = name;
+            };
+            let (Ok(lo), Ok(hi)) = (usize::from_str_radix(lo, 16), usize::from_str_radix(hi, 16))
+            else {
+                continue;
+            };
+            out.push(Region {
+                lo,
+                hi,
+                readable: perms.starts_with('r'),
+                name,
+            });
         }
-        if base == usize::MAX {
-            return Err(format!(
-                "el proceso {pid} no tiene WowClassic.exe mapeado (mira /proc/{pid}/maps)"
-            ));
+        Ok(out)
+    }
+
+    /// `SizeOfImage` de la cabecera opcional (PE32+), si `headers` es una imagen PE valida.
+    fn pe_image_size(headers: &[u8]) -> Option<usize> {
+        if headers.len() < 0x40 || &headers[..2] != b"MZ" {
+            return None;
         }
+        let nt = u32::from_le_bytes(headers[0x3c..0x40].try_into().ok()?) as usize;
+        if nt + 24 + 60 > headers.len() || &headers[nt..nt + 4] != b"PE\0\0" {
+            return None;
+        }
+        let o = nt + 24 + 56;
+        Some(u32::from_le_bytes(headers[o..o + 4].try_into().ok()?) as usize)
+    }
+
+    pub fn open(pid: u32) -> Result<Target, String> {
+        let regions = regions(pid)?;
         let file = fs::File::open(format!("/proc/{pid}/mem")).map_err(|e| {
             format!("/proc/{pid}/mem: {e} (si es Permission denied, ejecuta con sudo)")
         })?;
-        Ok(Target {
-            pid,
-            path,
-            base,
-            image_size: end - base,
-            memory: Box::new(LinuxProcess(file)),
-        })
+        let memory = LinuxProcess(file);
+
+        // 1. Regiones respaldadas por el fichero WowClassic.exe (Wine clasico).
+        let mut base = usize::MAX;
+        let mut end = 0usize;
+        let mut path = String::new();
+        for r in regions
+            .iter()
+            .filter(|r| r.name.to_ascii_lowercase().ends_with("wowclassic.exe"))
+        {
+            base = base.min(r.lo);
+            end = end.max(r.hi);
+            path = r.name.clone();
+        }
+        if base != usize::MAX {
+            return Ok(Target {
+                pid,
+                path,
+                base,
+                image_size: end - base,
+                memory: Box::new(memory),
+            });
+        }
+
+        // 2. Sin ruta (mapeo anonimo, Proton/pressure-vessel, cargador PE nuevo de Wine):
+        //    buscar la imagen PE mas grande cuya cabecera este al principio de una region
+        //    legible, probando primero la base habitual.
+        let mut headers = vec![0u8; PAGE];
+        let mut best: Option<(usize, usize)> = None;
+        let mut candidates: Vec<usize> = regions
+            .iter()
+            .filter(|r| r.readable && r.hi - r.lo >= PAGE)
+            .map(|r| r.lo)
+            .collect();
+        candidates.sort_unstable_by_key(|&lo| (lo != DEFAULT_IMAGE_BASE, lo));
+        for lo in candidates {
+            if !memory.read_exact_at(lo, &mut headers) {
+                continue;
+            }
+            let Some(size) = pe_image_size(&headers) else {
+                continue;
+            };
+            let has_text = parse_sections(&headers)
+                .map(|s| s.iter().any(|s| s.name == ".text"))
+                .unwrap_or(false);
+            if !has_text {
+                continue;
+            }
+            if lo == DEFAULT_IMAGE_BASE {
+                best = Some((lo, size));
+                break;
+            }
+            if best.map_or(true, |(_, best_size)| size > best_size) {
+                best = Some((lo, size));
+            }
+        }
+        if let Some((base, image_size)) = best {
+            return Ok(Target {
+                pid,
+                path: format!("<imagen PE anonima en 0x{base:X}>"),
+                base,
+                image_size,
+                memory: Box::new(memory),
+            });
+        }
+
+        let mut hint: Vec<String> = regions
+            .iter()
+            .filter(|r| r.name.to_ascii_lowercase().contains("wow"))
+            .map(|r| format!("    {:X}-{:X} {}", r.lo, r.hi, r.name))
+            .take(8)
+            .collect();
+        if hint.is_empty() {
+            hint.push("    (ninguna region con 'wow' en el nombre)".to_string());
+        }
+        Err(format!(
+            "el proceso {pid} no tiene ninguna imagen PE con .text mapeada ({} regiones).\n  Regiones con 'wow':\n{}",
+            regions.len(),
+            hint.join("\n")
+        ))
     }
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
 mod platform {
     use super::Target;
-    pub fn find_process(_name: &str) -> Option<u32> {
-        None
+    pub fn find_processes(_name: &str) -> Vec<u32> {
+        Vec::new()
     }
     pub fn open(_pid: u32) -> Result<Target, String> {
         Err("plataforma no soportada (solo Windows y Linux)".to_string())
@@ -430,19 +528,28 @@ mod platform {
 
 fn main() {
     let opts = parse_args();
-    let pid = match opts.pid.or_else(|| platform::find_process("WowClassic.exe")) {
-        Some(pid) => pid,
-        None => {
-            eprintln!("no se encuentra WowClassic.exe en ejecucion (abre el juego o usa --pid)");
-            process::exit(1);
-        }
+    let pids = match opts.pid {
+        Some(pid) => vec![pid],
+        None => platform::find_processes("WowClassic.exe"),
     };
-    let target = match platform::open(pid) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("PID {pid}: {e}");
-            process::exit(1);
+    if pids.is_empty() {
+        eprintln!("no se encuentra WowClassic.exe en ejecucion (abre el juego o usa --pid)");
+        process::exit(1);
+    }
+    // Varios procesos pueden llamarse igual (Wine); vale el primero cuya imagen se pueda leer.
+    let mut target = None;
+    for &pid in &pids {
+        match platform::open(pid) {
+            Ok(t) => {
+                target = Some(t);
+                break;
+            }
+            Err(e) => eprintln!("PID {pid}: {e}"),
         }
+    }
+    let Some(target) = target else {
+        eprintln!("ningun proceso candidato ({:?}) tiene la imagen legible", pids);
+        process::exit(1);
     };
     println!("PID {}: {}", target.pid, target.path);
     println!(
