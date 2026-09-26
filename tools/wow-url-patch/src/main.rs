@@ -19,6 +19,9 @@ use std::process;
 const DEFAULT_CHECKOUT: &str = "https://tienda.nightspire.gg:8096/shop/simplecheckout/loading";
 const DEFAULT_SSO: &str = "https://tienda.nightspire.gg/login/sso?token=%s&ref=%s";
 const DEFAULT_HOST: &str = "nightspire.gg/s";
+/// Barra de navegacion del checkout (segundo navegador, encima del pago). Un parche anterior
+/// la dejo en about:blank, que en el cliente se ve como una franja negra.
+const DEFAULT_NAVBAR: &str = "https://tienda.nightspire.gg:8096/nb";
 /// Lista blanca de URLs del navegador del checkout (3 copias en el ejecutable, la mas corta de
 /// 48 bytes). Sin ella la pagina carga pero el cliente no le inyecta `purchaseRequest`.
 const DEFAULT_ALLOW: &str = r"^https?:\/\/([\w.-]+\.)?nightspire\.gg.*$";
@@ -40,6 +43,7 @@ struct Options {
     sso: String,
     host: String,
     allow: String,
+    navbar: String,
 }
 
 fn usage() -> ! {
@@ -49,6 +53,7 @@ fn usage() -> ! {
          \n  --sso       URL del SSO de soporte, con %s para token y ref (defecto {DEFAULT_SSO})\
          \n  --host      host de soporte, maximo 15 caracteres (defecto {DEFAULT_HOST})\
          \n  --allow     regex de la lista blanca del navegador, maximo 47 caracteres (defecto {DEFAULT_ALLOW})\
+         \n  --navbar    URL de la barra de navegacion del checkout, maximo 55 caracteres (defecto {DEFAULT_NAVBAR})\
          \n  --dry-run   solo muestra lo que cambiaria"
     );
     process::exit(2);
@@ -64,6 +69,7 @@ fn parse_args() -> Options {
         sso: DEFAULT_SSO.to_string(),
         host: DEFAULT_HOST.to_string(),
         allow: DEFAULT_ALLOW.to_string(),
+        navbar: DEFAULT_NAVBAR.to_string(),
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -73,6 +79,7 @@ fn parse_args() -> Options {
             "--sso" => opts.sso = args.next().unwrap_or_else(|| usage()),
             "--host" => opts.host = args.next().unwrap_or_else(|| usage()),
             "--allow" => opts.allow = args.next().unwrap_or_else(|| usage()),
+            "--navbar" => opts.navbar = args.next().unwrap_or_else(|| usage()),
             "-h" | "--help" => usage(),
             other if opts.path.is_empty() && !other.starts_with("--") => opts.path = other.to_string(),
             _ => usage(),
@@ -146,6 +153,13 @@ fn main() {
             replacement: opts.allow.clone(),
         },
         Rule {
+            // Solo dentro del bloque de configuracion del checkout (ver `checkout_block`).
+            name: "navbar checkout",
+            must_contain: &["about:blank"],
+            must_not_contain: &[],
+            replacement: opts.navbar.clone(),
+        },
+        Rule {
             name: "SSO soporte",
             must_contain: &["login/sso?token=%s&ref=%s"],
             must_not_contain: &[],
@@ -168,11 +182,28 @@ fn main() {
     };
     println!("{} ({} bytes)", opts.path, data.len());
 
+    // Bloque de configuracion de bnl_checkout: entre su marca de version y la lista de
+    // mensajes. Las cadenas "about:blank" de dentro son las URL del navbar (una por region).
+    let strings = ascii_strings(&data);
+    let find = |needle: &str| {
+        strings
+            .iter()
+            .find(|(s, e)| &data[*s..*e] == needle.as_bytes())
+            .map(|(s, _)| *s)
+    };
+    let checkout_block = match (find("SimpleCheckout/5.3.0/"), find("windowCloseRequested")) {
+        (Some(a), Some(b)) if a < b => Some((a, b)),
+        _ => None,
+    };
+
     let mut changes: Vec<(usize, usize, String, String, &str)> = Vec::new(); // (inicio, hueco, antes, despues, regla)
-    for (start, end) in ascii_strings(&data) {
+    for (start, end) in strings.iter().copied() {
         let text = String::from_utf8_lossy(&data[start..end]).into_owned();
         for rule in &rules {
-            let matches = if rule.name == "host soporte" {
+            let matches = if rule.name == "navbar checkout" {
+                text == "about:blank"
+                    && checkout_block.is_some_and(|(a, b)| start > a && start < b)
+            } else if rule.name == "host soporte" {
                 // '<dominio>/s' exacto: p.ej. 'www.inna.cl/s' (o el original con /s), sin barras extra
                 text.ends_with("/s")
                     && text.matches('/').count() == 1
