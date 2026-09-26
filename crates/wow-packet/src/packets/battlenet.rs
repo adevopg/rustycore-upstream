@@ -17,7 +17,7 @@ use crate::{ClientPacket, PacketError, ServerPacket, WorldPacket};
 
 /// Encodes a BNet service call: serviceHash (high 32 bits of Type) +
 /// methodId (low 32 bits of Type), plus ObjectId and Token.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MethodCall {
     /// High 32 bits = serviceHash, low 32 bits = methodId.
     pub method_type: u64,
@@ -134,6 +134,44 @@ impl ServerPacket for BattlenetResponse {
 
     fn write(&self, pkt: &mut WorldPacket) {
         pkt.write_uint32(self.status);
+        self.method.write(pkt);
+        pkt.write_uint32(self.data.len() as u32);
+        if !self.data.is_empty() {
+            pkt.write_bytes(&self.data);
+        }
+    }
+}
+
+// ── BattlenetNotification (SMSG 0x2808) ────────────────────────────
+
+/// Server → Client: a Battle.net *request* the worldserver makes to a client
+/// listener (`FriendsListener.OnFriendAdded`, `PresenceListener.OnStateChanged`, ...).
+///
+/// C++ `WorldPackets::Battlenet::Notification::Write` (`BattlenetPackets.cpp:36-43`):
+/// `MethodCall{Type = MAKE_PAIR64(methodId, serviceHash), ObjectId, Token}`, then
+/// `uint32 Data.size()` and the serialized protobuf. `WorldSession::SendBattlenetRequest`
+/// (`BattlenetHandler.cpp:68-88`) fills `ObjectId = 1` and a per-session token counter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BattlenetNotification {
+    pub method: MethodCall,
+    pub data: Vec<u8>,
+}
+
+impl BattlenetNotification {
+    /// C++ `SendBattlenetRequest(serviceHash, methodId, pb::Message const*)` with
+    /// the session's next `_battlenetRequestToken`.
+    pub fn request(service_hash: u32, method_id: u32, token: u32, data: Vec<u8>) -> Self {
+        Self {
+            method: MethodCall::from_parts(service_hash, method_id, token),
+            data,
+        }
+    }
+}
+
+impl ServerPacket for BattlenetNotification {
+    const OPCODE: ServerOpcodes = ServerOpcodes::BattlenetNotification;
+
+    fn write(&self, pkt: &mut WorldPacket) {
         self.method.write(pkt);
         pkt.write_uint32(self.data.len() as u32);
         if !self.data.is_empty() {
@@ -335,6 +373,26 @@ mod tests {
         assert_eq!(pkt.read_uint32().unwrap(), 5);
         assert_eq!(pkt.read_uint32().unwrap(), 2);
         assert_eq!(pkt.read_bytes(2).unwrap(), vec![0x0A, 0x00]);
+    }
+
+    #[test]
+    fn battlenet_notification_writes_method_call_then_sized_payload_like_cpp() {
+        // FriendsListener (0x6F259A13) OnFriendAdded (1), token 3, two payload bytes.
+        let bytes = BattlenetNotification::request(0x6F25_9A13, 1, 3, vec![0x0A, 0x00]).to_bytes();
+        // opcode(2) + u64 type(8) + i64 objectId(8) + u32 token(4) + u32 size(4) + 2
+        assert_eq!(bytes.len(), 28);
+        let mut pkt = WorldPacket::from_bytes(&bytes);
+        assert_eq!(pkt.read_uint16().unwrap(), 0x2808);
+        // No status word precedes the MethodCall (unlike BattlenetResponse).
+        assert_eq!(pkt.read_uint64().unwrap(), (0x6F25_9A13u64 << 32) | 1);
+        assert_eq!(pkt.read_int64().unwrap(), 1, "C++ ObjectId is always 1");
+        assert_eq!(pkt.read_uint32().unwrap(), 3);
+        assert_eq!(pkt.read_uint32().unwrap(), 2);
+        assert_eq!(pkt.read_bytes(2).unwrap(), vec![0x0A, 0x00]);
+
+        let empty = BattlenetNotification::request(0x890A_B85F, 2, 0, vec![]).to_bytes();
+        assert_eq!(empty.len(), 26);
+        assert_eq!(&empty[22..26], &[0, 0, 0, 0]);
     }
 
     #[test]

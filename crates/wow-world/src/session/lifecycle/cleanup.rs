@@ -61,6 +61,14 @@ impl WorldSession {
         }) {
             return FinalizationOutcome::Unavailable;
         }
+        // A session torn down without the finalization pipeline (disconnect at
+        // character select, failed login) still leaves the BattleTag manager.
+        if let Some(mgr) = crate::bnet_friends::global_like_cpp() {
+            if self.player_guid().is_some() {
+                mgr.on_player_logout_like_cpp(&*self);
+            }
+            mgr.on_session_closed_like_cpp(&*self);
+        }
         self.unregister_from_player_registry();
         self.notify_other_players_visibility_changed_like_cpp();
         let outcome = self.unregister_canonical_player_from_map_like_cpp();

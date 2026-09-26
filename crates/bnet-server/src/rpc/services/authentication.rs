@@ -163,6 +163,7 @@ async fn verify_web_credentials_like_cpp<S: AsyncRead + AsyncWrite + Unpin>(
     //     4: ba.last_ip, 5: ba.LoginTicketExpiry, 6: is_banned, 7: is_permanently_banned
     //   Columns 8-12: Game account (one row per game account)
     //     8: a.id, 9: a.username, 10: ab.unbandate, 11: ab.permanently_banned, 12: aa.SecurityLevel
+    //   Column 13: ba.battle_tag (RustyCore addition, NULL until the 2026_09_26_00 migration)
     let state = session.state();
     let mut stmt = state
         .login_db
@@ -184,6 +185,7 @@ async fn verify_web_credentials_like_cpp<S: AsyncRead + AsyncWrite + Unpin>(
     let login_ticket_expiry: u64 = result.try_read::<u64>(5).unwrap_or(0);
     let is_banned: bool = result.try_read::<bool>(6).unwrap_or(false);
     let is_permanently_banned: bool = result.try_read::<bool>(7).unwrap_or(false);
+    let battle_tag: String = result.try_read::<String>(13).unwrap_or_default();
 
     if login_ticket_is_expired_like_cpp(login_ticket_expiry, unix_timestamp_like_cpp()) {
         tracing::debug!("VerifyWebCredentials: expired ticket for account {account_id}");
@@ -347,6 +349,9 @@ async fn verify_web_credentials_like_cpp<S: AsyncRead + AsyncWrite + Unpin>(
         } else {
             Some(session.ip_country.clone())
         },
+        // `battlenet_accounts.battle_tag`: the client learns its own BattleTag
+        // here (`BNGetInfo()`) and only then shows the BattleTag friends panel.
+        battle_tag: logon_result_battle_tag_like_cpp(&battle_tag),
         ..Default::default()
     };
 
@@ -362,6 +367,7 @@ async fn verify_web_credentials_like_cpp<S: AsyncRead + AsyncWrite + Unpin>(
         is_banned,
         is_permanently_banned,
         game_accounts,
+        battle_tag,
     });
 
     // Send LogonResult to AuthenticationListener method 5
@@ -382,6 +388,12 @@ fn unix_timestamp_like_cpp() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// `LogonResult.battle_tag` (field 7): omitted while the account has no BattleTag
+/// (NULL column), which keeps the client's BattleTag panel hidden.
+fn logon_result_battle_tag_like_cpp(battle_tag: &str) -> Option<String> {
+    (!battle_tag.is_empty()).then(|| battle_tag.to_owned())
 }
 
 fn login_ticket_is_expired_like_cpp(login_ticket_expiry: u64, now: u64) -> bool {
@@ -498,6 +510,25 @@ fn bnet_country_lock_rejects_like_cpp(lock_country: &str, ip_country: &str) -> b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logon_result_carries_the_battle_tag_only_when_the_account_has_one() {
+        assert_eq!(
+            logon_result_battle_tag_like_cpp("Inna#0007"),
+            Some("Inna#0007".to_owned())
+        );
+        assert_eq!(logon_result_battle_tag_like_cpp(""), None);
+        // LogonResult.battle_tag is field 7 (authentication_service.pb.h).
+        let result = LogonResult {
+            error_code: 0,
+            battle_tag: logon_result_battle_tag_like_cpp("A#1"),
+            ..Default::default()
+        };
+        assert_eq!(
+            result.encode_to_vec(),
+            vec![0x08, 0x00, 0x3A, 0x03, b'A', b'#', b'1']
+        );
+    }
 
     #[test]
     fn logon_client_info_accepts_cpp_supported_locales() {

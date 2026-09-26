@@ -10,7 +10,14 @@ use wow_persistence::{
     SocialPersistencePortLikeCpp, SocialRelationshipKindLikeCpp, SocialRelationshipStateLikeCpp,
 };
 
-use crate::CharacterDatabase;
+use crate::{CharStatements, CharacterDatabase};
+
+/// C++ `SocialMgr::BroadcastToFriendListers` gate `Flags & SOCIAL_FLAG_FRIEND`,
+/// applied in SQL because RustyCore has no in-memory `_socialMap`.
+const LOAD_FRIEND_LISTERS_SQL: &str = "SELECT DISTINCT CAST(guid AS SIGNED) \
+     FROM character_social \
+     WHERE friend = ? AND (flags & ?) <> 0";
+const SOCIAL_FLAG_ALL_LIKE_CPP: u32 = 0x07;
 
 const LOAD_CONTACTS_SQL: &str = "SELECT CAST(cs.friend AS SIGNED), cs.flags, cs.note, c.class, c.level, c.zone \
      FROM character_social cs \
@@ -128,6 +135,29 @@ fn party_invite_friend_operation_like_cpp(
             SocialSqlBindLikeCpp::I64(inviter_guid),
             SocialSqlBindLikeCpp::U32(SOCIAL_FLAG_FRIEND_LIKE_CPP),
         ],
+    }
+}
+
+/// Which read answers a reverse lister lookup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SocialListersOperationLikeCpp {
+    /// C++ `CHAR_SEL_CHAR_SOCIAL` verbatim: every flag, as `Player::DeleteFromDB` runs it.
+    Prepared(CharStatements),
+    /// The same rows narrowed by a flag mask, as `BroadcastToFriendListers` filters in memory.
+    Masked(SocialSqlOperationLikeCpp),
+}
+
+fn listers_operation_like_cpp(friend_guid: u64, flags: u32) -> SocialListersOperationLikeCpp {
+    if flags & SOCIAL_FLAG_ALL_LIKE_CPP == SOCIAL_FLAG_ALL_LIKE_CPP {
+        SocialListersOperationLikeCpp::Prepared(CharStatements::SEL_CHAR_SOCIAL)
+    } else {
+        SocialListersOperationLikeCpp::Masked(SocialSqlOperationLikeCpp {
+            sql: LOAD_FRIEND_LISTERS_SQL,
+            binds: vec![
+                SocialSqlBindLikeCpp::I64(friend_guid as i64),
+                SocialSqlBindLikeCpp::U32(flags),
+            ],
+        })
     }
 }
 
@@ -428,11 +458,65 @@ impl SocialPersistencePortLikeCpp for MariaDbSocialPersistenceAdapterLikeCpp {
             }
         })
     }
+
+    fn listers_of_like_cpp<'a>(
+        &'a self,
+        friend_guid: u64,
+        flags: u32,
+    ) -> PersistenceFutureLikeCpp<'a, Result<Vec<u64>, String>> {
+        Box::pin(async move {
+            match listers_operation_like_cpp(friend_guid, flags) {
+                SocialListersOperationLikeCpp::Prepared(statement) => {
+                    let mut prepared = self.character_db.prepare(statement);
+                    prepared.set_u64(0, friend_guid);
+                    let result = self
+                        .character_db
+                        .query(&prepared)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    let mut listers = Vec::with_capacity(result.count());
+                    if !result.is_empty() {
+                        let mut result = result;
+                        loop {
+                            if let Some(guid) = result.try_read::<u64>(0) {
+                                listers.push(guid);
+                            }
+                            if !result.next_row() {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(listers)
+                }
+                SocialListersOperationLikeCpp::Masked(operation) => {
+                    let mut query = sqlx::query(operation.sql);
+                    for bind in operation.binds {
+                        query = match bind {
+                            SocialSqlBindLikeCpp::I64(value) => query.bind(value),
+                            SocialSqlBindLikeCpp::U8(value) => query.bind(value),
+                            SocialSqlBindLikeCpp::U32(value) => query.bind(value),
+                            SocialSqlBindLikeCpp::Text(value) => query.bind(value),
+                        };
+                    }
+                    let rows = query
+                        .fetch_all(self.character_db.pool())
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    Ok(rows
+                        .into_iter()
+                        .filter_map(|row| row.try_get::<i64, _>(0).ok())
+                        .filter_map(|guid| u64::try_from(guid).ok())
+                        .collect())
+                }
+            }
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::statements::StatementDef;
 
     #[test]
     fn social_queries_keep_the_current_read_shapes_inside_the_adapter() {
@@ -470,6 +554,48 @@ mod tests {
                 SocialSqlBindLikeCpp::U32(1),
             ]
         );
+    }
+
+    #[test]
+    fn listers_for_all_flags_run_the_cpp_prepared_sel_char_social_statement() {
+        // C++ `Player::DeleteFromDB` (Player.cpp:3953) executes CHAR_SEL_CHAR_SOCIAL.
+        assert_eq!(
+            listers_operation_like_cpp(42, SOCIAL_FLAG_ALL_LIKE_CPP),
+            SocialListersOperationLikeCpp::Prepared(CharStatements::SEL_CHAR_SOCIAL)
+        );
+        assert_eq!(
+            CharStatements::SEL_CHAR_SOCIAL.sql(),
+            "SELECT DISTINCT guid FROM character_social WHERE friend = ?"
+        );
+    }
+
+    #[test]
+    fn listers_for_friend_flag_keep_friend_then_mask_bind_order() {
+        // C++ `SocialMgr::BroadcastToFriendListers` (SocialMgr.cpp:270) gates on
+        // `Flags & SOCIAL_FLAG_FRIEND` in memory; the DB-backed port masks in SQL.
+        let SocialListersOperationLikeCpp::Masked(operation) = listers_operation_like_cpp(42, 1)
+        else {
+            panic!("friend-only lister lookup must be the masked read");
+        };
+        assert!(
+            operation
+                .sql
+                .contains("WHERE friend = ? AND (flags & ?) <> 0")
+        );
+        assert!(operation.sql.contains("DISTINCT"));
+        assert_eq!(operation.sql.matches('?').count(), 2);
+        assert_eq!(
+            operation.binds,
+            vec![SocialSqlBindLikeCpp::I64(42), SocialSqlBindLikeCpp::U32(1)]
+        );
+    }
+
+    #[test]
+    fn listers_for_a_zero_mask_never_widen_to_every_flag() {
+        assert!(matches!(
+            listers_operation_like_cpp(42, 0),
+            SocialListersOperationLikeCpp::Masked(_)
+        ));
     }
 
     #[test]

@@ -9,6 +9,18 @@ import "bgs/low/pb/client/entity_types.proto";
 // src/server/proto/Client/account_types.pb.h (k*FieldNumber constants); only the
 // fields RustyCore uses are declared, unknown fields are skipped by the client.
 
+// -- Handles (account_types.pb.h `AccountId` / `GameAccountHandle`) --
+
+message AccountId {
+  required fixed32 id = 1;
+}
+
+message GameAccountHandle {
+  required fixed32 id = 1;
+  required fixed32 program = 2;
+  required uint32 region = 3;
+}
+
 // -- Account state structures used in AccountService responses --
 
 message AccountState {

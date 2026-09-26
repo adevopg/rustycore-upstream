@@ -246,10 +246,34 @@ impl WorldSession {
         }
 
         let guid_low = pkt.guid.counter() as u64;
-        let outcome = match self
+        let (delete_method, unlink) = self
             .select_char_delete_method_like_cpp(deletion, guid_low)
-            .await
-        {
+            .await;
+
+        // C++ `Player::DeleteFromDB`, `CHAR_DELETE_REMOVE` branch (`Player.cpp:3953-3966`):
+        // `CHAR_SEL_CHAR_SOCIAL` resolves every character listing the deleted one so
+        // the online listers can be told `FRIEND_REMOVED`. Read before the delete
+        // (the rows go with it); notify only once the delete is applied.
+        let social_listers =
+            if delete_method == crate::character_undelete::CHAR_DELETE_REMOVE_LIKE_CPP {
+                match self.social_persistence_port_like_cpp() {
+                    Some(social) => social
+                        .listers_of_like_cpp(
+                            guid_low,
+                            crate::handlers::social::SOCIAL_FLAG_ALL_LIKE_CPP,
+                        )
+                        .await
+                        .unwrap_or_else(|reason| {
+                            warn!("CharDelete social lister lookup failed: {reason}");
+                            Vec::new()
+                        }),
+                    None => Vec::new(),
+                }
+            } else {
+                Vec::new()
+            };
+
+        let outcome = match (delete_method, unlink) {
             (crate::character_undelete::CHAR_DELETE_REMOVE_LIKE_CPP, _) => {
                 port.delete_owned_character_like_cpp(guid_low, self.account_id)
                     .await
@@ -270,6 +294,10 @@ impl WorldSession {
                     pkt.guid, self.account_id
                 );
                 self.remove_legit_character(&pkt.guid);
+
+                // `playerFriend->GetSocial()->RemoveFromSocialList(playerguid, SOCIAL_FLAG_ALL);`
+                // `sSocialMgr->SendFriendStatus(playerFriend, FRIEND_REMOVED, playerguid);`
+                self.notify_listers_of_deleted_character_like_cpp(pkt.guid, &social_listers);
 
                 // Update realmcharacters count in login DB
                 self.update_realm_characters().await;

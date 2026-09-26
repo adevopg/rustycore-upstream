@@ -15,6 +15,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "bgs/low/pb/client/game_utilities_service.proto",
         "bgs/low/pb/client/account_types.proto",
         "bgs/low/pb/client/account_service.proto",
+        "bgs/low/pb/client/role_types.proto",
+        "bgs/low/pb/client/invitation_types.proto",
+        "bgs/low/pb/client/friends_types.proto",
+        "bgs/low/pb/client/friends_service.proto",
+        "bgs/low/pb/client/presence_types.proto",
+        "bgs/low/pb/client/presence_service.proto",
+        "bgs/low/pb/client/presence_listener.proto",
+        "bgs/low/pb/client/user_manager_types.proto",
+        "bgs/low/pb/client/user_manager_service.proto",
     ];
 
     // Prefix all paths with the proto directory.

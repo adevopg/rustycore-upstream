@@ -1,0 +1,27 @@
+// BNet Presence listener messages (server -> client).
+//
+// Reconstructed from the FileDescriptorProto embedded in TrinityCore 3.4.3
+// `src/server/proto/Client/presence_listener.pb.cc` (`protoc --decode`). Method ids
+// are the `SendRequest` calls of that file.
+//
+// -- PresenceListener (client handles, OriginalHash 0x890AB85F) --
+// Method 1: OnSubscribe(SubscribeNotification)
+// Method 2: OnStateChanged(StateChangedNotification)
+
+syntax = "proto2";
+package bgs.protocol.presence.v1;
+
+import "bgs/low/pb/client/account_types.proto";
+import "bgs/low/pb/client/presence_types.proto";
+
+message SubscribeNotification {
+  optional bgs.protocol.account.v1.AccountId subscriber_id = 1;
+  repeated PresenceState state = 2;
+  optional uint32 subscriber_program = 3;
+}
+
+message StateChangedNotification {
+  optional bgs.protocol.account.v1.AccountId subscriber_id = 1;
+  repeated PresenceState state = 2;
+  optional uint32 subscriber_program = 3;
+}

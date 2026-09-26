@@ -3,11 +3,89 @@
 // Based on TrinityCore protocol research (https://github.com/TrinityCore/TrinityCore)
 // Licensed under GPL v3 — https://www.gnu.org/licenses/gpl-3.0.html
 
-//! Social packet definitions: SMSG_FRIEND_STATUS, SMSG_CONTACT_LIST.
+//! Social packet definitions.
+//!
+//! C++ anchors (TrinityCore 3.4.3, `src/server/game/Server/Packets/SocialPackets.cpp`):
+//! `SendContactList::Read` :22-25, `ContactInfo` writer :41-58, `ContactList::Write`
+//! :60-70, `FriendStatus::Write` :85-101, `QualifiedGUID` reader :103-109,
+//! `AddFriend::Read` :111-117, `DelFriend::Read` :119-122, `SetContactNotes::Read`
+//! :124-128, `AddIgnore::Read` :130-135, `DelIgnore::Read` :137-140.
 
 use crate::{ClientPacket, PacketError, ServerPacket, WorldPacket};
 use wow_constants::{ClientOpcodes, ServerOpcodes};
 use wow_core::ObjectGuid;
+
+/// C++ `operator>>(ByteBuffer&, QualifiedGUID&)` (`SocialPackets.cpp:103-109`):
+/// the 3.4.3 client writes `VirtualRealmAddress` **before** the packed GUID.
+fn read_qualified_guid_like_cpp(
+    packet: &mut WorldPacket,
+) -> Result<(ObjectGuid, u32), PacketError> {
+    let virtual_realm_address = packet.read_uint32()?;
+    let guid = packet.read_packed_guid()?;
+    Ok((guid, virtual_realm_address))
+}
+
+/// CMSG_SEND_CONTACT_LIST.
+///
+/// C++ `WorldPackets::Social::SendContactList::Read` reads one `uint32 Flags`
+/// (`SocialFlag` bitmask).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SendContactList {
+    pub flags: u32,
+}
+
+impl ClientPacket for SendContactList {
+    const OPCODE: ClientOpcodes = ClientOpcodes::SendContactList;
+
+    fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
+        Ok(Self {
+            flags: packet.read_uint32()?,
+        })
+    }
+}
+
+/// CMSG_ADD_FRIEND.
+///
+/// C++ `WorldPackets::Social::AddFriend::Read` reads a 9-bit name length, a
+/// 9-bit notes length, then the name and the notes strings in that order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddFriend {
+    pub name: String,
+    pub notes: String,
+}
+
+impl ClientPacket for AddFriend {
+    const OPCODE: ClientOpcodes = ClientOpcodes::AddFriend;
+
+    fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
+        let name_len = packet.read_bits(9)? as usize;
+        let notes_len = packet.read_bits(9)? as usize;
+        let name = packet.read_string(name_len)?;
+        let notes = packet.read_string(notes_len)?;
+        Ok(Self { name, notes })
+    }
+}
+
+/// CMSG_DEL_FRIEND.
+///
+/// C++ `WorldPackets::Social::DelFriend::Read` reads a `QualifiedGUID`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DelFriend {
+    pub player_guid: ObjectGuid,
+    pub virtual_realm_address: u32,
+}
+
+impl ClientPacket for DelFriend {
+    const OPCODE: ClientOpcodes = ClientOpcodes::DelFriend;
+
+    fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
+        let (player_guid, virtual_realm_address) = read_qualified_guid_like_cpp(packet)?;
+        Ok(Self {
+            player_guid,
+            virtual_realm_address,
+        })
+    }
+}
 
 /// FriendsResult enum values (byte).
 #[repr(u8)]
@@ -65,7 +143,7 @@ impl ClientPacket for AddIgnore {
 /// CMSG_DEL_IGNORE.
 ///
 /// C++ `WorldPackets::Social::DelIgnore::Read` reads a `QualifiedGUID`
-/// (`ObjectGuid` plus virtual realm address).
+/// (virtual realm address, then `ObjectGuid`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DelIgnore {
     pub player_guid: ObjectGuid,
@@ -76,8 +154,7 @@ impl ClientPacket for DelIgnore {
     const OPCODE: ClientOpcodes = ClientOpcodes::DelIgnore;
 
     fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
-        let player_guid = packet.read_packed_guid()?;
-        let virtual_realm_address = packet.read_uint32()?;
+        let (player_guid, virtual_realm_address) = read_qualified_guid_like_cpp(packet)?;
         Ok(Self {
             player_guid,
             virtual_realm_address,
@@ -87,8 +164,8 @@ impl ClientPacket for DelIgnore {
 
 /// CMSG_SET_CONTACT_NOTES.
 ///
-/// C++ `WorldPackets::Social::SetContactNotes::Read` reads a `QualifiedGUID`,
-/// then a 10-bit note length and the note string.
+/// C++ `WorldPackets::Social::SetContactNotes::Read` reads a `QualifiedGUID`
+/// (realm address, then GUID), then a 10-bit note length and the note string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetContactNotes {
     pub player_guid: ObjectGuid,
@@ -100,8 +177,7 @@ impl ClientPacket for SetContactNotes {
     const OPCODE: ClientOpcodes = ClientOpcodes::SetContactNotes;
 
     fn read(packet: &mut WorldPacket) -> Result<Self, PacketError> {
-        let player_guid = packet.read_packed_guid()?;
-        let virtual_realm_address = packet.read_uint32()?;
+        let (player_guid, virtual_realm_address) = read_qualified_guid_like_cpp(packet)?;
         let notes_len = packet.read_bits(10)? as usize;
         let notes = packet.read_string(notes_len)?;
         Ok(Self {
@@ -290,12 +366,17 @@ mod tests {
         assert_eq!(FriendsResult::IgnoreRemoved as u8, 0x10);
     }
 
+    /// C++ `SocialPackets.cpp:103-109`: `data >> VirtualRealmAddress; data >> Guid;`.
+    fn write_qualified_guid_like_cpp(pkt: &mut WorldPacket, guid: ObjectGuid, realm: u32) {
+        pkt.write_uint32(realm);
+        pkt.write_packed_guid(&guid);
+    }
+
     #[test]
     fn del_ignore_reads_cpp_qualified_guid_order() {
         let player_guid = ObjectGuid::create_player(1, 0x00CCBBAA);
         let mut pkt = WorldPacket::new_empty();
-        pkt.write_packed_guid(&player_guid);
-        pkt.write_uint32(0xAABBCCDD);
+        write_qualified_guid_like_cpp(&mut pkt, player_guid, 0xAABBCCDD);
 
         let parsed = DelIgnore::read(&mut pkt).expect("del ignore packet");
 
@@ -305,11 +386,85 @@ mod tests {
     }
 
     #[test]
+    fn qualified_guid_rejects_the_reversed_guid_first_layout() {
+        // Negative: a GUID-first buffer is not what the 3.4.3 client sends; the
+        // realm-address-first reader must not silently produce the same GUID.
+        let player_guid = ObjectGuid::create_player(1, 0x00CCBBAA);
+        let mut pkt = WorldPacket::new_empty();
+        pkt.write_packed_guid(&player_guid);
+        pkt.write_uint32(0xAABBCCDD);
+
+        let parsed = DelIgnore::read(&mut pkt);
+        assert!(parsed.is_err() || parsed.unwrap().player_guid != player_guid);
+    }
+
+    #[test]
+    fn del_friend_reads_cpp_qualified_guid_order() {
+        let player_guid = ObjectGuid::create_player(1, 0x00ABCDEF);
+        let mut pkt = WorldPacket::new_empty();
+        write_qualified_guid_like_cpp(&mut pkt, player_guid, 0x01000001);
+
+        let parsed = DelFriend::read(&mut pkt).expect("del friend packet");
+
+        assert_eq!(parsed.player_guid, player_guid);
+        assert_eq!(parsed.virtual_realm_address, 0x01000001);
+        assert!(pkt.is_empty());
+    }
+
+    #[test]
+    fn add_friend_reads_cpp_name_length_notes_length_name_notes_order() {
+        let mut pkt = WorldPacket::new_empty();
+        pkt.write_bits(5, 9);
+        pkt.write_bits(4, 9);
+        pkt.write_string("Jaina");
+        pkt.write_string("raid");
+
+        let parsed = AddFriend::read(&mut pkt).expect("add friend packet");
+
+        assert_eq!(parsed.name, "Jaina");
+        assert_eq!(parsed.notes, "raid");
+        assert!(pkt.is_empty());
+    }
+
+    #[test]
+    fn add_friend_with_empty_notes_reads_like_cpp() {
+        let mut pkt = WorldPacket::new_empty();
+        pkt.write_bits(6, 9);
+        pkt.write_bits(0, 9);
+        pkt.write_string("Thrall");
+
+        let parsed = AddFriend::read(&mut pkt).expect("add friend packet");
+
+        assert_eq!(parsed.name, "Thrall");
+        assert!(parsed.notes.is_empty());
+        assert!(pkt.is_empty());
+    }
+
+    #[test]
+    fn add_friend_truncated_name_is_an_error_not_a_partial_packet() {
+        let mut pkt = WorldPacket::new_empty();
+        pkt.write_bits(6, 9);
+        pkt.write_bits(0, 9);
+        pkt.write_string("Thr");
+
+        assert!(AddFriend::read(&mut pkt).is_err());
+    }
+
+    #[test]
+    fn send_contact_list_reads_uint32_flags_like_cpp() {
+        let mut pkt = WorldPacket::from_bytes(&7_u32.to_le_bytes());
+
+        let parsed = SendContactList::read(&mut pkt).expect("send contact list packet");
+
+        assert_eq!(parsed.flags, 7);
+        assert!(pkt.is_empty());
+    }
+
+    #[test]
     fn set_contact_notes_reads_cpp_qualified_guid_length_notes_order() {
         let player_guid = ObjectGuid::create_player(1, 0x102030);
         let mut pkt = WorldPacket::new_empty();
-        pkt.write_packed_guid(&player_guid);
-        pkt.write_uint32(0x01020304);
+        write_qualified_guid_like_cpp(&mut pkt, player_guid, 0x01020304);
         pkt.write_bits(11, 10);
         pkt.write_string("raid leader");
 
@@ -319,6 +474,73 @@ mod tests {
         assert_eq!(parsed.virtual_realm_address, 0x01020304);
         assert_eq!(parsed.notes, "raid leader");
         assert!(pkt.is_empty());
+    }
+
+    #[test]
+    fn friend_status_writes_cpp_field_order_with_mobile_bit() {
+        let guid = ObjectGuid::create_player(1, 77);
+        let packet = FriendStatusPkt {
+            result: FriendsResult::Online,
+            guid,
+            account_guid: ObjectGuid::EMPTY,
+            virtual_realm_address: 0x01000001,
+            status: 0x01,
+            area_id: 1519,
+            level: 80,
+            class_id: 8,
+            notes: "hi".into(),
+        };
+        let mut body = WorldPacket::from_bytes(&packet.to_bytes()[2..]);
+
+        assert_eq!(body.read_uint8().unwrap(), 0x02);
+        assert_eq!(body.read_packed_guid().unwrap(), guid);
+        assert_eq!(body.read_packed_guid().unwrap(), ObjectGuid::EMPTY);
+        assert_eq!(body.read_uint32().unwrap(), 0x01000001);
+        assert_eq!(body.read_uint8().unwrap(), 0x01);
+        assert_eq!(body.read_int32().unwrap(), 1519);
+        assert_eq!(body.read_int32().unwrap(), 80);
+        assert_eq!(body.read_uint32().unwrap(), 8);
+        assert_eq!(body.read_bits(10).unwrap(), 2);
+        assert!(!body.read_bit().unwrap(), "Mobile is always false");
+        assert_eq!(body.read_string(2).unwrap(), "hi");
+        assert!(body.is_empty());
+    }
+
+    #[test]
+    fn contact_list_writes_flags_8bit_count_then_contacts_like_cpp() {
+        let guid = ObjectGuid::create_player(1, 42);
+        let packet = ContactListPkt {
+            flags: 1,
+            contacts: vec![ContactInfo {
+                guid,
+                wow_account_guid: ObjectGuid::EMPTY,
+                virtual_realm_address: 5,
+                native_realm_address: 5,
+                type_flags: 1,
+                note: String::new(),
+                status: 0,
+                area_id: 0,
+                level: 0,
+                class_id: 0,
+                is_mobile: false,
+            }],
+        };
+        let mut body = WorldPacket::from_bytes(&packet.to_bytes()[2..]);
+
+        assert_eq!(body.read_uint32().unwrap(), 1);
+        assert_eq!(body.read_bits(8).unwrap(), 1);
+        assert_eq!(body.read_packed_guid().unwrap(), guid);
+        assert_eq!(body.read_packed_guid().unwrap(), ObjectGuid::EMPTY);
+        assert_eq!(body.read_uint32().unwrap(), 5);
+        assert_eq!(body.read_uint32().unwrap(), 5);
+        assert_eq!(body.read_uint32().unwrap(), 1);
+        assert_eq!(body.read_uint8().unwrap(), 0);
+        assert_eq!(body.read_int32().unwrap(), 0);
+        assert_eq!(body.read_int32().unwrap(), 0);
+        assert_eq!(body.read_uint32().unwrap(), 0);
+        assert_eq!(body.read_bits(10).unwrap(), 0);
+        assert!(!body.read_bit().unwrap());
+        assert!(body.is_empty());
     }
 
     #[test]

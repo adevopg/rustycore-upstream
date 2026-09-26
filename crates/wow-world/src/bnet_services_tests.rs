@@ -461,7 +461,7 @@ async fn other_services_follow_cpp_dispatcher_registration() {
     let (mut session, send_rx) = make_session();
 
     session
-        .handle_battlenet_request(request(service_hash::PRESENCE_SERVICE, 1, 8, vec![]))
+        .handle_battlenet_request(request(service_hash::CLUB_SERVICE, 1, 8, vec![]))
         .await;
     let sent = read_response(&send_rx);
     assert_eq!(sent.status, status::ERROR_RPC_NOT_IMPLEMENTED);
@@ -472,4 +472,227 @@ async fn other_services_follow_cpp_dispatcher_registration() {
         .handle_battlenet_request(request(0xDEAD_BEEF, 1, 9, vec![]))
         .await;
     assert!(send_rx.try_recv().is_err());
+}
+
+/// The process-wide friends manager shared by the dispatch tests of this
+/// binary (`OnceLock`); each test uses its own Battle.net account ids.
+fn install_bnet_friends_test_manager() -> &'static Arc<crate::bnet_friends::BnetFriendsMgr> {
+    use wow_persistence::{
+        BnetAccountIdentityLikeCpp, BnetAccountLookupLikeCpp, BnetFriendInvitationRowLikeCpp,
+        BnetFriendsLoadLikeCpp, BnetFriendsPersistencePortLikeCpp, PersistenceFutureLikeCpp,
+        PersistenceOutcomeLikeCpp,
+    };
+
+    struct AppliedPersistence;
+
+    impl BnetFriendsPersistencePortLikeCpp for AppliedPersistence {
+        fn load_all_like_cpp(
+            &self,
+        ) -> PersistenceFutureLikeCpp<'_, Result<BnetFriendsLoadLikeCpp, String>> {
+            Box::pin(async { Ok(BnetFriendsLoadLikeCpp::default()) })
+        }
+        fn find_account_like_cpp(
+            &self,
+            lookup: BnetAccountLookupLikeCpp,
+        ) -> PersistenceFutureLikeCpp<'_, Result<Option<BnetAccountIdentityLikeCpp>, String>>
+        {
+            Box::pin(async move {
+                Ok(match lookup {
+                    BnetAccountLookupLikeCpp::Id(account_id) => Some(BnetAccountIdentityLikeCpp {
+                        account_id,
+                        email: format!("{account_id}@example.test"),
+                        battle_tag: format!("Dispatch#{account_id:04}"),
+                    }),
+                    _ => None,
+                })
+            })
+        }
+        fn insert_invitation_like_cpp(
+            &self,
+            _: BnetFriendInvitationRowLikeCpp,
+        ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+            Box::pin(async { PersistenceOutcomeLikeCpp::Applied { rows: 1 } })
+        }
+        fn delete_invitation_like_cpp(
+            &self,
+            _: u64,
+        ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+            Box::pin(async { PersistenceOutcomeLikeCpp::Applied { rows: 1 } })
+        }
+        fn accept_invitation_like_cpp(
+            &self,
+            _: BnetFriendInvitationRowLikeCpp,
+        ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+            Box::pin(async { PersistenceOutcomeLikeCpp::Applied { rows: 1 } })
+        }
+        fn delete_friendship_like_cpp(
+            &self,
+            _: u32,
+            _: u32,
+        ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+            Box::pin(async { PersistenceOutcomeLikeCpp::Applied { rows: 1 } })
+        }
+        fn update_friend_note_like_cpp(
+            &self,
+            _: u32,
+            _: u32,
+            _: String,
+        ) -> PersistenceFutureLikeCpp<'_, PersistenceOutcomeLikeCpp> {
+            Box::pin(async { PersistenceOutcomeLikeCpp::Applied { rows: 1 } })
+        }
+    }
+
+    let _ = crate::bnet_friends::install_global_like_cpp(Arc::new(
+        crate::bnet_friends::BnetFriendsMgr::new(Arc::new(AppliedPersistence)),
+    ));
+    crate::bnet_friends::global_like_cpp().expect("installed")
+}
+
+fn read_notification(send_rx: &flume::Receiver<Vec<u8>>) -> (u32, u32, Vec<u8>) {
+    let bytes = send_rx.try_recv().expect("BattlenetNotification sent");
+    let mut pkt = WorldPacket::from_bytes(&bytes);
+    assert_eq!(
+        pkt.read_uint16().unwrap(),
+        ServerOpcodes::BattlenetNotification as u16
+    );
+    let method_type = pkt.read_uint64().unwrap();
+    assert_eq!(pkt.read_int64().unwrap(), 1);
+    let _token = pkt.read_uint32().unwrap();
+    let size = pkt.read_uint32().unwrap() as usize;
+    let data = pkt.read_bytes(size).unwrap();
+    ((method_type >> 32) as u32, method_type as u32, data)
+}
+
+#[tokio::test]
+async fn friends_service_subscribe_dispatches_to_the_friends_manager() {
+    use wow_proto::bgs::protocol::friends::v1::{SubscribeRequest, SubscribeResponse};
+
+    install_bnet_friends_test_manager();
+    let (mut session, send_rx) = make_session();
+    session.set_battlenet_account_id(9101);
+    let data = SubscribeRequest {
+        agent_id: None,
+        object_id: 1,
+    }
+    .encode_to_vec();
+
+    session
+        .handle_battlenet_request(request(service_hash::FRIENDS_SERVICE, 1, 21, data))
+        .await;
+
+    // Registering the session pushed its own presence first.
+    let (listener, method, _) = read_notification(&send_rx);
+    assert_eq!(listener, service_hash::PRESENCE_LISTENER);
+    assert_eq!(method, 2, "PresenceListener.OnStateChanged");
+    let sent = read_response(&send_rx);
+    assert_eq!(sent.status, status::OK);
+    assert_eq!(sent.token, 21);
+    assert_eq!(
+        sent.method_type,
+        (u64::from(service_hash::FRIENDS_SERVICE) << 32) | 1
+    );
+    let response = SubscribeResponse::decode(sent.data.as_slice()).unwrap();
+    assert_eq!(response.max_friends, Some(200));
+    assert!(response.friends.is_empty());
+
+    // Generated method table: 13 (GetFriendList) stays NOT_IMPLEMENTED, 7 is invalid.
+    session
+        .handle_battlenet_request(request(service_hash::FRIENDS_SERVICE, 13, 22, vec![]))
+        .await;
+    assert_eq!(
+        read_response(&send_rx).status,
+        status::ERROR_RPC_NOT_IMPLEMENTED
+    );
+    session
+        .handle_battlenet_request(request(service_hash::FRIENDS_SERVICE, 7, 23, vec![]))
+        .await;
+    assert_eq!(
+        read_response(&send_rx).status,
+        status::ERROR_RPC_INVALID_METHOD
+    );
+    session
+        .handle_battlenet_request(request(
+            service_hash::FRIENDS_SERVICE,
+            2,
+            24,
+            vec![0xFF, 0xFF],
+        ))
+        .await;
+    assert_eq!(
+        read_response(&send_rx).status,
+        status::ERROR_RPC_MALFORMED_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn presence_service_subscribe_dispatches_and_answers_with_on_subscribe() {
+    use wow_proto::bgs::protocol::NoData;
+    use wow_proto::bgs::protocol::presence::v1::{SubscribeNotification, SubscribeRequest};
+
+    install_bnet_friends_test_manager();
+    let (mut session, send_rx) = make_session();
+    session.set_battlenet_account_id(9102);
+    let data = SubscribeRequest {
+        agent_id: None,
+        entity_id: crate::bnet_friends::account_entity_id_like_cpp(9102),
+        object_id: 1,
+        program: vec![],
+        key: vec![],
+    }
+    .encode_to_vec();
+
+    session
+        .handle_battlenet_request(request(service_hash::PRESENCE_SERVICE, 1, 31, data))
+        .await;
+
+    let (_, method, _) = read_notification(&send_rx);
+    assert_eq!(method, 2, "own presence on registration");
+    let (listener, method, payload) = read_notification(&send_rx);
+    assert_eq!(listener, service_hash::PRESENCE_LISTENER);
+    assert_eq!(method, 1, "PresenceListener.OnSubscribe");
+    let notification = SubscribeNotification::decode(payload.as_slice()).unwrap();
+    assert_eq!(notification.subscriber_id.unwrap().id, 9102);
+    assert_eq!(
+        notification.state[0].entity_id,
+        Some(crate::bnet_friends::account_entity_id_like_cpp(9102))
+    );
+    let sent = read_response(&send_rx);
+    assert_eq!(sent.status, status::OK);
+    assert_eq!(sent.token, 31);
+    assert!(NoData::decode(sent.data.as_slice()).is_ok());
+}
+
+#[tokio::test]
+async fn user_manager_service_subscribe_answers_an_empty_block_list() {
+    use wow_proto::bgs::protocol::user_manager::v1::{SubscribeRequest, SubscribeResponse};
+
+    install_bnet_friends_test_manager();
+    let (mut session, send_rx) = make_session();
+    session.set_battlenet_account_id(9103);
+    let data = SubscribeRequest {
+        agent_id: None,
+        object_id: 1,
+    }
+    .encode_to_vec();
+
+    session
+        .handle_battlenet_request(request(service_hash::USER_MANAGER_SERVICE, 1, 41, data))
+        .await;
+
+    let _ = read_notification(&send_rx);
+    let sent = read_response(&send_rx);
+    assert_eq!(sent.status, status::OK);
+    assert_eq!(sent.token, 41);
+    let response = SubscribeResponse::decode(sent.data.as_slice()).unwrap();
+    assert!(response.blocked_players.is_empty());
+    assert!(response.recent_players.is_empty());
+
+    session
+        .handle_battlenet_request(request(service_hash::USER_MANAGER_SERVICE, 20, 42, vec![]))
+        .await;
+    assert_eq!(
+        read_response(&send_rx).status,
+        status::ERROR_RPC_NOT_IMPLEMENTED,
+        "BlockPlayer"
+    );
 }

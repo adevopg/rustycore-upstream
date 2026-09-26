@@ -362,6 +362,10 @@ impl WorldSession {
                 RepresentedAreaZoneCriteriaLikeCpp::LeaveTopLevelArea(old_zone),
             );
         }
+        // LegionCore `Battlenet::FriendsMgr::OnPlayerZoneChanged`.
+        if let Some(mgr) = crate::bnet_friends::global_like_cpp() {
+            mgr.on_player_zone_changed_like_cpp(&*self);
+        }
         true
     }
     /// Represented C++ `Player::CheckAreaExploreAndOutdoor` discovery branch.

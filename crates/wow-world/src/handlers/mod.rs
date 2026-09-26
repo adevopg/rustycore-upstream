@@ -24,3 +24,4 @@ pub mod talent;
 pub mod trainer;
 pub mod vehicle;
 pub mod void_storage;
+pub mod who;

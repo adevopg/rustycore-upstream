@@ -495,8 +495,11 @@ mod group_state;
 mod identity;
 #[path = "directory/name_query.rs"]
 mod name_query;
+#[path = "directory/presence.rs"]
+mod presence;
 pub use identity::PlayerDirectoryIdentityLikeCpp;
 pub use name_query::PlayerNameQuerySnapshotLikeCpp;
+pub use presence::PlayerPresenceSnapshotLikeCpp;
 
 /// Thread-safe directory of active player sessions, keyed by player GUID.
 ///

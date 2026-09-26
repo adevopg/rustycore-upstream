@@ -36,6 +36,7 @@
 pub mod battle_pay_adapter;
 pub mod battle_pay_services_adapter;
 pub mod battle_pet;
+pub mod bnet_friends_adapter;
 pub mod catalogs;
 pub mod character_administration_adapter;
 pub mod character_enumeration_adapter;
@@ -86,6 +87,7 @@ pub use battle_pay_services_adapter::{
 pub use battle_pet::CharacterBattlePetPurchasePersistenceAdapterLikeCpp;
 pub use battle_pet::LoginBattlePetPersistenceLikeCpp;
 pub use battle_pet::MariaDbBattlePetSelectionCatalogPersistenceAdapterLikeCpp;
+pub use bnet_friends_adapter::MariaDbBnetFriendsPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbAreaTriggerTemplateCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbAreaTriggerWorldCatalogPersistenceAdapterLikeCpp;
 pub use catalogs::MariaDbBattlePayCatalogPersistenceAdapterLikeCpp;

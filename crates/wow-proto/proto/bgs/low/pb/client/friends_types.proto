@@ -1,0 +1,82 @@
+// BNet friends types.
+//
+// Reconstructed from the FileDescriptorProto embedded in TrinityCore 3.4.3
+// `src/server/proto/Client/friends_types.pb.cc` (`protoc --decode`); field numbers,
+// labels and wire types are the generated ones. The two extensions the generated
+// file registers (`ReceivedInvitation.friend_invitation = 103`,
+// `InvitationParams.friend_params = 103`) are kept as comments here; the second
+// one is inlined as a plain field in invitation_types.proto.
+
+syntax = "proto2";
+package bgs.protocol.friends.v1;
+
+import "bgs/low/pb/client/attribute_types.proto";
+import "bgs/low/pb/client/entity_types.proto";
+import "bgs/low/pb/client/role_types.proto";
+
+message Friend {
+  required bgs.protocol.EntityId account_id = 1;
+  repeated bgs.protocol.Attribute attribute = 2;
+  repeated uint32 role = 3 [packed = true];
+  optional uint64 privileges = 4;
+  optional uint64 attributes_epoch = 5; // deprecated
+  optional uint64 creation_time = 6;
+}
+
+message FriendOfFriend {
+  optional bgs.protocol.EntityId account_id = 1;
+  repeated uint32 role = 3 [packed = true];
+  optional uint64 privileges = 4;
+  optional string full_name = 6;
+  optional string battle_tag = 7;
+}
+
+message ReceivedInvitation {
+  required fixed64 id = 1;
+  required bgs.protocol.Identity inviter_identity = 2;
+  required bgs.protocol.Identity invitee_identity = 3;
+  optional string inviter_name = 4;
+  optional string invitee_name = 5;
+  optional uint64 creation_time = 7;
+  optional fixed32 program = 9;
+  // extensions 100 to 9999; `FriendInvitation friend_invitation = 103`.
+}
+
+message FriendInvitation {
+  repeated uint32 role = 2 [packed = true];
+  repeated bgs.protocol.Attribute attribute = 3;
+}
+
+message SentInvitation {
+  optional fixed64 id = 1;
+  optional string target_name = 2;
+  optional uint32 role = 3;
+  repeated bgs.protocol.Attribute attribute = 4;
+  optional uint64 creation_time = 5;
+  optional fixed32 program = 6;
+}
+
+message FriendInvitationParams {
+  optional string target_email = 1;
+  optional string target_battle_tag = 2;
+  repeated uint32 role = 6 [packed = true];
+  repeated bgs.protocol.Attribute attribute = 8;
+  optional string target_name = 9;
+  optional fixed32 program = 10; // deprecated
+  optional string target_phone_number = 11;
+}
+
+message SubscribeResponse {
+  optional uint32 max_friends = 1; // deprecated
+  optional uint32 max_received_invitations = 2; // deprecated
+  optional uint32 max_sent_invitations = 3; // deprecated
+  repeated bgs.protocol.Role role = 4;
+  repeated Friend friends = 5;
+  repeated ReceivedInvitation received_invitations = 7;
+  repeated SentInvitation sent_invitations = 8;
+}
+
+message AcceptInvitationOptions {
+  optional uint32 role = 1;
+  optional fixed32 program = 2;
+}

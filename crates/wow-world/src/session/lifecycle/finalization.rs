@@ -156,6 +156,25 @@ impl WorldSession {
                     .await
             }
             Retirement => {
+                // C++ `WorldSession::LogoutPlayer` (`WorldSession.cpp:651`):
+                // `sSocialMgr->SendFriendStatus(_player, FRIEND_OFFLINE, guid, true)`
+                // runs after the save and the group update, while the Player is
+                // still findable, right before `RemoveSocial` and the map removal.
+                if self.player_guid().is_some() {
+                    self.broadcast_friend_status_like_cpp(
+                        wow_packet::packets::social::FriendsResult::Offline,
+                    )
+                    .await;
+                }
+                // LegionCore `Battlenet::FriendsMgr::OnPlayerLogout` /
+                // `OnSessionClosed`: BattleTag friends see the game account go
+                // offline, then this session stops receiving notifications.
+                if let Some(mgr) = crate::bnet_friends::global_like_cpp() {
+                    if self.player_guid().is_some() {
+                        mgr.on_player_logout_like_cpp(&*self);
+                    }
+                    mgr.on_session_closed_like_cpp(&*self);
+                }
                 self.unregister_from_player_registry();
                 self.notify_other_players_visibility_changed_like_cpp();
                 self.unregister_canonical_player_from_map_like_cpp()

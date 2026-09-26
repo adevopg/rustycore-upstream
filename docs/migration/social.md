@@ -8,9 +8,9 @@
 > **C++ canonical path:** `src/server/game/Handlers/SocialHandler.cpp` + `src/server/game/Entities/Player/SocialMgr.{h,cpp}` + `src/server/game/Globals/ObjectMgr.cpp` (player name cache)
 > **Rust target crate(s):** `crates/wow-social/` (empty placeholder), `crates/wow-world/src/handlers/social.rs`, `crates/wow-world/src/handlers/inspect.rs`, `crates/wow-packet/src/packets/social.rs`, `crates/wow-packet/src/packets/inspect.rs`
 > **Layer:** L6
-> **Status:** ⚠️ partial (~55% — friends/ignore DB persistence and social contract work; mute, account-level ignore, RBAC friend bypass, presence updates, and inspect enrichment are still missing)
-> **Audited vs C++:** ✅ audited 2026-05-01 (§13)
-> **Last updated:** 2026-06-11
+> **Status:** ⚠️ partial (friends/ignore DB persistence, social contract, `SMSG_FRIEND_STATUS` login/logout/delete broadcast and `CMSG_WHO` work; mute, account-level ignore, RBAC bypasses, guild names in who, and inspect enrichment are still missing — see §14)
+> **Audited vs C++:** ✅ audited 2026-05-01 (§13); presence broadcast + who delivered 2026-09-26 (§14)
+> **Last updated:** 2026-09-26
 
 ---
 
@@ -175,7 +175,7 @@ Note: `character_social` schema in 3.4.3 is `(guid, friend, flags, note)` — th
 - `CMSG_SOCIAL_CONTRACT_REQUEST` — empty client packet; replies with `SMSG_SOCIAL_CONTRACT_REQUEST_RESPONSE { ShowSocialContract=false }`, matching C++.
 - `CMSG_ACCEPT_SOCIAL_CONTRACT` — empty client packet; registered at `STATUS_AUTHED`, no response and no persistence yet, matching current C++ `HandleAcceptSocialContract` semantics.
 - `CMSG_CHAT_REPORT_IGNORED` — parses C++ `IgnoredGUID + Reason`; if the ignored player is online, sends them `CHAT_MSG_IGNORED` naming the reporting player, matching `HandleChatIgnoredOpcode`.
-- `CMSG_SEND_CONTACT_LIST` — JOINs `character_social` × `characters`; populates `ContactInfo`; also emits `QueryPlayerNamesResponse` (name cache) so client can render names.
+- `CMSG_SEND_CONTACT_LIST` — loads `character_social` rows through the persistence port, applies the per-list 50-entry caps of `PlayerSocial::SendSocialList`, and fills each `ContactInfo` through the `SocialMgr::GetFriendInfo` equivalent (live status/area/level/class for online, visible, same-faction contacts; zeros otherwise; stored note always). No `QueryPlayerNamesResponse` is injected, matching C++.
 - `CMSG_INSPECT` — registry lookup of target's broadcast info; sends `SMSG_INSPECT_RESULT` with target's race, class, level, gender + visible-items array (item_id only).
 - `CMSG_REQUEST_HONOR_STATS` — parses C++ target GUID; if the target is online in `PlayerRegistry`, sends `SMSG_INSPECT_HONOR_STATS` with the C++ field order. `HonorLevel` comes from the canonical player snapshot; the six historical HK/contribution/rank counters stay zero until Rust ports the missing `ActivePlayerData` honor-counter state.
 - `CMSG_QUERY_INSPECT_ACHIEVEMENTS` — parses C++ target GUID; gates online target, same map, 2D `INSPECT_DISTANCE=28.0`, and a conservative represented hostile-faction reject; sends structurally correct empty `SMSG_RESPOND_INSPECT_ACHIEVEMENTS` until `PlayerAchievementMgr` is ported.
@@ -184,7 +184,7 @@ Note: `character_social` schema in 3.4.3 is `(guid, friend, flags, note)` — th
 **What's missing vs C++:**
 - **Account-level ignore** — `_ignoredAccounts` set + `WowAccountGuid` capture on add — missing entirely. Ignoring an alt does NOT propagate to the other alts.
 - **Mute (`SOCIAL_FLAG_MUTED`)** — unimplemented (would need voice-chat stack anyway, but flag persistence is missing).
-- **Friend-status presence broadcast** — when a player logs in/out/AFK/DND/zones, `SocialMgr::BroadcastToFriendListers` should push `FRIEND_STATUS_ONLINE/AFK/DND/OFFLINE` with new area/level. Rust now toggles AFK/DND canonical player flags from chat opcodes and syncs the `PlayerRegistry`, but still does NOT broadcast `SMSG_FRIEND_STATUS` updates → friends only see the new state on the next explicit list/status fetch.
+- **Friend-status presence broadcast** — delivered 2026-09-26 for the three C++ 3.4.3 call sites (login `FRIEND_ONLINE`, logout `FRIEND_OFFLINE`, character delete `FRIEND_REMOVED`; §14). C++ 3.4.3 does **not** broadcast AFK/DND/zone/level changes either (`SocialMgr::SendFriendStatus` has no such callers), so friends see those on the next explicit list fetch in both cores.
 - **RBAC friend bypass** — C++ allows enemy-faction `AddFriend` only with `RBAC_PERM_TWO_SIDE_ADD_FRIEND`; Rust now rejects enemies for normal-player behavior, but the RBAC bypass is impossible until AccountMgr/RBAC exists.
 - **`character_social.accountGuid` column** — schema does not include it; Rust hard-codes `account_guid: ObjectGuid::EMPTY` everywhere.
 - **Inspect-achievements content** — opcode/empty response represented, but real `PlayerAchievementMgr` earned/progress data is still missing.
@@ -215,7 +215,7 @@ Note: `character_social` schema in 3.4.3 is `(guid, friend, flags, note)` — th
 - [ ] **#SOCIAL.4** Build `PlayerSocial` in `crates/wow-social` with in-memory `_playerSocialMap` + `_ignoredAccounts`; load on character entry-world; persist diffs on save. Complejidad: **H**
 - [x] **#SOCIAL.5** Implement `CMSG_SET_CONTACT_NOTES` — UPDATE `character_social` SET note with C++ 48-char truncation. Complejidad: **L**
 - [x] **#SOCIAL.6** Implement `CMSG_SOCIAL_CONTRACT_REQUEST` — reply with `SMSG_SOCIAL_CONTRACT_REQUEST_RESPONSE { ShowSocialContract=false }`; implement `CMSG_ACCEPT_SOCIAL_CONTRACT` as empty/no-response hook like C++. Complejidad: **L**
-- [ ] **#SOCIAL.7** Implement friend-status presence broadcast: on `WorldSession::login`, `logout`, `toggle_afk`, `toggle_dnd`, `change_zone`, call `SocialMgr::broadcast_to_friend_listers` to push `SMSG_FRIEND_STATUS`. Complejidad: **H**
+- [x] **#SOCIAL.7** Implement friend-status presence broadcast on login/logout/character delete (`broadcast_friend_status_like_cpp`, `notify_listers_of_deleted_character_like_cpp`, §14). `toggle_afk`/`toggle_dnd`/`change_zone` are intentionally not broadcast: C++ 3.4.3 has no such `SendFriendStatus` callers. Complejidad: **H**
 - [x] **#SOCIAL.8** Enforce 50-entry caps for `AddFriend` (`SOCIALMGR_FRIEND_LIMIT`) and `AddIgnore` (`SOCIALMGR_IGNORE_LIMIT`). Complejidad: **L**
 - [x] **#SOCIAL.9** Add enemy-faction check on `AddFriend` for normal players — reply `FRIEND_ENEMY` (0x0A). `RBAC_PERM_TWO_SIDE_ADD_FRIEND` bypass remains pending under Account/RBAC. Complejidad: **L**
 - [x] **#SOCIAL.10a** Implement `CMSG_CHAT_REPORT_IGNORED` → `CHAT_MSG_IGNORED` feedback path, matching `HandleChatIgnoredOpcode`. Complejidad: **L**
@@ -318,7 +318,7 @@ Net effect after the represented `CMSG_ADD_IGNORE`/`CMSG_DEL_IGNORE` and `CMSG_C
 | `HandleRequestHonorStats` | ✅ returns `SMSG_INSPECT_HONOR_STATS` for online targets | partial: `HonorLevel` real, HK/contribution/rank counters pending missing ActivePlayerData state |
 | `HandleQueryInspectAchievements` | ✅ registered, gates target/range and sends empty `RespondInspectAchievements` | partial: real earned/progress data missing |
 | `HandleInspectPVP` | ❌ unregistered |  |
-| `SocialMgr::BroadcastToFriendListers` (presence updates on login/logout/AFK/DND/zone) | ❌ no push broadcast; AFK/DND source flags now represented in registry | bug |
+| `SocialMgr::BroadcastToFriendListers` (login/logout broadcast, delete notification) | ✅ 2026-09-26: DB reverse lookup + registry delivery with the C++ security/team/visibility gates (§14) | ok (RBAC/other-session security represented as player defaults) |
 | `_ignoredAccounts` set + `WowAccountGuid` capture | ❌ none |  |
 
 ### Other observed bugs / divergences
@@ -337,3 +337,47 @@ Net effect after the represented `CMSG_ADD_IGNORE`/`CMSG_DEL_IGNORE` and `CMSG_C
 - `crates/wow-social/src/lib.rs` confirmed 0 bytes; no `PlayerSocial`, no `SocialMgr` anywhere in the workspace.
 
 **Verdict:** flagged divergence partly reduced. Friends list works for add/delete/list (~50% of `SocialHandler.cpp`). Per-character `AddIgnore`/`DelIgnore` now write and clear `SOCIAL_FLAG_IGNORED`, and `CMSG_CHAT_REPORT_IGNORED` feedback is represented. Account-level ignore, loaded `PlayerSocial`, and server-side `HasIgnore` gates outside the client-report whisper path remain open. Inspect covers basic items/identity plus honor-stats and empty inspect-achievements response; PvP brackets, real achievement content, talents/glyphs and guild data remain absent. AFK/DND flags are now represented in `PlayerRegistry`, but presence broadcast (`SMSG_FRIEND_STATUS` on login/logout/AFK/zone) is still 0%.
+
+---
+
+## 14. Delivery 2026-09-26 — friend-status broadcast, `CMSG_WHO`, social packet structs
+
+Reference tree: TrinityCore tag `TDB343.24081` (`C:\...\TrinityCore-343`, flat opcodes 0x36D8 etc.).
+
+### Friend-status presence (`SMSG_FRIEND_STATUS`)
+
+| C++ | Rust | Notes |
+|---|---|---|
+| `SocialMgr::GetFriendInfo` (`SocialMgr.cpp:200-247`) | `handlers/social.rs::friend_info_like_cpp` + `WorldSession::resolve_friend_info_like_cpp` | Same order: offline zeros → note (only when target online) → `GM.InWhoList.Level` gate → team gate → `IsVisibleGloballyFor` → DND/AFK/ONLINE(+RAF) + area/level/class. RAF uses `recruiter_id`/`account_id` from the directory identity. |
+| `Player::IsVisibleGloballyFor` (`Player.cpp:23036-23055`) | `is_visible_globally_for_like_cpp` | `isGMVisible()` read from `Player::extra_flags() & PLAYER_EXTRA_GM_INVISIBLE (0x0010)`. |
+| `SocialMgr::SendFriendStatus` (:249-261) | `send_friend_status_like_cpp` (direct) / `broadcast_friend_status_like_cpp` (broadcast) | Every handler reply (`FRIEND_*`, `FRIEND_IGNORE_*`) now passes through `GetFriendInfo`, so e.g. `FRIEND_REMOVED` for an online friend carries live status bits like C++. |
+| `SocialMgr::BroadcastToFriendListers` (:263-288) | `broadcast_friend_status_like_cpp` | **Model departure (explicit):** no in-memory `_socialMap`; listers come from `SocialPersistencePortLikeCpp::listers_of_like_cpp(guid, SOCIAL_FLAG_FRIEND)` (`SELECT DISTINCT guid FROM character_social WHERE friend = ? AND (flags & ?) <> 0`), delivery through `PlayerRegistry::send_current_realm_packet` (realm route, `Opcodes.cpp:1392`). Gates per lister: `security > GM.InWhoList.Level`, team, `IsVisibleGloballyFor(lister)`. |
+| `CharacterHandler.cpp:1224` | `session_state.rs::send_login_sequence` right after `send_initial_packets_after_add_to_map_with_catalogs_like_cpp` | Player already registered (`ObjectAccessor::AddObject` equivalent), so `GetFriendInfo(self, self)` sees itself online. |
+| `WorldSession.cpp:651` | `lifecycle/finalization.rs`, `FinalizationStep::Retirement`, before `unregister_from_player_registry` | Result `FRIEND_OFFLINE` with the still-live status bits, as C++. Runs for timed logout, disconnect and character-selection logout. |
+| `Player::DeleteFromDB` (`Player.cpp:3953-3966`, `CHAR_DELETE_REMOVE` only) | `lifecycle.rs::handle_char_delete` → `listers_of_like_cpp(guid, SOCIAL_FLAG_ALL)` (= prepared `CHAR_SEL_CHAR_SOCIAL`) before the delete, `notify_listers_of_deleted_character_like_cpp` after `Applied` | Order departure: C++ notifies inside `DeleteFromDB` before the transaction; Rust notifies only once the delete is applied so a failed delete never announces a removal. |
+
+Persistence: `crates/wow-persistence/src/social.rs::listers_of_like_cpp` (default "no listers" so fixture ports compile); MariaDB adapter `crates/wow-database/src/social_adapter.rs` runs `CharStatements::SEL_CHAR_SOCIAL` for `SOCIAL_FLAG_ALL` and the masked read otherwise.
+
+Directory (additive): `crates/wow-world/src/session/directory/presence.rs` — `PlayerPresenceSnapshotLikeCpp`, `PlayerRegistry::presence_snapshot_like_cpp`, `presence_snapshots_like_cpp` (zone, AFK/DND, GM mode, GM visibility, guild id, level, identity, registration token).
+
+### `CMSG_WHO` / `SMSG_WHO`
+
+- Packets: `crates/wow-packet/src/packets/who.rs` (`WhoRequestPkt`, `WhoRequest`, `WhoRequestServerInfo`, `WhoEntry`, `WhoResponsePkt`, `write_player_guid_lookup_data_like_cpp`) — `WhoPackets.cpp:34-135`, `QueryPackets.cpp:209-233`.
+- Handler: `crates/wow-world/src/handlers/who.rs::handle_who` — `MiscHandler.cpp:85-236`; registered `STATUS_LOGGEDIN`/`PROCESS_THREADSAFE` (`Opcodes.cpp:1016`); admission throttle unchanged (`session/admission.rs`).
+- **Explicit departure:** no periodic `WhoListStorageMgr`; the list is built on demand from `PlayerRegistry::presence_snapshots_like_cpp()` (`is_in_world` ⇔ `FindMap() && !PlayerLoading()`), i.e. live instead of ≤ one refresh interval stale.
+- Filters: level range (with `MaxLevel >= MAX_LEVEL(123) → STRONG_MAX_LEVEL(255)`), class mask (`ClassFilter < 0` = any), race mask (`RaceMask::GetRaceBit` table), up to 10 zones, name substring, guild substring, up to 4 `Words` (name/guild), enemy faction hidden, GM-invisible targets hidden from player accounts, `GM.InWhoList.Level`, cap `CONFIG_MAX_WHO` default 49 (6-bit wire count). `RequestID` echoed; `Origin`, `ExactName`, `ShowEnemies`, `ShowArenaPlayers`, `VirtualRealmName`, `ServerInfo` parsed and ignored like the C++ `@todo`.
+
+### Packet structs (`crates/wow-packet/src/packets/social.rs`)
+
+- Added `AddFriend` (`SocialPackets.cpp:111-117`), `DelFriend` (:119-122), `SendContactList` (:22-25).
+- **Bug repair (explicit, not hidden):** `QualifiedGUID` (`SocialPackets.cpp:103-109`) reads `VirtualRealmAddress` **before** the GUID. `DelIgnore` and `SetContactNotes` previously read GUID first; all three qualified-GUID readers now share `read_qualified_guid_like_cpp`. Tests updated to the C++ order plus a negative test for the reversed layout.
+
+### Represented gaps (unchanged model limits, all documented in the module docs)
+
+- RBAC permissions are represented as not granted (normal-player behavior); other sessions' account security is not published by the directory and is represented as `SEC_PLAYER` (`GM.InWhoList.Level` and GM-vs-GM visibility branches therefore only see the own session's exact security).
+- No `GuildMgr`: who rows carry an empty guild block, a non-empty `Guild` filter matches nobody (as C++ would with empty names).
+- `AreaTable` reader carries no localized names: the `Utf8FitTo(areaName, word)` term of `Words` cannot match.
+- `PLAYER_EXTRA_GM_INVISIBLE` has no setter in `wow-entities`; the GM-invisible branches are covered by pure-function tests over `PlayerPresenceSnapshotLikeCpp`.
+- Non-goals kept: `CMSG_WHO_IS`, BattleTag/cross-realm branches, mute list, account-level ignore, presence for BattleTag friends.
+
+Tests: `cargo test -p wow-packet social who --lib`, `cargo test -p wow-world social who --lib`, `cargo test -p wow-database social --lib` (see the delivery report for executed counts).

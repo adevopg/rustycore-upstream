@@ -332,6 +332,12 @@ pub use world::{
     RespawnPersistencePortLikeCpp, RespawnPersistenceRowLikeCpp,
 };
 
+mod bnet_friends;
+pub use bnet_friends::{
+    BnetAccountIdentityLikeCpp, BnetAccountLookupLikeCpp, BnetFriendInvitationRowLikeCpp,
+    BnetFriendLinkRowLikeCpp, BnetFriendsLoadLikeCpp, BnetFriendsPersistencePortLikeCpp,
+};
+
 mod battle_pay;
 mod battle_pay_services;
 pub use battle_pay::{

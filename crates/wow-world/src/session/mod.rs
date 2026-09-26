@@ -12104,6 +12104,10 @@ impl WorldSession {
             self.set_player_level_like_cpp(new_level);
             self.set_player_next_level_xp_like_cpp(next_level_xp);
             self.send_level_up_stat_update_like_cpp();
+            // LegionCore `Battlenet::FriendsMgr::OnPlayerLevelChanged`.
+            if let Some(mgr) = crate::bnet_friends::global_like_cpp() {
+                mgr.on_player_level_changed_like_cpp(&*self);
+            }
         }
 
         self.sync_represented_xp_level_to_canonical_and_client_like_cpp(

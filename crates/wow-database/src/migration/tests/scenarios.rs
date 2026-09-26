@@ -83,7 +83,7 @@ fn bundled_manifest_has_four_explicit_baselines_and_exact_sources() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../database/migrations/manifest.toml");
     let manifest = MigrationManifest::load(&path).expect("bundled manifest must validate");
     assert_eq!(manifest.baselines.len(), 4);
-    assert_eq!(manifest.migrations.len(), 8);
+    assert_eq!(manifest.migrations.len(), 9);
     assert_eq!(
         manifest
             .baseline(DatabaseKind::World)
@@ -92,6 +92,29 @@ fn bundled_manifest_has_four_explicit_baselines_and_exact_sources() {
             .as_deref(),
         Some("TDB 343.24081")
     );
+    // Battle.net friends migration: idempotent auth schema plus an adopt query
+    // that recognises an already-migrated database by its columns and keys.
+    let bnet_friends = manifest
+        .migrations
+        .iter()
+        .find(|migration| migration.version == "2026.09.26.00")
+        .expect("bnet friends auth migration");
+    assert_eq!(bnet_friends.database, DatabaseKind::Auth);
+    let adopt = bnet_friends.adopt_query.as_deref().unwrap();
+    assert!(adopt.trim_start().starts_with("SELECT IF("));
+    for needle in [
+        "table_name = 'battlenet_accounts' AND column_name = 'battle_tag'",
+        "table_name = 'battlenet_account_friends'",
+        "table_name = 'battlenet_account_friend_invitations'",
+    ] {
+        assert!(adopt.contains(needle), "{needle}");
+    }
+    let source = fs::read_to_string(manifest.source_path(bnet_friends)).unwrap();
+    assert!(source.contains("CREATE TABLE IF NOT EXISTS `battlenet_account_friends`"));
+    assert!(source.contains("CREATE TABLE IF NOT EXISTS `battlenet_account_friend_invitations`"));
+    assert!(source.contains(
+        "SET `battle_tag` = CONCAT(SUBSTRING_INDEX(`email`, '@', 1), '#', LPAD(`id`, 4, '0'))"
+    ));
 }
 
 #[test]

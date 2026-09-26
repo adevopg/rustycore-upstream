@@ -97,6 +97,7 @@ fn selected_game_account_like_cpp_uses_identity_selection_not_hashmap_order() {
         is_banned: false,
         is_permanently_banned: false,
         game_accounts,
+        battle_tag: String::new(),
     };
 
     let selected = selected_game_account_like_cpp(&account, Some(42)).unwrap();

@@ -1,0 +1,82 @@
+// BNet UserManager service messages (block list, recent players).
+//
+// Reconstructed from the FileDescriptorProto embedded in TrinityCore 3.4.3
+// `src/server/proto/Client/user_manager_service.pb.cc` (`protoc --decode`). Method
+// ids are the `CallServerMethod` / `SendRequest` tables of that file.
+//
+// -- UserManagerService (server handles, OriginalHash 0x3E19268A) --
+// Method 1:  Subscribe(SubscribeRequest) -> SubscribeResponse
+// Method 10: AddRecentPlayers(AddRecentPlayersRequest) -> NoData
+// Method 11: ClearRecentPlayers(ClearRecentPlayersRequest) -> NoData
+// Method 20: BlockPlayer(BlockPlayerRequest) -> NoData
+// Method 21: UnblockPlayer(UnblockPlayerRequest) -> NoData
+// Method 40: BlockPlayerForSession(BlockPlayerRequest) -> NoData
+// Method 51: Unsubscribe(UnsubscribeRequest) -> NoData
+//
+// -- UserManagerListener (client handles, OriginalHash 0xBC872C22) --
+// Method 1:  OnBlockedPlayerAdded(BlockedPlayerAddedNotification)
+// Method 2:  OnBlockedPlayerRemoved(BlockedPlayerRemovedNotification)
+// Method 11: OnRecentPlayersAdded(RecentPlayersAddedNotification)
+// Method 12: OnRecentPlayersRemoved(RecentPlayersRemovedNotification)
+
+syntax = "proto2";
+package bgs.protocol.user_manager.v1;
+
+import "bgs/low/pb/client/entity_types.proto";
+import "bgs/low/pb/client/user_manager_types.proto";
+
+message SubscribeRequest {
+  optional bgs.protocol.EntityId agent_id = 1;
+  required uint64 object_id = 2;
+}
+
+message SubscribeResponse {
+  repeated BlockedPlayer blocked_players = 1;
+  repeated RecentPlayer recent_players = 2;
+}
+
+message UnsubscribeRequest {
+  optional bgs.protocol.EntityId agent_id = 1;
+  optional uint64 object_id = 2;
+}
+
+message AddRecentPlayersRequest {
+  repeated RecentPlayer players = 1;
+  optional bgs.protocol.EntityId agent_id = 2;
+  optional uint32 program = 3;
+}
+
+message ClearRecentPlayersRequest {
+  optional bgs.protocol.EntityId agent_id = 1;
+  optional uint32 program = 2;
+}
+
+message BlockPlayerRequest {
+  optional bgs.protocol.EntityId agent_id = 1;
+  required bgs.protocol.EntityId target_id = 2;
+}
+
+message UnblockPlayerRequest {
+  optional bgs.protocol.EntityId agent_id = 1;
+  required bgs.protocol.EntityId target_id = 2;
+}
+
+message BlockedPlayerAddedNotification {
+  required BlockedPlayer player = 1;
+  optional bgs.protocol.EntityId game_account_id = 2;
+  optional bgs.protocol.EntityId account_id = 3;
+}
+
+message BlockedPlayerRemovedNotification {
+  required BlockedPlayer player = 1;
+  optional bgs.protocol.EntityId game_account_id = 2;
+  optional bgs.protocol.EntityId account_id = 3;
+}
+
+message RecentPlayersAddedNotification {
+  repeated RecentPlayer player = 1;
+}
+
+message RecentPlayersRemovedNotification {
+  repeated RecentPlayer player = 1;
+}

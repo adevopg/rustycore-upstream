@@ -1,0 +1,50 @@
+// BNet invitation types.
+//
+// Reconstructed from the FileDescriptorProto embedded in TrinityCore 3.4.3
+// `src/server/proto/Client/invitation_types.pb.cc` (`protoc --decode`).
+//
+// The generated file declares `InvitationParams` with `extensions 100 to 9999`
+// and `friends_types.proto` registers `friend_params = 103` as an extension.
+// prost has no extension support, so the extension is declared here as an
+// ordinary optional field with the same number and type: identical wire bytes.
+
+syntax = "proto2";
+package bgs.protocol;
+
+import "bgs/low/pb/client/entity_types.proto";
+import "bgs/low/pb/client/friends_types.proto";
+
+enum InvitationRemovedReason {
+  INVITATION_REMOVED_REASON_ACCEPTED = 0;
+  INVITATION_REMOVED_REASON_DECLINED = 1;
+  INVITATION_REMOVED_REASON_REVOKED = 2;
+  INVITATION_REMOVED_REASON_IGNORED = 3;
+  INVITATION_REMOVED_REASON_EXPIRED = 4;
+  INVITATION_REMOVED_REASON_CANCELED = 5;
+}
+
+enum SuggestionRemovedReason {
+  SUGGESTION_REMOVED_REASON_APPROVED = 0;
+  SUGGESTION_REMOVED_REASON_DECLINED = 1;
+  SUGGESTION_REMOVED_REASON_EXPIRED = 2;
+  SUGGESTION_REMOVED_REASON_CANCELED = 3;
+}
+
+message Invitation {
+  required fixed64 id = 1;
+  required Identity inviter_identity = 2;
+  required Identity invitee_identity = 3;
+  optional string inviter_name = 4;
+  optional string invitee_name = 5;
+  optional string invitation_message = 6;
+  optional uint64 creation_time = 7;
+  optional uint64 expiration_time = 8;
+}
+
+message InvitationParams {
+  optional string invitation_message = 1; // deprecated
+  optional uint64 expiration_time = 2;
+  // `extend InvitationParams { optional FriendInvitationParams friend_params = 103; }`
+  // from friends_types.proto, inlined (see the header comment).
+  optional bgs.protocol.friends.v1.FriendInvitationParams friend_params = 103;
+}

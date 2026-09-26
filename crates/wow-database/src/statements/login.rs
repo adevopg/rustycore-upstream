@@ -208,6 +208,28 @@ pub enum LoginStatements {
     SEL_BPAY_VAS_TRANSFER_TARGET_BY_EMAIL,
     /// Order status witness of the distribution/undelete order transactions.
     SEL_BPAY_PURCHASE_STATUS,
+    /// Battle.net friends (LegionCore `Battlenet::FriendsMgr::LoadFromDB`): every
+    /// `battlenet_accounts` identity (id, email, battle_tag).
+    SEL_BNET_ACCOUNT_IDENTITIES_ALL,
+    SEL_BNET_ACCOUNT_IDENTITY_BY_ID,
+    /// `SendInvitation` target by `FriendInvitationParams.target_battle_tag`.
+    SEL_BNET_ACCOUNT_IDENTITY_BY_BATTLE_TAG,
+    /// `SendInvitation` target by `FriendInvitationParams.target_email`.
+    SEL_BNET_ACCOUNT_IDENTITY_BY_EMAIL,
+    /// LegionCore `LOGIN_SEL_BNET_FRIENDS` (both directions of every friendship).
+    SEL_BNET_FRIENDS_ALL,
+    /// LegionCore `LOGIN_SEL_BNET_FRIEND_INVITATIONS`.
+    SEL_BNET_FRIEND_INVITATIONS_ALL,
+    /// LegionCore `LOGIN_INS_BNET_FRIEND_INVITATION`.
+    INS_BNET_FRIEND_INVITATION,
+    /// LegionCore `LOGIN_DEL_BNET_FRIEND_INVITATION`.
+    DEL_BNET_FRIEND_INVITATION,
+    /// LegionCore `LOGIN_INS_BNET_FRIEND` (one direction; accept writes two).
+    INS_BNET_FRIEND,
+    /// LegionCore `LOGIN_DEL_BNET_FRIEND` (one direction; remove writes two).
+    DEL_BNET_FRIEND,
+    /// LegionCore `LOGIN_UPD_BNET_FRIEND_NOTE`.
+    UPD_BNET_FRIEND_NOTE,
 }
 
 impl StatementDef for LoginStatements {
@@ -425,7 +447,7 @@ impl StatementDef for LoginStatements {
                 "SELECT ba.id, UPPER(ba.email), ba.locked, ba.lock_country, ba.last_ip, ",
                 "ba.LoginTicketExpiry, bab.unbandate > UNIX_TIMESTAMP() OR bab.unbandate = bab.bandate, ",
                 "bab.unbandate = bab.bandate, a.id, a.username, ab.unbandate, ",
-                "ab.unbandate = ab.bandate, aa.SecurityLevel ",
+                "ab.unbandate = ab.bandate, aa.SecurityLevel, ba.battle_tag ",
                 "FROM battlenet_accounts ba LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id ",
                 "LEFT JOIN account a ON ba.id = a.battlenet_account ",
                 "LEFT JOIN account_banned ab ON a.id = ab.id AND ab.active = 1 ",
@@ -689,6 +711,41 @@ impl StatementDef for LoginStatements {
                 "LEFT JOIN account a ON a.battlenet_account = ba.id WHERE ba.email = ? ",
                 "ORDER BY a.battlenet_index ASC",
             ),
+            Self::SEL_BNET_ACCOUNT_IDENTITIES_ALL => {
+                "SELECT id, email, battle_tag FROM battlenet_accounts"
+            }
+            Self::SEL_BNET_ACCOUNT_IDENTITY_BY_ID => {
+                "SELECT id, email, battle_tag FROM battlenet_accounts WHERE id = ?"
+            }
+            Self::SEL_BNET_ACCOUNT_IDENTITY_BY_BATTLE_TAG => {
+                "SELECT id, email, battle_tag FROM battlenet_accounts WHERE battle_tag = ?"
+            }
+            Self::SEL_BNET_ACCOUNT_IDENTITY_BY_EMAIL => {
+                "SELECT id, email, battle_tag FROM battlenet_accounts WHERE email = ?"
+            }
+            Self::SEL_BNET_FRIENDS_ALL => {
+                "SELECT account_id, friend_id, note, role FROM battlenet_account_friends ORDER BY account_id, friend_id"
+            }
+            Self::SEL_BNET_FRIEND_INVITATIONS_ALL => concat!(
+                "SELECT id, inviter_id, invitee_id, message, UNIX_TIMESTAMP(created), role ",
+                "FROM battlenet_account_friend_invitations ORDER BY id",
+            ),
+            Self::INS_BNET_FRIEND_INVITATION => concat!(
+                "INSERT INTO battlenet_account_friend_invitations (id, inviter_id, invitee_id, message, created, role) ",
+                "VALUES (?, ?, ?, ?, FROM_UNIXTIME(?), ?)",
+            ),
+            Self::DEL_BNET_FRIEND_INVITATION => {
+                "DELETE FROM battlenet_account_friend_invitations WHERE id = ?"
+            }
+            Self::INS_BNET_FRIEND => {
+                "INSERT INTO battlenet_account_friends (account_id, friend_id, note, role) VALUES (?, ?, ?, ?)"
+            }
+            Self::DEL_BNET_FRIEND => {
+                "DELETE FROM battlenet_account_friends WHERE account_id = ? AND friend_id = ?"
+            }
+            Self::UPD_BNET_FRIEND_NOTE => {
+                "UPDATE battlenet_account_friends SET note = ? WHERE account_id = ? AND friend_id = ?"
+            }
         }
     }
 }

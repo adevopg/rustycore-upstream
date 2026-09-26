@@ -121,4 +121,32 @@ pub trait SocialPersistencePortLikeCpp: Send + Sync {
         target_guid: i64,
         note: String,
     ) -> PersistenceFutureLikeCpp<'a, PersistenceOutcomeLikeCpp>;
+
+    /// Reverse lookup of every character whose `character_social` row lists
+    /// `friend_guid` with at least one bit of `flags`.
+    ///
+    /// C++ keeps every loaded `PlayerSocial` in `SocialMgr::_socialMap` and
+    /// `SocialMgr::BroadcastToFriendListers` (`SocialMgr.cpp:263-288`) scans
+    /// that map for entries carrying `SOCIAL_FLAG_FRIEND`; `Player::DeleteFromDB`
+    /// (`Player.cpp:3953-3966`) runs the DB statement `CHAR_SEL_CHAR_SOCIAL`
+    /// (`SELECT DISTINCT guid FROM character_social WHERE friend = ?`) for every
+    /// flag. RustyCore keeps the DB-backed model, so both callers resolve the
+    /// listers through this read: `flags == SOCIAL_FLAG_ALL` is exactly the C++
+    /// prepared statement, a narrower mask adds the `SOCIAL_FLAG_FRIEND` gate
+    /// the broadcast applies in memory.
+    ///
+    /// A read has no ambiguous-COMMIT state; the `Err` carries the driver
+    /// reason so the caller can log and skip the notification, never a
+    /// half-broadcast.
+    ///
+    /// Default: no listers. Fixture ports that do not model the reverse map
+    /// keep compiling; the MariaDB adapter overrides it.
+    fn listers_of_like_cpp<'a>(
+        &'a self,
+        friend_guid: u64,
+        flags: u32,
+    ) -> PersistenceFutureLikeCpp<'a, Result<Vec<u64>, String>> {
+        let _ = (friend_guid, flags);
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }

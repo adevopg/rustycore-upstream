@@ -64,6 +64,11 @@ async fn handle_get_game_account_state<S: AsyncRead + AsyncWrite + Unpin>(
 }
 
 /// Mirrors `Session::HandleGetAccountState`: only `field_privacy_info` is answered.
+///
+/// C++ answers `is_visible_for_view_friends = false` / `is_hidden_from_friend_finder
+/// = true` because it serves no friends at all. RustyCore's worldserver serves
+/// BattleTag friends (`wow_world::bnet_friends`), so the account is visible to
+/// `FriendsService.ViewFriends` and findable by BattleTag / e-mail invitations.
 fn get_account_state_like_cpp(
     authed: bool,
     request: &GetAccountStateRequest,
@@ -78,8 +83,8 @@ fn get_account_state_like_cpp(
         response.state = Some(AccountState {
             privacy_info: Some(PrivacyInfo {
                 is_using_rid: Some(false),
-                is_visible_for_view_friends: Some(false),
-                is_hidden_from_friend_finder: Some(true),
+                is_visible_for_view_friends: Some(true),
+                is_hidden_from_friend_finder: Some(false),
             }),
         });
         response.tags = Some(AccountFieldTags {
@@ -173,6 +178,7 @@ mod tests {
             is_banned: false,
             is_permanently_banned: false,
             game_accounts,
+            battle_tag: "INNA#0001".to_string(),
         }
     }
 
@@ -326,7 +332,7 @@ mod tests {
             vec![
                 0x0A, 0x08, // state (1)
                 0x12, 0x06, // privacy_info (2)
-                0x18, 0x00, 0x20, 0x00, 0x28, 0x01, // is_using_rid 3, visible 4, hidden 5
+                0x18, 0x00, 0x20, 0x01, 0x28, 0x00, // is_using_rid 3, visible 4, hidden 5
                 0x12, 0x05, // tags (2)
                 0x1D, 0x4D, 0x83, 0xCA, 0xD7, // privacy_info_tag (3)
             ]

@@ -2498,6 +2498,23 @@ impl WorldSession {
         )
         .await;
 
+        // C++ `HandlePlayerLogin` (`CharacterHandler.cpp:1224`): after
+        // `SendInitialPacketsAfterAddToMap` and the group update, before
+        // `LoadCorpse`, `sSocialMgr->SendFriendStatus(pCurrChar, FRIEND_ONLINE,
+        // guid, true)` announces the login to every online lister. The player is
+        // already registered (`ObjectAccessor::AddObject` equivalent above), so
+        // `GetFriendInfo(self, self)` resolves the live status bits.
+        self.broadcast_friend_status_like_cpp(wow_packet::packets::social::FriendsResult::Online)
+            .await;
+
+        // LegionCore `Battlenet::FriendsMgr::OnSessionOpened` + `OnPlayerLogin`:
+        // register this session's channel for BattleTag notifications and push
+        // the character's game-account presence to every online BattleTag friend.
+        if let Some(mgr) = crate::bnet_friends::global_like_cpp() {
+            mgr.on_session_opened_like_cpp(&*self).await;
+            mgr.on_player_login_like_cpp(&*self);
+        }
+
         // C++ does not deliver SMSG_ON_MONSTER_MOVE inside the initial
         // enter-world packet burst. Rust fan-out commands are queued from a
         // sessionless world tick, so remember the burst boundary and drop only

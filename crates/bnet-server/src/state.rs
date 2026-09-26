@@ -168,6 +168,10 @@ pub struct AccountInfo {
     pub is_banned: bool,
     pub is_permanently_banned: bool,
     pub game_accounts: HashMap<u32, GameAccountInfo>,
+    /// `battlenet_accounts.battle_tag` (`Name#1234`); empty when the column is
+    /// NULL. Sent as `LogonResult.battle_tag` so the client enables the
+    /// BattleTag friends panel (`BNGetInfo()`).
+    pub battle_tag: String,
 }
 
 /// Game account info associated with a BNet account.

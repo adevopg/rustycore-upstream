@@ -32,44 +32,51 @@ impl WorldSession {
         //
         // Unimplemented participant: Classic then notifies the guild through
         // `Guild::SendEventAwayChanged`.
-        self.mutate_canonical_player_like_cpp(move |player| {
-            let already_active = match mode {
-                PlayerAwayModeLikeCpp::Afk => player.is_afk_like_cpp(),
-                PlayerAwayModeLikeCpp::Dnd => player.is_dnd_like_cpp(),
-            };
-            if already_active {
-                if text.is_empty() {
-                    match mode {
-                        PlayerAwayModeLikeCpp::Afk => player.toggle_afk_like_cpp(),
-                        PlayerAwayModeLikeCpp::Dnd => player.toggle_dnd_like_cpp(),
+        let applied = self
+            .mutate_canonical_player_like_cpp(move |player| {
+                let already_active = match mode {
+                    PlayerAwayModeLikeCpp::Afk => player.is_afk_like_cpp(),
+                    PlayerAwayModeLikeCpp::Dnd => player.is_dnd_like_cpp(),
+                };
+                if already_active {
+                    if text.is_empty() {
+                        match mode {
+                            PlayerAwayModeLikeCpp::Afk => player.toggle_afk_like_cpp(),
+                            PlayerAwayModeLikeCpp::Dnd => player.toggle_dnd_like_cpp(),
+                        }
+                    } else {
+                        player.set_auto_reply_message_like_cpp(text);
                     }
-                } else {
-                    player.set_auto_reply_message_like_cpp(text);
+                    return;
                 }
-                return;
-            }
 
-            player.set_auto_reply_message_like_cpp(if text.is_empty() {
-                default_text.to_string()
-            } else {
-                text
-            });
-            match mode {
-                PlayerAwayModeLikeCpp::Afk => {
-                    if player.is_dnd_like_cpp() {
-                        player.toggle_dnd_like_cpp();
-                    }
-                    player.toggle_afk_like_cpp();
-                }
-                PlayerAwayModeLikeCpp::Dnd => {
-                    if player.is_afk_like_cpp() {
+                player.set_auto_reply_message_like_cpp(if text.is_empty() {
+                    default_text.to_string()
+                } else {
+                    text
+                });
+                match mode {
+                    PlayerAwayModeLikeCpp::Afk => {
+                        if player.is_dnd_like_cpp() {
+                            player.toggle_dnd_like_cpp();
+                        }
                         player.toggle_afk_like_cpp();
                     }
-                    player.toggle_dnd_like_cpp();
+                    PlayerAwayModeLikeCpp::Dnd => {
+                        if player.is_afk_like_cpp() {
+                            player.toggle_afk_like_cpp();
+                        }
+                        player.toggle_dnd_like_cpp();
+                    }
                 }
-            }
-        })
-        .is_some()
+            })
+            .is_some();
+        // LegionCore `Battlenet::FriendsMgr::OnPlayerStatusChanged`: BattleTag
+        // friends see the AFK/DND change.
+        if applied && let Some(mgr) = crate::bnet_friends::global_like_cpp() {
+            mgr.on_player_status_changed_like_cpp(&*self);
+        }
+        applied
     }
     /// Set the C++ Emotes.db2 store for `Unit::HandleEmoteCommand`.
     #[cfg(test)]

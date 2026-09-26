@@ -3748,6 +3748,22 @@ async fn run_inner(
         realm_build,
         Arc::clone(&login_db),
     ));
+    // Battle.net (BattleTag) friends served by this worldserver (LegionCore
+    // `sFriendsMgr->LoadFromDB()`); the session dispatcher and the player
+    // lifecycle hooks reach it through `wow_world::bnet_friends::global_like_cpp`.
+    let bnet_friends = Arc::new(wow_world::bnet_friends::BnetFriendsMgr::new(Arc::new(
+        wow_database::MariaDbBnetFriendsPersistenceAdapterLikeCpp::new(Arc::clone(&login_db)),
+    )));
+    match bnet_friends.load_from_db_like_cpp().await {
+        Ok(_) => {
+            if wow_world::bnet_friends::install_global_like_cpp(bnet_friends).is_err() {
+                warn!("Battle.net friends manager was already installed");
+            }
+        }
+        // The auth schema may predate the 2026_09_26_00 migration; the three
+        // services then keep answering ERROR_RPC_NOT_IMPLEMENTED like C++.
+        Err(error) => warn!("Battle.net friends not loaded (services stay unimplemented): {error}"),
+    }
     let battle_pet_account_registry = Arc::new(BattlePetAccountRegistryLikeCpp::new(
         Arc::new(LoginBattlePetPersistenceLikeCpp::new(Arc::clone(&login_db))),
         Arc::clone(&battle_pet_species_entry_store),

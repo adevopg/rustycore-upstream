@@ -79,6 +79,24 @@ SELECT IF(
 
 [[migrations]]
 component = "core"
+database = "auth"
+version = "2026.09.26.00"
+description = "battle.net friends: battlenet_accounts.battle_tag, friend links and pending invitations"
+file = "../../sql/updates/auth/wotlk_classic/2026_09_26_00_auth.sql"
+sha256 = "a33bcf9958b071d2a87b2c8f2a929d1a17ca5dec39f49308a2b8aef7d62b07e7"
+state = "active"
+adopt_query = '''
+SELECT IF(
+  (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlenet_accounts' AND column_name = 'battle_tag') = 1
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlenet_account_friends' AND column_name IN ('account_id','friend_id','note','role')) = 4
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'battlenet_account_friends' AND index_name = 'PRIMARY' AND column_name IN ('account_id','friend_id')) = 2
+  AND (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'battlenet_account_friend_invitations' AND column_name IN ('id','inviter_id','invitee_id','message','created','role')) = 6
+  AND (SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'battlenet_account_friend_invitations' AND index_name = 'PRIMARY' AND column_name = 'id') = 1,
+  1, 0)
+'''
+
+[[migrations]]
+component = "core"
 database = "characters"
 version = "2026.08.01.00"
 description = "spell acquisition operation attribution"

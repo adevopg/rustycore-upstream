@@ -41,6 +41,7 @@ use wow_proto::bgs::protocol::{Attribute, Variant};
 use wow_proto::realm_list_json::{self, RealmCharacterCountEntry, RealmCharacterCountList};
 use wow_proto::{service_hash, status};
 
+use crate::bnet_friends::BnetFriendsSessionLikeCpp;
 use crate::session::WorldSession;
 
 /// `OriginalHash` of every service C++ `WorldserverServiceDispatcher`
@@ -119,6 +120,11 @@ pub(crate) enum BattlenetReplyLikeCpp {
     Status(u32),
 }
 
+/// Upper-case hex dump of a request payload for the unimplemented-service log.
+fn payload_hex_like_cpp(data: &[u8]) -> String {
+    data.iter().map(|byte| format!("{byte:02X}")).collect()
+}
+
 /// C++ `removeSuffix`: strip from the last `_` (`Command_Foo_v1_b9` -> `Command_Foo_v1`).
 fn remove_suffix_like_cpp(name: &str) -> &str {
     name.rfind('_').map_or(name, |pos| &name[..pos])
@@ -154,7 +160,7 @@ fn blob_attribute(name: &str, value: Vec<u8>) -> Attribute {
 }
 
 /// C++ `ServerContinuation`: `ERROR_OK` sends the message, anything else the status.
-fn continuation_like_cpp<M: Message>(result: Result<M, u32>) -> BattlenetReplyLikeCpp {
+pub(crate) fn continuation_like_cpp<M: Message>(result: Result<M, u32>) -> BattlenetReplyLikeCpp {
     match result {
         Ok(response) => BattlenetReplyLikeCpp::Message(response.encode_to_vec()),
         Err(status) => BattlenetReplyLikeCpp::Status(status),
@@ -164,7 +170,7 @@ fn continuation_like_cpp<M: Message>(result: Result<M, u32>) -> BattlenetReplyLi
 /// C++ generated `ParseAndHandle*` for a request that the worldserver does
 /// not override: parse (or `ERROR_RPC_MALFORMED_REQUEST`), then the default
 /// handler returns `ERROR_RPC_NOT_IMPLEMENTED`, which is always sent.
-fn unimplemented_method_like_cpp<M: Message + Default>(
+pub(crate) fn unimplemented_method_like_cpp<M: Message + Default>(
     method: &str,
     data: &[u8],
 ) -> BattlenetReplyLikeCpp {
@@ -216,17 +222,48 @@ impl WorldSession {
         method_id: u32,
         data: &[u8],
     ) {
+        let friends_service = matches!(
+            service_hash,
+            service_hash::FRIENDS_SERVICE
+                | service_hash::PRESENCE_SERVICE
+                | service_hash::USER_MANAGER_SERVICE
+        );
         let reply = if service_hash == service_hash::GAME_UTILITIES_SERVICE {
             self.call_game_utilities_server_method_like_cpp(method_id, data)
                 .await
+        } else if let Some(mgr) = crate::bnet_friends::global_like_cpp().filter(|_| friends_service)
+        {
+            // RustyCore addition: Battle.net friends / presence / block list
+            // served by the worldserver (`bnet_friends`), where C++ 3.4.3 only
+            // has NOT_IMPLEMENTED stubs.
+            let agent = self.bnet_agent_like_cpp();
+            let sender = self.packet_sender_like_cpp();
+            match service_hash {
+                service_hash::FRIENDS_SERVICE => {
+                    crate::bnet_friends::call_friends_service_method_like_cpp(
+                        mgr, agent, sender, method_id, data,
+                    )
+                    .await
+                }
+                service_hash::PRESENCE_SERVICE => {
+                    crate::bnet_friends::call_presence_service_method_like_cpp(
+                        mgr, agent, sender, method_id, data,
+                    )
+                }
+                _ => crate::bnet_friends::call_user_manager_service_method_like_cpp(
+                    mgr, agent, sender, method_id, data,
+                ),
+            }
         } else if WORLDSERVER_SERVICE_HASHES_LIKE_CPP.contains(&service_hash) {
             // Plain `WorldserverService<T>`: every generated handler returns
             // ERROR_RPC_NOT_IMPLEMENTED. The per-service method tables are not
             // generated here, so unknown method ids of these services also get
-            // NOT_IMPLEMENTED instead of ERROR_RPC_INVALID_METHOD.
+            // NOT_IMPLEMENTED instead of ERROR_RPC_INVALID_METHOD. The payload
+            // is logged so an unexpected client call can be reconstructed.
             debug!(
                 account = self.account_id,
-                "Client called not implemented Battle.net service 0x{service_hash:08X} method {method_id}"
+                "Client called not implemented Battle.net service 0x{service_hash:08X} method {method_id} payload [{}]",
+                payload_hex_like_cpp(data)
             );
             BattlenetReplyLikeCpp::Status(status::ERROR_RPC_NOT_IMPLEMENTED)
         } else {
