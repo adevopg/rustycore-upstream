@@ -19,6 +19,9 @@ use std::process;
 const DEFAULT_CHECKOUT: &str = "https://tienda.nightspire.gg:8096/shop/simplecheckout/loading";
 const DEFAULT_SSO: &str = "https://tienda.nightspire.gg/login/sso?token=%s&ref=%s";
 const DEFAULT_HOST: &str = "nightspire.gg/s";
+/// Lista blanca de URLs del navegador del checkout (3 copias en el ejecutable, la mas corta de
+/// 48 bytes). Sin ella la pagina carga pero el cliente no le inyecta `purchaseRequest`.
+const DEFAULT_ALLOW: &str = r"^https?:\/\/([\w.-]+\.)?nightspire\.gg.*$";
 
 struct Rule {
     name: &'static str,
@@ -36,6 +39,7 @@ struct Options {
     checkout: String,
     sso: String,
     host: String,
+    allow: String,
 }
 
 fn usage() -> ! {
@@ -44,6 +48,7 @@ fn usage() -> ! {
          \n  --checkout  URL de la pagina de carga del checkout (defecto {DEFAULT_CHECKOUT})\
          \n  --sso       URL del SSO de soporte, con %s para token y ref (defecto {DEFAULT_SSO})\
          \n  --host      host de soporte, maximo 15 caracteres (defecto {DEFAULT_HOST})\
+         \n  --allow     regex de la lista blanca del navegador, maximo 47 caracteres (defecto {DEFAULT_ALLOW})\
          \n  --dry-run   solo muestra lo que cambiaria"
     );
     process::exit(2);
@@ -58,6 +63,7 @@ fn parse_args() -> Options {
         checkout: DEFAULT_CHECKOUT.to_string(),
         sso: DEFAULT_SSO.to_string(),
         host: DEFAULT_HOST.to_string(),
+        allow: DEFAULT_ALLOW.to_string(),
     };
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -66,6 +72,7 @@ fn parse_args() -> Options {
             "--checkout" => opts.checkout = args.next().unwrap_or_else(|| usage()),
             "--sso" => opts.sso = args.next().unwrap_or_else(|| usage()),
             "--host" => opts.host = args.next().unwrap_or_else(|| usage()),
+            "--allow" => opts.allow = args.next().unwrap_or_else(|| usage()),
             "-h" | "--help" => usage(),
             other if opts.path.is_empty() && !other.starts_with("--") => opts.path = other.to_string(),
             _ => usage(),
@@ -131,6 +138,12 @@ fn main() {
             must_contain: &["blizzard-checkout/loading"],
             must_not_contain: &["login/sso"],
             replacement: opts.checkout.clone(),
+        },
+        Rule {
+            name: "lista blanca",
+            must_contain: &["^https?:", "(\\/.*)?$"],
+            must_not_contain: &[],
+            replacement: opts.allow.clone(),
         },
         Rule {
             name: "SSO soporte",
