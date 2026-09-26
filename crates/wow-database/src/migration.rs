@@ -441,7 +441,8 @@ async fn apply_one(
     let content = normalized_source(&manifest.source_path(migration))?;
     let started = Instant::now();
     for statement in split_sql(&content) {
-        if let Err(error) = sqlx::query(statement).execute(&mut **connection).await {
+        // Text protocol: migration scripts may contain statements MySQL cannot prepare.
+        if let Err(error) = sqlx::raw_sql(statement).execute(&mut **connection).await {
             let message = format!("{error}");
             let _ = sqlx::query(
                 "UPDATE `rustycore_schema_history` SET `execution_time_ms` = ?, `failure_message` = ? WHERE `component` = ? AND `version` = ?",
@@ -555,7 +556,9 @@ async fn import_transition_history(
         return Ok(());
     }
 
-    sqlx::query("START TRANSACTION")
+    // Text protocol on purpose: MySQL (unlike MariaDB) rejects START TRANSACTION / ROLLBACK in
+    // the prepared-statement protocol with ER_UNSUPPORTED_PS (1295).
+    sqlx::raw_sql("START TRANSACTION")
         .execute(&mut **connection)
         .await?;
     let import_result: Result<()> = async {
@@ -578,10 +581,10 @@ async fn import_transition_history(
     }
     .await;
     if let Err(error) = import_result {
-        let _ = sqlx::query("ROLLBACK").execute(&mut **connection).await;
+        let _ = sqlx::raw_sql("ROLLBACK").execute(&mut **connection).await;
         return Err(error).context("legacy history import rolled back");
     }
-    sqlx::query("COMMIT").execute(&mut **connection).await?;
+    sqlx::raw_sql("COMMIT").execute(&mut **connection).await?;
     Ok(())
 }
 
