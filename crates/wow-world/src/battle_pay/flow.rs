@@ -718,18 +718,23 @@ pub(crate) async fn handle_confirm_purchase_response<S: BattlePaySessionLikeCpp>
         character_guid: purchase.target_character.counter() as u64,
         transfer: purchase.transfer,
     };
+    // Order matters, as in LegionCore `HandleBattlePayConfirmPurchase` (`SendPurchaseUpdate`
+    // then `ProcessDelivery`): the purchase update must reach the client BEFORE any delivery
+    // packet. A boost delivery sends `BattlePayDistributionUpdate`, whose Lua handler
+    // (`PRODUCT_DISTRIBUTIONS_UPDATED` -> `StoreFrame_OnCharacterBoostDelivered`) clears
+    // `JustOrderedBoost`/`JustFinishedOrdering` but not `JustOrderedProduct`; a purchase update
+    // arriving afterwards then re-arms `JustFinishedOrdering` and the "Purchase sent" panel
+    // reappears every time the store is opened.
+    send_purchase_update(session, service, &purchase, error::OK);
     let outcome = deliver_order_like_cpp(session, service, item_guid_generator, &order).await;
     match outcome {
-        DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {
-            send_purchase_update(session, service, &purchase, error::OK);
-        }
+        DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {}
         DeliveryOutcomeLikeCpp::Deferred(why) => {
             warn!(
                 account = identity.account_id,
                 order = %external_id,
                 "BattlePay: paid order not delivered yet ({why}); it is retried on the next store refresh"
             );
-            send_purchase_update(session, service, &purchase, error::OTHER);
         }
         DeliveryOutcomeLikeCpp::Quarantined => {}
     }
@@ -930,19 +935,20 @@ pub(crate) async fn deliver_paid_purchases<S: BattlePaySessionLikeCpp>(
             .map(|purchase| purchase.purchase_id)
             .unwrap_or_else(|| service.next_purchase_id_like_cpp());
         let order = PaidOrderLikeCpp::from_row(&row, "", purchase_id);
+        // Purchase update before the delivery packets (LegionCore order; see the note in
+        // `handle_confirm_purchase`).
+        if let Some(mut purchase) = pending {
+            finish_web_purchase(
+                session,
+                service,
+                identity.account_id,
+                &mut purchase,
+                error::OK,
+            );
+        }
         let outcome = deliver_order_like_cpp(session, service, item_guid_generator, &order).await;
         match outcome {
-            DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {
-                if let Some(mut purchase) = pending {
-                    finish_web_purchase(
-                        session,
-                        service,
-                        identity.account_id,
-                        &mut purchase,
-                        error::OK,
-                    );
-                }
-            }
+            DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {}
             DeliveryOutcomeLikeCpp::Deferred(why) => {
                 debug!(order = %row.external_id, "BattlePay: paid order deferred: {why}");
             }

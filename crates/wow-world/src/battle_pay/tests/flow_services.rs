@@ -175,7 +175,8 @@ async fn rename_bought_at_glue_flags_the_chosen_character_once() {
     )
     .await;
     let sent = session.take_sent();
-    assert_eq!(opcodes(&sent), [VAS_COMPLETE, PURCHASE_UPDATE]);
+    // Purchase update before the delivery packet (LegionCore order).
+    assert_eq!(opcodes(&sent), [PURCHASE_UPDATE, VAS_COMPLETE]);
     assert_eq!(h.account.balance(), 90);
     assert_eq!(h.characters.row(43).at_login_flags, at_login::RENAME);
     let order = h.account.only_order();
@@ -321,7 +322,7 @@ async fn transfer_moves_the_character_to_the_checked_account() {
     .await;
     assert_eq!(
         opcodes(&session.take_sent()),
-        [VAS_COMPLETE, PURCHASE_UPDATE]
+        [PURCHASE_UPDATE, VAS_COMPLETE]
     );
     assert_eq!(h.characters.row(43).account_id, 8);
     assert_eq!(h.account.only_order().insert.vas_target_account, 8);

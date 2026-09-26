@@ -70,7 +70,10 @@ async fn bought_boost(h: &Harness) -> u64 {
     )
     .await;
     let sent = session.take_sent();
-    assert_eq!(opcodes(&sent), [DISTRIBUTION_UPDATE, PURCHASE_UPDATE]);
+    // Purchase update first (LegionCore order): a distribution update received before it
+    // would leave the client's `JustOrderedProduct` armed and the store stuck on
+    // "Purchase sent" on every reopen.
+    assert_eq!(opcodes(&sent), [PURCHASE_UPDATE, DISTRIBUTION_UPDATE]);
     h.distributions.only().id
 }
 

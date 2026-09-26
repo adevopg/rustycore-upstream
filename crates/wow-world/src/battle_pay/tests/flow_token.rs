@@ -119,19 +119,20 @@ async fn wallet_purchase_charges_once_and_delivers_the_mount() {
     );
     assert_eq!(session.grants, vec![vec![(MOUNT_ITEM, 1)]]);
     let sent = session.take_sent();
+    // LegionCore order: the purchase update precedes the delivery packets.
     assert_eq!(
         opcodes(&sent),
         [
+            PURCHASE_UPDATE,
             DELIVERY_STARTED,
             MOUNT_DELIVERED,
-            DELIVERY_ENDED,
-            PURCHASE_UPDATE
+            DELIVERY_ENDED
         ]
     );
-    let mut started = payload(&sent[0]);
+    let mut started = payload(&sent[1]);
     assert_eq!(started.read_uint64().unwrap(), purchase_id);
     assert_eq!(
-        purchase_update(&sent[3]),
+        purchase_update(&sent[0]),
         (
             purchase_id,
             purchase_status::FINISH,
@@ -156,7 +157,7 @@ async fn non_mount_delivery_sends_no_mount_notification() {
     assert_eq!(h.account.balance(), 0);
     assert_eq!(
         opcodes(&session.take_sent()),
-        [DELIVERY_STARTED, DELIVERY_ENDED, PURCHASE_UPDATE]
+        [PURCHASE_UPDATE, DELIVERY_STARTED, DELIVERY_ENDED]
     );
 }
 

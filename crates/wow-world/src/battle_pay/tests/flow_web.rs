@@ -187,9 +187,11 @@ async fn submitted_before_paid_keeps_the_order_pending_then_paid_delivers_once()
     assert_eq!(order.status, BATTLE_PAY_PURCHASE_STATUS_DELIVERED_LIKE_CPP);
     assert_eq!(order.web_order_id, "SUMUP-1");
     let sent = session.take_sent();
+    // Purchase update first, then the delivery packets (LegionCore order).
+    assert_eq!(opcode_of(&sent[0]), PURCHASE_UPDATE);
     assert!(opcodes(&sent).contains(&DELIVERY_ENDED));
-    let last = purchase_update(sent.last().unwrap());
-    assert_eq!((last.1, last.2), (purchase_status::FINISH, error::OK));
+    let first = purchase_update(&sent[0]);
+    assert_eq!((first.1, first.2), (purchase_status::FINISH, error::OK));
 
     // Replays: a second notification and a store refresh deliver nothing more.
     handle_purchase_submitted(&mut session, &h.service, &h.generator, submitted(&external)).await;
@@ -222,8 +224,12 @@ async fn paid_order_whose_notification_was_lost_is_delivered_on_store_refresh() 
             .pending_web_external_id()
             .is_none()
     );
-    let last = purchase_update(session.take_sent().last().unwrap());
-    assert_eq!(last.2, error::OK);
+    let sent = session.take_sent();
+    let update = sent
+        .iter()
+        .find(|packet| opcode_of(packet) == PURCHASE_UPDATE)
+        .expect("purchase update sent");
+    assert_eq!(purchase_update(update).2, error::OK);
 }
 
 #[tokio::test]

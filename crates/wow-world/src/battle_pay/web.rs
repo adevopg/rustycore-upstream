@@ -151,17 +151,19 @@ pub(crate) async fn handle_purchase_submitted<S: BattlePaySessionLikeCpp>(
         }
     }
     let order = PaidOrderLikeCpp::from_row(&row, &request.global_order_id, purchase.purchase_id);
+    // LegionCore `HandleBattlePayPurchaseSubmittedCallback`: `Status = Finish;
+    // SendPurchaseUpdate(Ok); ProcessDelivery(...)`. The purchase update must precede the
+    // delivery packets (see the note in `flow.rs` about the client's `JustOrderedProduct`).
+    finish_web_purchase(
+        session,
+        service,
+        identity.account_id,
+        &mut purchase,
+        error::OK,
+    );
     let outcome = deliver_order_like_cpp(session, service, item_guid_generator, &order).await;
     match outcome {
-        DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {
-            finish_web_purchase(
-                session,
-                service,
-                identity.account_id,
-                &mut purchase,
-                error::OK,
-            );
-        }
+        DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered => {}
         DeliveryOutcomeLikeCpp::Deferred(why) => {
             warn!(order = %row.external_id, "BattlePay: paid order deferred: {why}");
         }
@@ -220,20 +222,20 @@ pub(crate) async fn handle_cancel_open_checkout<S: BattlePaySessionLikeCpp>(
         .as_ref()
         .filter(|row| row.status == BATTLE_PAY_PURCHASE_STATUS_PAID_LIKE_CPP)
     {
-        // The web confirmed the payment right before the window closed.
+        // The web confirmed the payment right before the window closed. Purchase update
+        // first, then delivery (LegionCore order; see `flow.rs`).
         let order = PaidOrderLikeCpp::from_row(row, "", purchase.purchase_id);
-        let outcome = deliver_order_like_cpp(session, service, item_guid_generator, &order).await;
-        if matches!(
-            outcome,
-            DeliveryOutcomeLikeCpp::Delivered | DeliveryOutcomeLikeCpp::AlreadyDelivered
-        ) {
-            finish_web_purchase(
-                session,
-                service,
-                identity.account_id,
-                &mut purchase,
-                error::OK,
-            );
+        finish_web_purchase(
+            session,
+            service,
+            identity.account_id,
+            &mut purchase,
+            error::OK,
+        );
+        if let DeliveryOutcomeLikeCpp::Deferred(why) =
+            deliver_order_like_cpp(session, service, item_guid_generator, &order).await
+        {
+            warn!(order = %row.external_id, "BattlePay: paid order deferred: {why}");
         }
         return;
     }
