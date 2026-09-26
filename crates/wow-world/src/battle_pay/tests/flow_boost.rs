@@ -129,7 +129,13 @@ async fn assigning_queues_the_level_and_the_login_boost() {
     let sent = session.take_sent();
     assert_eq!(
         opcodes(&sent),
-        [ASSIGN_RESPONSE, UPGRADE_STARTED, DISTRIBUTION_UPDATE]
+        [
+            ASSIGN_RESPONSE,
+            UPGRADE_STARTED,
+            DISTRIBUTION_UPDATE,
+            // Forces the 54261 glue to re-request the character list (new level).
+            UPGRADE_COMPLETE
+        ]
     );
     assert_eq!(assign_result(&sent[0]), (id, 0));
     let row = h.distributions.only();

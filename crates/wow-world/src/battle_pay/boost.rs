@@ -350,6 +350,17 @@ pub(crate) async fn handle_distribution_assign_to_target<S: BattlePaySessionLike
             ..row
         },
     );
+    // 54261: on CHARACTER_UPGRADE_STARTED the glue Lua only redraws its cached list
+    // (`UpdateCharacterList(true)`), so the level set by `queue_character_boost_like_cpp`
+    // stayed invisible until something else re-requested the enum. LegionCore notes that
+    // SMSG_CHARACTER_UPGRADE_COMPLETE forces a CHARACTER_LIST_UPDATE at character select
+    // (BattlePayHandler.cpp, HandleCharacterUpgradeStart); send it here as well so the new
+    // level shows at once. Gear and money still apply at the character's first login.
+    session.send_battle_pay_packet(&CharacterUpgradeComplete {
+        character_guid: request.target_character,
+        values: Vec::new(),
+        unk_bit: false,
+    });
 }
 
 /// `CMSG_CHARACTER_UPGRADE_MANUAL_UNREVOKE_REQUEST` 0x36cc: boost revocation
