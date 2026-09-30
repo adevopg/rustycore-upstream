@@ -18,8 +18,11 @@ const MELEE_SMOKE_STEP_YARDS: f32 = 20.0;
 const MELEE_SMOKE_MAX_STEPS: u32 = 64;
 /// How far from its SQL position a runtime spawn is still the same creature.
 const MELEE_SMOKE_DISCOVERY_RADIUS_YARDS: f32 = 60.0;
+/// One heartbeat every this often, so the walk looks like a client moving rather
+/// than a burst of teleports.
+const MELEE_SMOKE_STEP_INTERVAL: Duration = Duration::from_millis(200);
 /// How long the approach may keep listening for the target's CREATE block.
-const MELEE_SMOKE_APPROACH_BUDGET: Duration = Duration::from_secs(20);
+const MELEE_SMOKE_APPROACH_BUDGET: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub(crate) struct MeleeSmokeOptions {
@@ -304,6 +307,7 @@ pub(crate) async fn run_melee_smoke(
     // as the walk brings new cells into visibility.
     let approach_deadline = deadline.min(std::time::Instant::now() + MELEE_SMOKE_APPROACH_BUDGET);
     let mut steps = 0u32;
+    let mut last_step = std::time::Instant::now() - MELEE_SMOKE_STEP_INTERVAL;
     loop {
         let read = tokio::time::timeout(
             Duration::from_millis(250),
@@ -315,40 +319,55 @@ pub(crate) async fn run_melee_smoke(
         )
         .await;
         match read {
-            Ok(Ok((opcode, payload))) => {
-                match opcode {
-                    SMSG_TIME_SYNC_REQUEST => {
-                        respond_to_detour_time_sync_like_cpp(
-                            bot_index,
-                            &mut connection.stream,
-                            &mut connection.crypt,
-                            &payload,
-                            clock_origin,
-                            "melee approach",
-                        )
-                        .await?;
-                    }
-                    SMSG_UPDATE_OBJECT if discovered.is_none() => {
-                        discovered = find_creature_guid_near_position_in_update_object(
-                            &payload,
-                            target.map_id,
-                            target.entry,
-                            target.x,
-                            target.y,
-                            target.z,
-                            MELEE_SMOKE_DISCOVERY_RADIUS_YARDS,
-                            None,
-                        );
-                    }
-                    _ => {}
+            Ok(Ok((opcode, payload))) => match opcode {
+                SMSG_TIME_SYNC_REQUEST => {
+                    respond_to_detour_time_sync_like_cpp(
+                        bot_index,
+                        &mut connection.stream,
+                        &mut connection.crypt,
+                        &payload,
+                        clock_origin,
+                        "melee approach",
+                    )
+                    .await?;
                 }
-                continue;
-            }
+                SMSG_UPDATE_OBJECT => {
+                    // Keep reading after the first sighting: the walk must close
+                    // on where the creature *is*, not on its SQL spawn row. A
+                    // wandering spawn can stand tens of yards away from that
+                    // row, and then the swings resolve out of melee range —
+                    // C++ `Unit::DoMeleeAttackIfReady` only swings inside
+                    // `IsWithinMeleeRange`, so the server published nothing and
+                    // the run reported an unexplained `player_landed=0`.
+                    if let Some(sighting) = find_creature_guid_near_position_in_update_object(
+                        &payload,
+                        target.map_id,
+                        target.entry,
+                        target.x,
+                        target.y,
+                        target.z,
+                        MELEE_SMOKE_DISCOVERY_RADIUS_YARDS,
+                        discovered.map(|found| found.low),
+                    ) {
+                        discovered = Some(sighting);
+                    }
+                }
+                _ => {}
+            },
             Ok(Err(error)) => bail!("read error while approaching the target: {error}"),
             Err(_) => {}
         }
 
-        let remaining = distance_between(position, (target.x, target.y, target.z));
+        // Fall through on both arms. The stream is busy — time sync plus every
+        // creature's movement — so a `continue` here would keep reading packets
+        // and never walk; the step cadence is its own timer instead.
+        if last_step.elapsed() < MELEE_SMOKE_STEP_INTERVAL {
+            continue;
+        }
+        let aim = discovered
+            .map(|found| (found.x, found.y, found.z))
+            .unwrap_or((target.x, target.y, target.z));
+        let remaining = distance_between(position, aim);
         if discovered.is_some() && remaining <= NOMINAL_MELEE_RANGE_LIKE_CPP {
             break;
         }
@@ -367,11 +386,9 @@ pub(crate) async fn run_melee_smoke(
                  range is {NOMINAL_MELEE_RANGE_LIKE_CPP:.2}"
             );
         }
-        let Some((next, facing)) = next_walk_step_like_cpp(
-            position,
-            (target.x, target.y, target.z),
-            NOMINAL_MELEE_RANGE_LIKE_CPP - 1.0,
-        ) else {
+        let Some((next, facing)) =
+            next_walk_step_like_cpp(position, aim, NOMINAL_MELEE_RANGE_LIKE_CPP - 1.0)
+        else {
             // In reach already: keep listening for the spawn's CREATE block.
             continue;
         };
@@ -389,11 +406,12 @@ pub(crate) async fn run_melee_smoke(
         .await?;
         position = next;
         steps += 1;
+        last_step = std::time::Instant::now();
         outcome.walk_steps = steps;
     }
 
-    let distance = distance_between(position, (target.x, target.y, target.z));
     let runtime = discovered.expect("the approach loop only exits with a discovered target");
+    let distance = distance_between(position, (runtime.x, runtime.y, runtime.z));
     info!(
         "[Bot {}] ✅ approached in {} steps, {:.2} yards from the target",
         bot_index, outcome.walk_steps, distance
@@ -416,20 +434,114 @@ pub(crate) async fn run_melee_smoke(
 
     // Observe the engagement. Nothing here is asserted: the report says what the
     // server published, and only the mandatory observations below fail the run.
+    //
+    // The walk continues here: a wandering spawn steps out of melee reach while
+    // the swing timer runs, and C++ `Unit::DoMeleeAttackIfReady` then publishes
+    // `SMSG_ATTACKSWING_ERROR` instead of a swing — the server is right and a
+    // standing bot simply never connects. Following the target is what a player
+    // does, and it is what the first landed swing needs: once damage lands the
+    // creature engages and chases by itself.
     let mut last_swing_seen = tokio::time::Instant::now();
+    let mut target_position = (runtime.x, runtime.y, runtime.z);
+    let mut last_follow_step = std::time::Instant::now();
     while std::time::Instant::now() < deadline {
         if outcome.target_death_seen && outcome.xp_gain_seen {
             break;
         }
-        let read = tokio::time::timeout(
-            Duration::from_millis(500),
-            read_encrypted_packet(
+        // In reach the walk stops but the turn does not: C++
+        // `Unit::DoMeleeAttackIfReady` also needs `HasInArc(2*pi/3, victim)`, and
+        // a target circling a standing bot leaves the last heartbeat's facing
+        // behind, which the server answers with `SMSG_ATTACKSWING_ERROR` and no
+        // swing. Keep publishing the facing at the current position.
+        let follow_step = (!outcome.target_death_seen
+            && last_follow_step.elapsed() >= MELEE_SMOKE_STEP_INTERVAL)
+            .then(|| {
+                next_walk_step_like_cpp(
+                    position,
+                    target_position,
+                    NOMINAL_MELEE_RANGE_LIKE_CPP - 1.0,
+                )
+                .unwrap_or((
+                    position,
+                    (target_position.1 - position.1).atan2(target_position.0 - position.0),
+                ))
+            });
+        if let Some((next, facing)) = follow_step {
+            let heartbeat = build_move_heartbeat_payload(
+                player_low,
+                player_high,
+                next.0,
+                next.1,
+                next.2,
+                facing,
+            );
+            send_encrypted_packet(
+                &mut connection.stream,
+                &mut connection.crypt,
+                CMSG_MOVE_HEARTBEAT,
+                &heartbeat,
+            )
+            .await?;
+            position = next;
+            outcome.walk_steps += 1;
+            last_follow_step = std::time::Instant::now();
+        }
+        // `SMSG_LOG_XP_GAIN` is `CONNECTION_TYPE_REALM` in C++
+        // (`Server/Protocol/Opcodes.cpp:1662`), so the kill's XP never arrives on
+        // the instance socket this mode attacks through. Reading only that socket
+        // reported `xp=0` for kills the server had already granted and persisted.
+        // `peek` waits for real bytes without consuming them, so losing the
+        // select is safe — the same shape the stand-state drain uses.
+        let ready = {
+            let quiet = tokio::time::sleep(Duration::from_millis(500));
+            tokio::pin!(quiet);
+            let mut instance_peek = [0u8; 1];
+            let mut realm_peek = [0u8; 1];
+            match realm_connection.as_ref() {
+                Some(realm) => tokio::select! {
+                    result = connection.stream.peek(&mut instance_peek) => {
+                        if result.context("instance melee engagement peek failed")? == 0 {
+                            bail!("instance connection closed during the engagement");
+                        }
+                        MeleeReadSource::Instance
+                    }
+                    result = realm.stream.peek(&mut realm_peek) => {
+                        if result.context("realm melee engagement peek failed")? == 0 {
+                            bail!("realm connection closed during the engagement");
+                        }
+                        MeleeReadSource::Realm
+                    }
+                    _ = &mut quiet => MeleeReadSource::Quiet,
+                },
+                None => tokio::select! {
+                    result = connection.stream.peek(&mut instance_peek) => {
+                        if result.context("instance melee engagement peek failed")? == 0 {
+                            bail!("instance connection closed during the engagement");
+                        }
+                        MeleeReadSource::Instance
+                    }
+                    _ = &mut quiet => MeleeReadSource::Quiet,
+                },
+            }
+        };
+        let read = match ready {
+            MeleeReadSource::Instance => Ok(read_encrypted_packet(
                 &mut connection.stream,
                 &mut connection.crypt,
                 &mut connection.inflater,
-            ),
-        )
-        .await;
+            )
+            .await),
+            MeleeReadSource::Realm => {
+                let realm = realm_connection
+                    .as_mut()
+                    .expect("the realm branch only runs with a realm connection");
+                Ok(
+                    read_encrypted_packet(&mut realm.stream, &mut realm.crypt, &mut realm.inflater)
+                        .await,
+                )
+            }
+            MeleeReadSource::Quiet => Err(()),
+        };
         match read {
             Ok(Ok((opcode, payload))) => match opcode {
                 SMSG_TIME_SYNC_REQUEST => {
@@ -489,6 +601,15 @@ pub(crate) async fn run_melee_smoke(
                                 "[Bot {}] ✅ SMSG_ATTACK_STOP reports the target dead",
                                 bot_index
                             );
+                        }
+                    }
+                }
+                SMSG_ON_MONSTER_MOVE => {
+                    if let Ok((mover, moved_to)) =
+                        monster_move_mover_and_position_like_cpp(&payload)
+                    {
+                        if mover == target_guid {
+                            target_position = moved_to;
                         }
                     }
                 }
@@ -555,6 +676,14 @@ pub(crate) async fn run_melee_smoke(
     Ok(outcome)
 }
 
+/// Which socket had bytes ready, or neither within the quiet window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MeleeReadSource {
+    Instance,
+    Realm,
+    Quiet,
+}
+
 fn parse_log_xp_gain_amount(payload: &[u8]) -> Option<u32> {
     // C++ `WorldPackets::Combat::LogXPGain::Write`: packed victim ObjectGuid,
     // then int32 Original, uint8 Reason, int32 Amount.
@@ -594,6 +723,23 @@ pub(crate) async fn run_melee_smoke_mode(
         creature_spawn_guid: cli.melee_creature_spawn_guid,
         timeout_secs: cli.melee_timeout_secs,
     };
+    // A creature that kills the QA character leaves it unable to swing, and the
+    // rejection is invisible on the wire, so this is checked and reported before
+    // the run rather than surfacing as a missing SMSG_ATTACK_START.
+    {
+        let characters_url = characters_db_url()?;
+        let opts = mysql::Opts::from_url(&characters_url)
+            .map_err(|error| anyhow!("Bad characters DB URL: {error}"))?;
+        let mut conn = mysql::Conn::new(opts)
+            .map_err(|error| anyhow!("Connect to characters DB failed: {error}"))?;
+        validate_local_bot_character_owner(&mut conn, &bot)?;
+        if revive_dead_bot_character_fixture(&mut conn, &bot)? {
+            info!(
+                "character {} ({}) was dead; restored its stored health as a fixture before the run",
+                bot.character_guid, bot.account
+            );
+        }
+    }
     let outcome = run_melee_smoke(&bot, &options).await?;
     if let Some(path) = &cli.report_path {
         std::fs::write(path, serde_json::to_string_pretty(&outcome)?)

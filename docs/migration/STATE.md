@@ -1,6 +1,46 @@
 # RustyCore — Honest Current State (single source of truth)
 
-**Integration head — 2026-09-19:** the current integration head on `3.4.3` is
+**Integration head — 2026-09-30:** `origin/3.4.3` is at `62f5c619` (2026-09-26). The
+`a82f4b2f` head stated below is an ancestor of it, 45 commits behind; there is no fork
+divergence, only a stale line. Those 45 commits are itemised, with their plan owners and
+their two gate consequences, in
+[PORT_PLAN.md §0](PORT_PLAN.md) — read them before treating anything below as pending.
+The part that matters for status: the #29 creature split/share/unkillable/damage-threat
+slice this document lists as a candidate **is integrated** (`2df57d6f`), and a large
+client-data extraction, Battle.net/account, social, login-transport and in-game-shop
+feature line landed in the same window without being recorded here.
+
+Live evidence added 2026-09-30 and extended 2026-10-01, on this host and against a real
+client session: character creation, login, enumeration and clean logout work; creature
+visibility works once the client acknowledges its active mover; a character's delete now
+removes its dependent rows.
+
+**The melee loop closes end to end as of 2026-10-01.** One `--melee-smoke` run against
+spawn 280052 (entry 299, map 0) reports `attack_start=true player_landed=4 (42 damage)
+avoided=0 creature_landed=4 (4 damage) avoided=0 death=true xp=50`, with
+`SMSG_ATTACK_STOP` (NowDead) and `SMSG_LOG_XP_GAIN 50 XP`, and the XP is persisted in
+`characters.xp`. Both halves of the earlier "the player's melee swing never happens"
+finding are repaired: the unfaithful attack-side combat entry, and the threat-update
+clause that demanded hostility from a participant the creature was already engaged by.
+Both, with their C++ anchors and the traced ordering, are in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
+
+This is the Part 1 M3 exit reached for a single solo melee kill on one spawn. It is not
+a claim about group credit, loot, quest kill credit, ranged or spell combat, chase over
+distance, or any other creature family; those remain unproven here.
+
+**The scenario is not yet repeatable, for harness reasons.** Across eleven runs the full
+chain closed three times and landed at least one swing in three more. The residual cause
+is measured, not guessed: the only hostile spawns near the QA start position carry
+`MovementType = 1` with a 10-yard wander, the harness follows the position
+`SMSG_ON_MONSTER_MOVE` reports at the *start* of a spline, and C++
+`Unit::DoMeleeAttackIfReady` correctly refuses a swing that is out of reach or out of
+arc — the server's phase counters show the swing timer firing and the request answered
+with `SMSG_ATTACKSWING_ERROR`, not a lost swing. A level-1 QA character in that area is
+also killed repeatedly by the other hostile spawns, and a dead attacker cannot swing.
+Making this deterministic is QA-tool work on tools/wow-test-bot, not a server finding.
+
+**Historical integration head — 2026-09-19:** the current integration head on `3.4.3` is
 `a82f4b2f` (PR #1226, following PR #1225's #29 creature-victim damage-immunity
 slice and PR #1224's school-absorb slice). The older #31
 diagnosis chain is retained below as historical evidence; its next entry is

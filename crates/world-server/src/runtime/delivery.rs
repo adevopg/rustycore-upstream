@@ -1183,9 +1183,24 @@ pub(crate) fn apply_canonical_creature_attack_stops_like_cpp(
     let Ok(mut manager) = manager.lock() else {
         return Vec::new();
     };
+    let trace = std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some();
     commands
         .iter()
         .map(|command| {
+            // Applying this command clears a Player victim's own `attacking`
+            // (`wow-map` `apply_creature_combat_stop`), which is C++
+            // `Unit::CombatStop` → `RemoveAllAttackers` → `AttackStop`. A stop
+            // emitted for a creature a player is currently attacking therefore
+            // cancels that attack, so the emitter matters.
+            if trace {
+                tracing::info!(
+                    attacker_guid = ?command.attacker_guid,
+                    victim_guid = ?command.victim_guid,
+                    map_id = command.map_id,
+                    instance_id = command.instance_id,
+                    "RUST_PLAYER_MELEE creature_combat_stop_applied"
+                );
+            }
             manager.execute_map_command_like_cpp(
                 u32::from(command.map_id),
                 command.instance_id,

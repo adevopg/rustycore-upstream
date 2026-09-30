@@ -111,6 +111,7 @@ pub(crate) struct CliOptions {
     pub(crate) create_character_class: u8,
     pub(crate) create_character_sex: i8,
     pub(crate) create_character_timeout_secs: u64,
+    pub(crate) delete_character_guids: Vec<u64>,
     pub(crate) melee_smoke: bool,
     pub(crate) melee_creature_entry: Option<u32>,
     pub(crate) melee_creature_spawn_guid: Option<u64>,
@@ -121,6 +122,31 @@ pub(crate) struct CliOptions {
 /// the standalone fixture/provisioning modes. `--ensure-test-accounts`,
 /// `--single` and the provisioning modes themselves are deliberately not here:
 /// each caller states which of those it tolerates.
+/// Parse a comma-separated `characters.guid` list, rejecting an empty or zero
+/// entry rather than silently deleting nothing.
+pub(crate) fn parse_character_guid_list(raw: &str) -> Result<Vec<u64>> {
+    let mut guids = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let guid: u64 = part
+            .parse()
+            .map_err(|error| anyhow!("invalid character guid {part:?}: {error}"))?;
+        if guid == 0 {
+            bail!("character guid 0 is not a character");
+        }
+        if !guids.contains(&guid) {
+            guids.push(guid);
+        }
+    }
+    if guids.is_empty() {
+        bail!("no character guid given");
+    }
+    Ok(guids)
+}
+
 pub(crate) fn any_exclusive_workflow_mode_selected(cli: &CliOptions) -> bool {
     cli.login_only
         || cli.melee_smoke
@@ -541,6 +567,10 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(DEFAULT_CREATE_CHARACTER_TIMEOUT_SECS),
+        delete_character_guids: match std::env::var("WOW_BOT_DELETE_CHARACTER_GUIDS") {
+            Ok(raw) => parse_character_guid_list(&raw)?,
+            Err(_) => Vec::new(),
+        },
         melee_smoke: std::env::var("WOW_BOT_MELEE_SMOKE")
             .ok()
             .map(|v| is_truthy(&v))
@@ -866,6 +896,10 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             "--create-character-timeout" => {
                 opts.create_character_timeout_secs =
                     next_arg(&mut args, "--create-character-timeout")?.parse()?;
+            }
+            "--delete-characters" => {
+                opts.delete_character_guids =
+                    parse_character_guid_list(&next_arg(&mut args, "--delete-characters")?)?;
             }
             "--melee-smoke" => opts.melee_smoke = true,
             "--melee-creature-entry" => {

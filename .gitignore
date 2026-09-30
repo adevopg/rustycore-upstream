@@ -91,3 +91,6 @@ world-server-bin
 # Python bytecode from the tools/ scripts (check_architecture.py, codex_review_gate.py)
 __pycache__/
 *.pyc
+
+# Knowledge-graph output (graphify): generated, hundreds of MB, never a source of truth.
+/graphify-out/

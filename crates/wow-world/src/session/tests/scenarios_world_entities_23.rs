@@ -334,8 +334,21 @@ fn legacy_creature_aggro_tick_once_allows_invisible_player_when_creature_detects
     assert_eq!(outcome.commands.len(), 1);
     assert_eq!(outcome.commands[0].victim_guid, invisible_player);
 }
+/// C++ `WorldObject::GetFactionReactionTo`
+/// (`Entities/Object/Object.cpp:2880-2885`) reads the player's rank for the
+/// creature's faction and, **only when the player is at war with it**, caps that
+/// rank at `REP_NEUTRAL`. The at-war flag is a cap, not the hostility decision:
+/// a hostile standing without war still reads hostile, and a friendly standing
+/// with war reads neutral.
+///
+/// This test previously asserted the opposite — that any faction the player is
+/// not at war with is never hostile. That shortcut reads the same for the
+/// standings TrinityCore's `ReputationMgr` produces on its own, because
+/// `SetReputation` declares war when a rank drops to hostile, but it is not what
+/// the reaction function computes and it cannot express a friendly reaction at
+/// all, which `Creature::_IsTargetAcceptable` (`Creature.cpp:2702`) needs.
 #[test]
-fn legacy_creature_aggro_tick_once_rejects_reputation_without_at_war_like_cpp() {
+fn legacy_creature_aggro_tick_once_caps_an_at_war_reaction_at_neutral_like_cpp() {
     use crate::map_manager::RuntimeTickOwner;
     let manager = shared_map_manager();
     let (mut session, _, _) = make_session();
@@ -354,17 +367,21 @@ fn legacy_creature_aggro_tick_once_rejects_reputation_without_at_war_like_cpp() 
 
     let rejected_player = ObjectGuid::create_player(1, 91_028);
     let allowed_player = ObjectGuid::create_player(1, 91_029);
+    // Exalted standing, but at war: C++ caps the reaction at neutral, which is
+    // not hostile, so this player is refused admission.
     let mut rejected =
         legacy_aggro_candidate_like_cpp(rejected_player, Position::new(10.5, 10.5, 0.0, 0.0));
     rejected.player_faction_template_id = 1;
-    rejected.player_reputation_standings = vec![(72, -6_000)];
-    rejected.player_reputation_state_flags = vec![(72, 0)];
+    rejected.player_reputation_standings = vec![(72, 42_000)];
+    rejected.player_reputation_state_flags =
+        vec![(72, wow_entities::REPUTATION_FLAG_AT_WAR_LIKE_CPP)];
+    // Hostile standing and not at war: there is nothing to cap, so the reaction
+    // stays hostile and the creature aggroes.
     let mut allowed =
         legacy_aggro_candidate_like_cpp(allowed_player, Position::new(10.5, 10.5, 0.0, 0.0));
     allowed.player_faction_template_id = 1;
     allowed.player_reputation_standings = vec![(72, -6_000)];
-    allowed.player_reputation_state_flags =
-        vec![(72, wow_entities::REPUTATION_FLAG_AT_WAR_LIKE_CPP)];
+    allowed.player_reputation_state_flags = vec![(72, 0)];
     let config = legacy_aggro_relation_config_like_cpp(
         faction_template_entry(14, 72, 0, 0, 0),
         faction_template_entry(1, 930, 0, 0, 0),

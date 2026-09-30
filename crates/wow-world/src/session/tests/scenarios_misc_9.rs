@@ -857,3 +857,78 @@ async fn handle_attack_swing_same_target_no_change_sends_no_stop_or_duplicate_st
     );
     assert_eq!(session.resolved_in_combat_like_cpp(), Some(true));
 }
+
+#[tokio::test]
+async fn handle_attack_swing_records_the_attacker_without_engaging_the_creature_like_cpp() {
+    // C++ `Unit::Attack` records the attacker in the victim's set and reaches
+    // `EngageWithTarget` only inside `if (creature && !IsControlledByPlayer())`
+    // (`Unit.cpp:6254-6256`): a player's attack does not put its victim into
+    // combat. Engaging it here cancelled the attack in production — an in-combat
+    // creature with no threat reference evades on the next aggro tick, and that
+    // evade's stop command clears this player's own `attacking` through C++
+    // `Unit::CombatStop` → `RemoveAllAttackers` → `AttackStop`, so the player
+    // never swung.
+    let (mut session, _, send_rx) = make_session();
+    let manager = shared_map_manager();
+    let canonical = shared_canonical_map_manager();
+    let player = ObjectGuid::create_player(1, 82);
+    let victim = test_creature_guid(18_033);
+
+    canonical.lock().unwrap().create_world_map(0, 0);
+    session.set_canonical_map_manager(Arc::clone(&canonical));
+    session.set_map_store(Arc::new(wow_data::MapStore::from_entries([
+        wow_data::MapEntry {
+            id: 0,
+            instance_type: wow_data::map::MAP_COMMON,
+            expansion_id: 0,
+            parent_map_id: -1,
+            cosmetic_parent_map_id: -1,
+            flags1: 0,
+            flags2: 0,
+        },
+    ])));
+    session.attach_player_controller_like_cpp(SessionPlayerController::new(
+        player,
+        "Attacker".to_string(),
+        Position::new(10.0, 20.0, 30.0, 0.0),
+        0,
+        1,
+        1,
+        80,
+        0,
+    ));
+    session
+        .ensure_canonical_world_map_for_current_player_like_cpp()
+        .expect("canonical attacking Player map");
+    register_test_creature(&mut session, manager.clone(), victim, 40);
+
+    let mut pkt = WorldPacket::new_empty();
+    pkt.write_packed_guid(&victim);
+    session.handle_attack_swing(pkt).await;
+
+    let sent = send_rx.try_recv().unwrap();
+    assert_eq!(
+        u16::from_le_bytes([sent[0], sent[1]]),
+        ServerOpcodes::AttackStart as u16
+    );
+
+    let (ai_state, combat_target, has_attacker) = session
+        .mutate_world_creature(victim, |creature| {
+            (
+                creature.creature.ai_ownership().state,
+                creature.creature.ai_ownership().combat_target,
+                creature.creature.unit().has_attacker_like_cpp(player),
+            )
+        })
+        .expect("registered creature");
+    assert_ne!(
+        ai_state,
+        wow_entities::CreatureAiState::InCombat,
+        "a player's attack must not put its victim into AI combat"
+    );
+    assert_eq!(combat_target, None);
+    assert!(
+        has_attacker,
+        "C++ `Unit::Attack` still records the attacker on the victim"
+    );
+}

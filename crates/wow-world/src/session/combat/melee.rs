@@ -805,6 +805,16 @@ impl WorldSession {
                 | wow_entities::UnitAttackStartOutcome::InvalidAttackTarget,
             )
             | None => {
+                if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+                    tracing::info!(
+                        account = self.account_id,
+                        ?victim,
+                        ?outcome,
+                        victim_alive,
+                        victim_in_world,
+                        "RUST_PLAYER_MELEE attack_rejected"
+                    );
+                }
                 self.set_combat_target_like_cpp(None);
                 self.set_in_combat_like_cpp(false);
                 if self.selection_guid_like_cpp() == Some(victim) {
@@ -833,6 +843,42 @@ impl WorldSession {
             );
         }
         self.set_in_combat_like_cpp(true);
+        // `RUSTYCORE_PLAYER_MELEE_TRACE=1`: the accepted request and the runtime
+        // phase disagree about the Player's attack target in production, so read
+        // it back here through both routes the code uses — the session's handle
+        // and the map's own store — plus the residence that decides which one
+        // `with_player_mut_like_cpp` wrote.
+        if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+            let via_handle = self.with_owned_player_like_cpp(|player| player.unit().attacking());
+            let residence = self.current_canonical_player_map_key_like_cpp();
+            let via_map = player_guid.and_then(|guid| {
+                let manager = self.canonical_map_manager.as_ref()?;
+                let mut manager = manager.lock().ok()?;
+                let key = residence?;
+                let managed = manager.find_map_mut(key.map_id, key.instance_id)?;
+                let player = managed.map().get_typed_player(guid)?;
+                Some(player.unit().attacking())
+            });
+            let identity = self.with_owned_player_like_cpp(|player| {
+                (
+                    player.unit().health_state_revision_like_cpp(),
+                    player.unit().data().target,
+                )
+            });
+            tracing::info!(
+                account = self.account_id,
+                ?player_guid,
+                has_handle = self.player_handle_like_cpp.is_some(),
+                ?residence,
+                ?outcome,
+                attacking_via_handle = ?via_handle,
+                attacking_via_map = ?via_map,
+                // Same identity pair the runtime phase reports, so the two
+                // observations can be compared directly.
+                ?identity,
+                "RUST_PLAYER_MELEE attack_accepted"
+            );
+        }
         let send_attack_start = matches!(
             outcome,
             Some(
@@ -843,6 +889,12 @@ impl WorldSession {
         PlayerAttackStartLikeCppResult::Accepted { send_attack_start }
     }
     pub(crate) fn stop_player_attack_like_cpp(&mut self) -> Option<ObjectGuid> {
+        if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+            tracing::info!(
+                account = self.account_id,
+                "RUST_PLAYER_MELEE wiper=stop_player_attack"
+            );
+        }
         let player_guid = self.player_guid()?;
         let target = match self.mutate_canonical_player_like_cpp(|player| {
             match player.unit_mut().attack_stop_like_cpp() {

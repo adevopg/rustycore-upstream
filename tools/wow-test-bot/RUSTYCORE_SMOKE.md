@@ -62,6 +62,28 @@ This mode writes: it creates an account fixture if missing, writes
 `account.session_key_bnet` and `account.os`, and creates a character. Use it only
 against authorized test identities.
 
+## Retiring QA characters — live and destructive
+
+`--delete-characters <guid,guid,…>` deletes characters through the server's own
+`CMSG_CHAR_DELETE` path rather than by SQL, so the deletion follows whatever
+`Player::DeleteFromDB` fan-out the server implements:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local --delete-characters 1,2,3
+```
+
+It runs alone, needs one enabled bot, refuses a non-local account without
+`WOW_BOT_ALLOW_NONLOCAL_ACCOUNT_BOOTSTRAP=1`, refuses the bot's own configured
+`character_guid`, and fails if the server refuses any of the requested deletes. It
+enumerates first because the server only accepts a delete for a character it has
+listed for that account.
+
+**Known server defect this mode exposes:** the delete currently removes only the
+`characters` row and leaves every dependent row behind — inventory, items, skills,
+glyphs, reputation, homebind. See the CRIT entry dated 2026-10-01 in
+docs/migration/EXISTING-CODE-DEFECTS.md before using it on anything you care about.
+
 ## Live melee engagement check — live and mutating
 
 `--melee-smoke` drives the MVP combat loop against a real spawn and reports what
@@ -84,6 +106,24 @@ SMSG_ATTACKER_STATE_UPDATE both ways, SMSG_ATTACK_STOP (NowDead) and
 SMSG_LOG_XP_GAIN
 ```
 
+The engagement is observed on **both** sockets. `SMSG_LOG_XP_GAIN` is
+`CONNECTION_TYPE_REALM` in C++ (`Server/Protocol/Opcodes.cpp:1662`), so it never
+arrives on the instance socket the attack goes out on; reading only that socket
+reported `xp=0` for kills the server had already granted and written to
+`characters.xp`.
+
+It also restores a QA character that a creature killed, before logging in, and
+says so. A dead attacker is refused by C++ `Unit::Attack`
+(`Entities/Unit/Unit.cpp:6175`) and RustyCore answers `CMSG_ATTACK_SWING` with
+`InvalidDeadAttacker`, which on the wire is indistinguishable from "the server
+never published SMSG_ATTACK_START". The server's only implemented exit from death
+is `CMSG_REPOP_REQUEST`, and C++ `Player::RepopAtGraveyard` leaves the player a
+ghost, so there is no in-protocol way back to a live character yet. The restore
+writes `characters.health`, which is where the death state lives
+(`Player::LoadFromDB` reads a zero-health row as a corpse, `Player.cpp:18119`, and
+clamps the value at the computed maximum, `:18135`). It is a fixture reset, not a
+resurrection, and it exercises no server death-exit behaviour.
+
 `CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE` is not optional: C++
 `Player::CanNeverSee` (`Entities/Player/Player.cpp:23214-23218`) hides every
 object from a player that has not set
@@ -91,7 +131,22 @@ object from a player that has not set
 world looks empty and no target can be discovered.
 
 The walk is made of ordinary heartbeat steps of at most 20 yards that stop one
-yard inside melee reach; it does not teleport. The target is selected by
+yard inside melee reach; it does not teleport. It continues during the
+engagement: the mode follows the target's `SMSG_ON_MONSTER_MOVE` position
+(`MoverGUID` then `Pos`, `Server/Packets/MovementPackets.cpp:589-594`) and keeps
+republishing its facing, because C++ `Unit::DoMeleeAttackIfReady` needs both
+`IsWithinMeleeRange` and `HasInArc(2*pi/3, victim)` and answers a standing bot
+with `SMSG_ATTACKSWING_ERROR` instead of a swing.
+
+**This mode is not yet reliable against a wandering spawn.** The nearest hostile
+spawns to the QA start position (`creature` 280052/280053) both carry
+`MovementType = 1` with a 10-yard wander, and the follow only knows where the
+spline *started*, so most swing attempts still resolve out of reach: a 60-second
+run typically lands one or two swings and often none. A run that lands nothing is
+therefore not evidence of a server defect on its own — check the server's
+`RUSTYCORE_PLAYER_MELEE_TRACE=1` phase counters before concluding anything. Once
+one swing lands the creature engages and chases by itself, so the first connected
+swing is what the scenario is really waiting for. The target is selected by
 `creature_template.entry`, optionally pinned to one `world.creature.guid`, and its
 live ObjectGuid must be discovered within 60 yards of that SQL position — the mode
 fails closed rather than attacking a guessed GUID.

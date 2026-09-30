@@ -28,13 +28,20 @@ pub(in crate::session) fn legacy_creature_update_threat_victim_like_cpp(
         .iter()
         .map(|candidate| (candidate.player_guid, *candidate))
         .collect();
+    // C++ `ThreatReference::ShouldBeOffline` (`Combat/ThreatManager.cpp:99-108`)
+    // takes a participant offline for three reasons: it cannot be seen,
+    // `Creature::_IsTargetAcceptable`/`CanCreatureAttack` refuse it, or the unit
+    // flags forbid fighting. It never re-asks whether the participant is
+    // hostile, because `_IsTargetAcceptable` (`Creature.cpp:2717`) accepts
+    // anything the creature is already engaged by. Demanding hostility here
+    // instead took every neutral participant offline, which emptied the threat
+    // list, evaded, and — through the evade's `CombatStop` →
+    // `RemoveAllAttackers` → `AttackStop` (`Unit.cpp:6377`) — cancelled the
+    // attacking player's own swing before it could ever land.
     let mut eligible_candidate_guids: HashSet<_> = candidates
         .iter()
         .filter(|candidate| {
-            legacy_creature_aggro_candidate_is_targetable_for_attack_like_cpp(candidate)
-                && legacy_creature_aggro_candidate_is_hostile_to_creature_like_cpp(
-                    creature, candidate, config,
-                )
+            legacy_creature_candidate_is_acceptable_target_like_cpp(creature, candidate, config)
                 .unwrap_or(false)
                 && legacy_creature_aggro_candidate_is_accessible_for_creature_like_cpp(
                     creature, candidate,
@@ -77,8 +84,10 @@ pub(in crate::session) fn legacy_creature_update_threat_victim_like_cpp(
                     | UnitFlags::IMMUNE_TO_NPC
                     | UnitFlags::UNINTERACTIBLE,
             )
-            && legacy_creature_snapshot_is_hostile_to_creature_like_cpp(creature, snapshot, config)
-                .unwrap_or(false)
+            && legacy_creature_snapshot_is_acceptable_target_like_cpp(
+                creature, *guid, snapshot, config,
+            )
+            .unwrap_or(false)
             && if snapshot.in_water {
                 creature.creature.can_enter_water_like_cpp()
             } else {

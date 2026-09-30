@@ -31,6 +31,59 @@ implementation vertical is selected by dependency from #29/#31, then
 #32/#33/#34, with each consumer required to use the C3.1 envelope and no
 speculative AI or crate split.
 
+## 0. Head reconciliation — 2026-09-30
+
+This plan's baseline above (`a82f4b2f`, 2026-09-19) is **45 commits behind** the
+integration branch. The current `origin/3.4.3` head is `62f5c619` (2026-09-26); both
+`a82f4b2f` and the modularity plan's `581eb19e` are ancestors of it, so there is no
+fork divergence — only a stale baseline. Until this section is superseded, read §1's
+"candidate" language against the list below, not as pending work.
+
+**The slice §1 describes as "candidate in PR #1228" is integrated** as `2df57d6f`
+(creature split, share, unkillable and damage threat), followed by the `9daa13f6`
+bag-record pointer change (#1229/#1230) and `81c74731` release-build cost work.
+
+The remaining 42 commits in `a82f4b2f..62f5c619` are a **feature line this plan never
+recorded**. Grouped by what they deliver, with the ledger/milestone that owns their
+target coverage:
+
+| Landed work | Commits | Plan owner |
+| --- | --- | --- |
+| Client-data extraction ported from TrinityCore: `wow-casc` local CASC reader, map/vmap extractors, vmap assembler, mmaps generator, in-memory WDC4 reading, plus a client downloader with a local NGDP server | `ee2aeae0`…`586052c0`, `27de9d20`, `4b4378aa`, `bbb05547`, `254993a0`, `175c881e`, `133b60ef` | M0 data prerequisites; Part 2 **L9** terrain/pathfinding/LOS extraction support |
+| Character creation completeness: starting items per C++ `Player::Create` | `b9f39e61`, `1e05db3f` | M1 entry; **L12** item/inventory |
+| Login/transport behaviour: ConnectTo failure and LogDisconnect handling like C++, plus opt-in `Network.DirectLoginWithoutConnectTo` | `c5156be5`, `76d2a04f`, `8fb1cdfa` | M1 entry; **L2** connection/order, **L23** configuration |
+| Battle.net account surface: game-account list proto fix, GameUtilities service for Change Realm, browser URL map and web tokens | `d60a680b`, `b657f90a`, `8cd32c3e`, `a5a29061`, `4946f362` | M1 entry; **L1/L2** |
+| Social: friend-status broadcast, `CMSG_WHO`, BattleTag friends | `3ee5686d`, `135726c5` | Part 2 **L1/L2**; the group/social lane |
+| In-game shop (BattlePay) on 3.4.3.54261: packets from client RE, catalog and account tables, distribution list, purchase/delivery order, character services/transfer/boost/undelete, `CharacterUpgradeComplete` | `7da0aba4`, `8b2a1d28`, `b31d1387`, `e3392b76`, `dc315003`, `b237c9d4`, `cee35048` | Not in any existing ledger: commercial services beyond the M4 exit's named set. Needs an explicit owner before it can be claimed as parity coverage |
+| Operator tooling: `bnet-shop` web tier, `wow-url-patch` client URL patcher, `wow-text-dump` (Linux/proc and Wine/Proton PE lookup) | `5124c95d`, `5d5a91ff`, `bec20aef`, `b62b94d1`, `fa2fdecc`, `62f5c619` | Outside the port ledgers; operator/QA tooling |
+| Database: text protocol for transactions and migration statements | `2aae3c57` | **L24** statements/loaders/transactions |
+| Docs/Pages | `b40ef4e9`, `2739cadd` | — |
+
+Two gate consequences of that unrecorded line, both measured at `62f5c619`:
+
+- **Session-ownership surface.** The BattlePay and starting-items commits updated
+  `tools/architecture/session-ownership-policy.json`; the social/`CMSG_WHO`/BattleTag,
+  Change Realm, game-account and ConnectTo commits did **not**. As a result
+  `session-ownership-check --syntax-only` reports 59 findings at the branch point,
+  including the unreviewed `os_like_cpp`, `timezone_offset_minutes_like_cpp`,
+  `realm_character_counts_like_cpp` and `worldserver_realm_list_like_cpp` fields and the
+  `bnet_friends::session_port`, `bnet_services` and `handlers::who` impls. These belong
+  to C4's boundary review, not to whoever next touches Session.
+- **Physical ratchet.** `check_architecture.py check` fails at `62f5c619` for four files
+  over their ceilings (`world-server/src/app.rs` 5745/5729, `world-server/src/lib.rs`
+  2112/2110, `handlers/character/world_entry.rs` 2786/2782, `session/directory.rs`
+  2441/2438). `./tools/validation-v2 final` aborts on those two gates before it compiles
+  anything, so a green `final` is currently unreachable on this branch; the substantive
+  campaign has to be run as workspace tests and recorded as such.
+
+**Next prepared responsibility, selected by evidence rather than by document order:**
+the live player-melee blocker recorded in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) (2026-09-30). It is the only
+Part 1 exit failure with a live two-configuration reproduction, and it sits exactly on
+#584's open C0/C1/C3 axes: which object is the authority for an accepted attack, what
+phase writes it, and what survives a tick. M1 entry and the M2 visibility path are
+observed working in the same session; M3 combat is not.
+
 ## 1. Direction from here
 
 **#29 creature white-swing split/share damage — 2026-09-19, split implementation

@@ -44,38 +44,118 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## Later verified open findings
 
-- **2026-09-30, live: the player's melee swing never happens — the canonical Player the
-  runtime phase reads has no attack state.** First **live reproduction** on this branch,
-  with a real client session (tools/wow-test-bot `--melee-smoke`) against a running
-  world-server on map 0. Sequence observed on the wire: CMSG_ATTACK_SWING is accepted and
-  the server publishes SMSG_ATTACK_START for (player → creature), then **no
-  SMSG_ATTACKER_STATE_UPDATE ever follows**, in either direction, for the whole window;
-  the creature never takes damage and never dies.
-  Server-side, with `RUSTYCORE_PLAYER_MELEE_TRACE=1`, the player auto-attack phase
-  (`world-server/src/runtime/delivery.rs:993`, Phase 0 of the legacy creature runtime tick)
-  reports every tick:
-  `attackers_seen=1 maps_seen=1 victims_resolved=0 swings_ready=0 attacker_unavailable=0`,
-  and the per-attacker line says the Player it reads is
-  `is_alive=true is_in_world=true has_combat=false in_combat_mirror=false` with
-  `attacking()` empty — *after* the accepted swing.
-  So the phase finds the map, finds the Player, and that Player carries none of the state
-  the handler just wrote: `handlers/combat.rs:210` → `start_player_attack_like_cpp`
-  (`session/combat/melee.rs:728`) returned `Accepted { send_attack_start: true }`, which
-  means `attack_with_context_like_cpp` accepted and `set_in_combat_like_cpp(true)` ran.
-  The write goes through `mutate_canonical_player_like_cpp` →
-  `mutate_canonical_player_by_guid_like_cpp` (`session/canonical_access/operations.rs:64`),
-  which prefers `manager.with_player_mut_like_cpp(handle, ..)`, while the phase reads
-  `managed.map().get_typed_player(guid)` (`session/legacy_runtime/player_tick.rs:94`).
-  The evidence says those two resolve **different Player instances**; C++ has exactly one
-  map-owned `Player`, and `Unit::Attack` writes the same object `Player::Update` later
-  swings from. This is an ownership/authority defect, not a combat-arithmetic one: the
-  melee table, the swing timer and the creature side are all exercised by unit tests, but
-  nothing in production connects the accepted request to the object that ticks.
-  Not yet repaired, and deliberately not repaired blind: the fix is a choice about which
-  Player the runtime phases must read, which belongs to the ownership plan
-  (`docs/architecture/ownership-and-boundaries.md`) and to #584's core work.
-  Reproduce with: `--melee-smoke --melee-creature-entry <entry>` and
-  `RUSTYCORE_PLAYER_MELEE_TRACE=1` on the server.
+- [x] **2026-09-30, live: a creature a player attacks evades on the next aggro tick, and the
+  evade cancels the player's attack — so the player never swings.** Both halves repaired;
+  closed 2026-10-01, and kept here with the evidence that produced it. Root cause traced
+  end to end on a running server with a real client session (tools/wow-test-bot
+  `--melee-smoke`), reproduced against a critter (entry 721) and a hostile creature
+  (entry 299), and in **both** tick-owner configurations.
+
+  The chain, each step observed:
+
+  1. The request is accepted and the state is written to the right object. At the end of
+     `start_player_attack_like_cpp` (`session/combat/melee.rs:728`) the trace reports
+     `outcome=NewTarget{previous:None}`, `residence=MapKey{0,0}` and the target read back
+     through **both** routes the code uses: `attacking_via_handle=Some(Creature …)` and
+     `attacking_via_map=Some(Creature …)`. There is one canonical Player and it has the
+     victim. (An earlier version of this entry claimed two Player instances; that is
+     disproven and corrected.)
+  2. The creature only exists in the **legacy** runtime. The canonical creature scan
+     reports `canonical_scan_ran=true canonical_found=0` while the legacy grid holds 29
+     candidates. `begin_canonical_player_combat_ref_like_cpp`
+     (`session/combat/state.rs:212`) therefore applies its combat reference on a map that
+     does not contain the victim, and the legacy creature receives only
+     `enter_combat` → `enter_ai_combat` (`wow-entities/src/creature/ops_1.rs:895`), which
+     sets AI state, combat target and `attacking` — **no threat reference**.
+  3. On the next aggro tick the legacy threat update finds no usable hostile for that
+     creature and returns `LegacyCreatureThreatUpdateLikeCpp::Evade`
+     (`session/legacy_runtime/creature_threat.rs:201,239,257`), which sets `UnitState::EVADE`
+     and resets its combat.
+  4. Evade emits one `CreatureAttackStopLikeCppCommand` per participant
+     (`creature_aggro_tick.rs:595`). Observed exactly once, for our pair:
+     `creature_combat_stop_applied attacker_guid=Creature[721 #48] victim_guid=Player[#5]`.
+  5. Applying it runs `apply_creature_combat_stop` (`wow-map/src/map/runtime.rs:437`), whose
+     Player-victim branch does `set_attacking(None)` and purges the player's combat
+     reference. That mapping is faithful — C++ `Unit::CombatStop` → `RemoveAllAttackers` →
+     each attacker's `AttackStop` — so the player's attack is cancelled 13-17 ms after it
+     was accepted.
+  6. The runtime phase that would swing then reads the same Player and sees
+     `has_combat=false` with no `attacking()`, while **`selection` still holds the
+     creature** — the fingerprint of step 5 rather than of `attack_stop_like_cpp`, which
+     would also have cleared the selection. Confirmed by tracing the three session paths
+     that could clear it (`run_combat_tick`'s vanish branch, `combat_stop_like_cpp`,
+     `stop_player_attack_like_cpp`): **none fires**.
+
+  Both tick owners fail for this one reason: with
+  `RustyCore.LegacyCreatureGlobalRuntime = 1` the global player-melee phase reports
+  `victims_resolved=0 attacker_unavailable=0` every 10 ms tick; with `= 0` nothing else
+  clears the target and the session's own `run_combat_tick` still publishes no swing in a
+  60-second engagement at 4 yards.
+
+  **Repaired for the player-initiated case on 2026-10-01.** The source of step 2 was
+  RustyCore's own addition: `handle_attack_swing` put the victim into AI combat, which C++
+  `Unit::Attack` does not do for a player attacker — it records the attacker in the victim's
+  set (already done here through `add_attacker_like_cpp`) and reaches `EngageWithTarget`
+  only inside `if (creature && !IsControlledByPlayer())` (`Unit.cpp:6254-6256`). The victim
+  engages when damage lands. A first candidate repair — adding a zero threat reference — was
+  **rejected** after reading that code: it would have invented C++ behaviour to keep an
+  unfaithful combat entry alive. Removing the entry is the faithful fix, and it is what made
+  the loop work live: `player_landed=1 (10 damage)`, `SMSG_ATTACK_STOP reports the target
+  dead`, `--melee-smoke` exit 0 against entry 721.
+
+  **Repaired on 2026-10-01 — the second half of the same chain, and both remaining
+  symptoms with it.** The evade that kept cancelling the attack was traced to one
+  unfaithful clause, not to chase or to a missing damage hook. Order captured live with
+  `RUSTYCORE_PLAYER_MELEE_TRACE=1` plus a temporary backtrace on
+  `CombatSubsystem::set_attacking` and on `WorldCreature::enter_combat`:
+
+  1. `22:50:02.416 attack_accepted` — the player attacks creature 299.
+  2. `22:50:02.449` — `apply_player_melee_to_legacy_creature_like_cpp`
+     (`legacy_runtime/creature_melee_tick.rs:289`) engages the creature. So player damage
+     *does* engage its victim; the earlier "nothing engages a creature when player damage
+     lands" reading was wrong, and it is withdrawn here.
+  3. `22:50:02.492` — the aggro tick's threat update takes every reference offline and
+     evades. A per-participant diagnostic printed
+     `targetable=true accessible=true visibility=Allowed leash=Allowed` and
+     **`hostile=false`**: the only failing clause was hostility.
+  4. `22:50:02.494` — the evade's `CombatStop` clears the player's `attacking`, which is
+     faithful: C++ `CreatureAI::_EnterEvadeMode` (`AI/CreatureAI.cpp:315`) calls
+     `Unit::CombatStop` → `RemoveAllAttackers` (`Unit.cpp:6377`), and that calls
+     `AttackStop` on every attacker. The propagation was never the defect.
+
+  `ThreatReference::ShouldBeOffline` (`Combat/ThreatManager.cpp:99-108`) never re-asks
+  whether a participant is hostile. It asks `Creature::_IsTargetAcceptable`, whose decisive
+  clause is `IsEngagedBy(target) || IsHostileTo(target)` (`Creature.cpp:2717`), and
+  `Unit::IsEngagedBy` (`Unit.h:1025`) reads the threat list through `Unit::IsThreatenedBy`
+  (`:1055`) with **`includeOffline = true`** — so a reference that merely exists is
+  acceptance on its own. Hostility gates *starting* a fight, not keeping one. The Rust
+  eligibility set demanded hostility for every participant, so a creature a player attacked
+  dropped the player on the next tick unless the factions were hostile, evaded, and
+  cancelled the swing.
+
+  The repair adds `legacy_creature_candidate_is_acceptable_target_like_cpp` (and its
+  snapshot form) as the single port of `_IsTargetAcceptable`, used by both the threat update
+  and the aggro gate, and splits the old boolean into
+  `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2855`) so `IsHostileTo`
+  and `IsFriendlyTo` come from one reaction instead of one conflated predicate — the
+  friendly clause at `Creature.cpp:2702` needs the distinction. Live proof on the same
+  spawn, one run: `attack_start=true player_landed=4 (42 damage) creature_landed=4
+  (4 damage) death=true xp=50`, `SMSG_ATTACK_STOP reports the target dead`,
+  `SMSG_LOG_XP_GAIN 50 XP`, `--melee-smoke` exit 0. The creature now retaliates, dies, and
+  pays experience.
+
+- [x] **2026-10-01: the at-war reputation flag was treated as the hostility decision
+  instead of a cap.** Found while splitting the reaction above.
+  `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2880-2885`) reads the
+  player's rank for the creature's faction and caps it at `REP_NEUTRAL` **only when the
+  player is at war**. The Rust branch instead returned "not hostile" for every faction the
+  player was not at war with. For hostility alone the two read the same on standings
+  TrinityCore produces, because `ReputationMgr::SetReputation` declares war when a rank
+  drops to hostile, but the shortcut cannot express a friendly reaction at all, which
+  `Creature::_IsTargetAcceptable` needs. Corrected to the C++ shape, and the test that
+  asserted the shortcut (`..._rejects_reputation_without_at_war_like_cpp`) was rewritten
+  against the source as `..._caps_an_at_war_reaction_at_neutral_like_cpp`. Recorded
+  separately because it is a behaviour change, not part of the melee repair.
 
 - **2026-09-30, live: a player sees nothing until it acknowledges its active mover — this is
   C++ behaviour, recorded because it looks like a visibility defect.** While investigating the
@@ -365,6 +445,46 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 ---
 
 ## CRIT — data loss / duplication / corruption (fix before trusting the server with real chars)
+
+- [x] **2026-10-01, live: deleting a character leaked every dependent row, including its
+  items. Repaired the same day.** Reproduced over the wire with the server's own path
+  (tools/wow-test-bot `--delete-characters`, C++ `CharDelete` →
+  `Player::DeleteFromDB`). The four QA characters deleted successfully — the server answered
+  `CHAR_DELETE_SUCCESS` and the `characters` rows are gone — and they left behind, measured
+  immediately afterwards: **20 `character_inventory` rows, 20 `item_instance` rows,
+  30 `character_skills`, 48 `character_glyphs`, 210 `character_reputation` and
+  2 `character_homebind`** rows, for four level-1 characters that had never played.
+  The cause is the adapter: `character_administration_adapter.rs:264` issues exactly one
+  statement, `CharStatements::DEL_CHARACTER` (`DELETE FROM characters WHERE guid = ?`),
+  while C++ `Player::DeleteFromDB`'s `CHAR_DELETE_REMOVE` branch issues **52** `CHAR_DEL_*`
+  statements in one transaction (`Entities/Player/Player.cpp`, `Player::DeleteFromDB`).
+  Severity is CRIT rather than cosmetic because the leaked `item_instance` rows keep their
+  item GUIDs allocated for ever, the orphan rows accumulate on every delete, and a future
+  character reusing a guid would inherit them: this is exactly the "trusting the server with
+  real characters" bar. The orphan rows from this reproduction were removed by hand
+  (`character_inventory`, `item_instance`, `character_skills`, `character_glyphs`,
+  `character_reputation`, `character_homebind` for guids 1-4); nothing else on the QA account
+  was touched. Owner: the A2 persistence lane and Part 2 **L24**.
+  - **Repaired at `character_administration_adapter.rs`:** the delete now commits the full
+    C++ `CHAR_DELETE_REMOVE` set — 49 CharacterDatabase statements in C++ append order —
+    inside one transaction. No new SQL was needed: all 49 identities already existed and
+    had no caller, and every one of their texts is byte-identical to the C++ statement it
+    ports (checked statement by statement against
+    `Database/Implementation/CharacterDatabase.cpp`).
+  - **Scope contract, recorded on the function:** three C++ steps are deliberately not
+    reproduced, because each needs a read or a second database this path does not have —
+    the COD-mail refund and per-mail-id item deletes driven by `CHAR_SEL_CHAR_COD_ITEM_MAIL`
+    and `CHAR_SEL_MAILITEMS`, the pet-id walk from `CHAR_SEL_CHAR_PET_IDS`, and the two
+    `LOGIN_DEL_BATTLE_PET*` LoginDatabase statements. The unconditional mail and pet
+    deletes still remove the character's own rows.
+  - **Live proof:** a freshly created character (guid 6) held 156 rows across seven tables —
+    1 `characters`, 5 `character_inventory`, 5 `item_instance`, 15 `character_skills`,
+    24 `character_glyphs`, 105 `character_reputation` and 1 `character_homebind`. After
+    `--delete-characters 6` every one of those counts reads **0**.
+  - `the_delete_transaction_follows_the_cpp_append_order_and_binds_only_the_guid` pins all
+    49 statements, their C++ order and their binds (only the guid, twice for
+    `guild_eventlog`); `every_family_the_live_reproduction_leaked_is_now_deleted` pins the
+    six families this reproduction measured.
 
 - [x] **D-C1 Item enchantments not loaded on relog.** `SEL_CHAR_EQUIPMENT`/`SEL_CHAR_BAG_CONTENTS`
   select enchantment cols but the load hardcodes 0 → equipped/bagged enchants vanish on

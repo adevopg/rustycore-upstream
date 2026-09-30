@@ -7,6 +7,54 @@ use super::*;
 pub(crate) fn characters_db_url() -> Result<String> {
     database_url("WOW_BOT_CHAR_DB_URL", "CharacterDatabaseInfo")
 }
+/// Bring a QA character that a creature killed back to life, as a fixture.
+///
+/// A dead attacker cannot swing: C++ `Unit::Attack`
+/// (`Entities/Unit/Unit.cpp:6175`) refuses one, and RustyCore answers
+/// `CMSG_ATTACK_SWING` with `InvalidDeadAttacker`, which on the wire looks
+/// exactly like "the server never published SMSG_ATTACK_START". The server's
+/// only implemented exit from death is `CMSG_REPOP_REQUEST`, and C++
+/// `Player::RepopAtGraveyard` leaves the player a ghost at the graveyard, so no
+/// in-protocol sequence gets a live character back here.
+///
+/// `characters.health` is where the death state lives: C++
+/// `Player::LoadFromDB` reads a zero-health row as a corpse
+/// (`Entities/Player/Player.cpp:18119-18121`) and clamps the stored value to the
+/// computed maximum (`:18135`), which `restored_saved_health_like_cpp` mirrors.
+/// Writing a saturating value therefore restores a live character without this
+/// tool inventing a maximum. It is a fixture reset, not a resurrection: nothing
+/// here exercises server death-exit behaviour.
+pub(crate) fn revive_dead_bot_character_fixture(
+    conn: &mut mysql::Conn,
+    bot: &config::BotConfig,
+) -> Result<bool> {
+    use mysql::prelude::Queryable;
+
+    let Some((online, health)) = conn
+        .exec_first::<(u8, u32), _, _>(
+            "SELECT online, health FROM characters WHERE guid = ?",
+            (bot.character_guid,),
+        )
+        .map_err(|error| anyhow!("Read health for guid {}: {error}", bot.character_guid))?
+    else {
+        bail!("No characters row for guid {}", bot.character_guid);
+    };
+    if health != 0 {
+        return Ok(false);
+    }
+    if online != 0 {
+        bail!(
+            "character {} is dead but still online; refusing to write its health row",
+            bot.character_guid
+        );
+    }
+    conn.exec_drop(
+        "UPDATE characters SET health = ? WHERE guid = ? AND health = 0",
+        (u32::MAX, bot.character_guid),
+    )
+    .map_err(|error| anyhow!("Revive fixture for guid {}: {error}", bot.character_guid))?;
+    Ok(true)
+}
 pub(crate) fn validate_local_bot_character_owner(
     conn: &mut mysql::Conn,
     bot: &config::BotConfig,

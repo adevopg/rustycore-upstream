@@ -68,6 +68,119 @@ impl MariaDbCharacterAdministrationPersistenceAdapterLikeCpp {
     }
 }
 
+/// C++ `Player::DeleteFromDB`'s `CHAR_DELETE_REMOVE` branch
+/// (`Entities/Player/Player.cpp`, `Player::DeleteFromDB`): every dependent row of
+/// the character goes with it, in **one** CharacterDatabase transaction, each
+/// statement bound only with the character guid.
+///
+/// The order below is the C++ append order, statement for statement. None of this
+/// is new SQL: all 49 identities already existed and simply had no caller, which is
+/// why a delete used to leave inventory, items, skills, glyphs, reputation and
+/// homebind rows behind.
+///
+/// **Scope contract — intentional, bounded departure.** Three C++ steps are *not*
+/// reproduced here, because each needs a read or a second database this path does
+/// not have, and inventing them would be worse than recording them:
+///   * the COD-mail refund and the per-mail-id item deletes, which C++ drives from
+///     `CHAR_SEL_CHAR_COD_ITEM_MAIL` and `CHAR_SEL_MAILITEMS` before the
+///     transaction. The unconditional `DEL_MAIL`/`DEL_MAIL_ITEMS` below still remove
+///     the character's own mail rows.
+///   * the pet-id walk from `CHAR_SEL_CHAR_PET_IDS`. `DEL_CHAR_PET_BY_OWNER` and
+///     `DEL_CHAR_PET_DECLINEDNAME_BY_OWNER` below still remove the owner's rows.
+///   * `LOGIN_DEL_BATTLE_PET_DECLINED_NAME_BY_OWNER` and
+///     `LOGIN_DEL_BATTLE_PETS_BY_OWNER`, which are LoginDatabase statements.
+fn character_delete_transaction_like_cpp(guid: u64) -> SqlTransaction {
+    let mut transaction = SqlTransaction::new();
+    for statement in character_delete_statements_like_cpp(guid) {
+        transaction.append(statement);
+    }
+    transaction
+}
+
+/// The statements themselves, in C++ order, separated from the transaction so the
+/// order and the binds can be asserted without an accessor on `SqlTransaction`.
+fn character_delete_statements_like_cpp(guid: u64) -> Vec<PreparedStatement> {
+    let mut statements = Vec::new();
+    let push_guid_only = |statement: CharStatements, into: &mut Vec<PreparedStatement>| {
+        let mut prepared = PreparedStatement::for_statement(statement);
+        prepared.set_u64(0, guid);
+        into.push(prepared);
+    };
+
+    for statement in CHARACTER_DELETE_GUID_ONLY_STATEMENTS_BEFORE_GUILD_EVENTLOG_LIKE_CPP {
+        push_guid_only(statement, &mut statements);
+    }
+
+    // C++ binds the guid twice here: the row matches either participant column.
+    let mut guild_eventlog =
+        PreparedStatement::for_statement(CharStatements::DEL_GUILD_EVENTLOG_BY_PLAYER);
+    guild_eventlog.set_u64(0, guid);
+    guild_eventlog.set_u64(1, guid);
+    statements.push(guild_eventlog);
+
+    for statement in CHARACTER_DELETE_GUID_ONLY_STATEMENTS_AFTER_GUILD_EVENTLOG_LIKE_CPP {
+        push_guid_only(statement, &mut statements);
+    }
+
+    statements
+}
+
+/// The C++ append order up to `CHAR_DEL_GUILD_EVENTLOG_BY_PLAYER`.
+const CHARACTER_DELETE_GUID_ONLY_STATEMENTS_BEFORE_GUILD_EVENTLOG_LIKE_CPP: [CharStatements; 36] = [
+    CharStatements::DEL_CHARACTER,
+    CharStatements::DEL_CHARACTER_CUSTOMIZATIONS,
+    CharStatements::DEL_PLAYER_ACCOUNT_DATA,
+    CharStatements::DEL_CHAR_DECLINED_NAME,
+    CharStatements::DEL_CHAR_ACTION,
+    CharStatements::DEL_CHARACTER_ARENA_STATS,
+    CharStatements::DEL_CHAR_AURA_EFFECT,
+    CharStatements::DEL_CHAR_AURA,
+    CharStatements::DEL_PLAYER_BGDATA,
+    CharStatements::DEL_BATTLEGROUND_RANDOM,
+    CharStatements::DEL_CHAR_CUF_PROFILES,
+    CharStatements::DEL_PLAYER_CURRENCY,
+    CharStatements::DEL_CHAR_GIFT,
+    CharStatements::DEL_PLAYER_HOMEBIND,
+    CharStatements::DEL_CHARACTER_INSTANCE_LOCK_BY_GUID,
+    CharStatements::DEL_CHAR_INVENTORY,
+    CharStatements::DEL_CHAR_QUESTSTATUS,
+    CharStatements::DEL_CHAR_QUESTSTATUS_OBJECTIVES,
+    CharStatements::DEL_CHAR_QUESTSTATUS_REWARDED,
+    CharStatements::DEL_CHAR_REPUTATION,
+    CharStatements::DEL_CHAR_SPELL,
+    CharStatements::DEL_CHAR_SPELL_COOLDOWNS,
+    CharStatements::DEL_CHAR_SPELL_CHARGES,
+    CharStatements::DEL_ITEM_INSTANCE_GEMS_BY_OWNER,
+    CharStatements::DEL_ITEM_INSTANCE_TRANSMOG_BY_OWNER,
+    CharStatements::DEL_ITEM_INSTANCE_BY_OWNER,
+    CharStatements::DEL_CHAR_SOCIAL_BY_FRIEND,
+    CharStatements::DEL_CHAR_SOCIAL_BY_GUID,
+    CharStatements::DEL_MAIL,
+    CharStatements::DEL_MAIL_ITEMS,
+    CharStatements::DEL_CHAR_PET_BY_OWNER,
+    CharStatements::DEL_CHAR_PET_DECLINEDNAME_BY_OWNER,
+    CharStatements::DEL_CHAR_ACHIEVEMENTS,
+    CharStatements::DEL_CHAR_ACHIEVEMENT_PROGRESS,
+    CharStatements::DEL_CHAR_EQUIPMENTSETS,
+    CharStatements::DEL_CHAR_TRANSMOG_OUTFITS,
+];
+
+/// The C++ append order after `CHAR_DEL_GUILD_EVENTLOG_BY_PLAYER`.
+const CHARACTER_DELETE_GUID_ONLY_STATEMENTS_AFTER_GUILD_EVENTLOG_LIKE_CPP: [CharStatements; 12] = [
+    CharStatements::DEL_GUILD_BANK_EVENTLOG_BY_PLAYER,
+    CharStatements::DEL_CHAR_GLYPHS,
+    CharStatements::DEL_CHARACTER_QUESTSTATUS_DAILY,
+    CharStatements::DEL_CHARACTER_QUESTSTATUS_WEEKLY,
+    CharStatements::DEL_CHARACTER_QUESTSTATUS_MONTHLY,
+    CharStatements::DEL_CHARACTER_QUESTSTATUS_SEASONAL,
+    CharStatements::DEL_CHAR_TALENT,
+    CharStatements::DEL_CHAR_SKILLS,
+    CharStatements::DEL_CHAR_STATS,
+    CharStatements::DEL_CHAR_FISHINGSTEPS,
+    CharStatements::DEL_CHARACTER_FAVORITE_AUCTIONS_BY_CHAR,
+    CharStatements::DEL_CHARACTER_AURA_STORED_LOCATIONS_BY_GUID,
+];
+
 impl CharacterAdministrationPersistencePortLikeCpp
     for MariaDbCharacterAdministrationPersistenceAdapterLikeCpp
 {
@@ -261,9 +374,11 @@ impl CharacterAdministrationPersistencePortLikeCpp
                     };
                 }
             }
-            let mut statement = self.character_db.prepare(CharStatements::DEL_CHARACTER);
-            statement.set_u32(0, guid as u32);
-            match self.character_db.execute(&statement).await {
+            match self
+                .character_db
+                .commit_transaction(character_delete_transaction_like_cpp(guid))
+                .await
+            {
                 Ok(_) => {
                     self.identity_cache.remove(guid);
                     MutationOutcome::Applied
@@ -542,5 +657,115 @@ mod tests {
         assert_eq!(instance.sql().matches('?').count(), 9);
         assert_eq!(link.sql(), CharStatements::REP_CHAR_INVENTORY_ITEM.sql());
         assert_eq!(link.sql().matches('?').count(), 4);
+    }
+}
+
+#[cfg(test)]
+mod character_delete_tests {
+    use super::*;
+    use crate::params::SqlParam;
+
+    /// The C++ `CHAR_DELETE_REMOVE` append order, transcribed from
+    /// `Player::DeleteFromDB`. A delete that drops one of these leaks that table.
+    const CPP_DELETE_ORDER: [&str; 49] = [
+        "DELETE FROM characters WHERE guid = ?",
+        "DELETE FROM character_customizations WHERE guid = ?",
+        "DELETE FROM character_account_data WHERE guid = ?",
+        "DELETE FROM character_declinedname WHERE guid = ?",
+        "DELETE FROM character_action WHERE guid = ?",
+        "DELETE FROM character_arena_stats WHERE guid = ?",
+        "DELETE FROM character_aura_effect WHERE guid = ?",
+        "DELETE FROM character_aura WHERE guid = ?",
+        "DELETE FROM character_battleground_data WHERE guid = ?",
+        "DELETE FROM character_battleground_random WHERE guid = ?",
+        "DELETE FROM character_cuf_profiles WHERE guid = ?",
+        "DELETE FROM character_currency WHERE CharacterGuid = ?",
+        "DELETE FROM character_gifts WHERE guid = ?",
+        "DELETE FROM character_homebind WHERE guid = ?",
+        "DELETE FROM character_instance_lock WHERE guid = ?",
+        "DELETE FROM character_inventory WHERE guid = ?",
+        "DELETE FROM character_queststatus WHERE guid = ?",
+        "DELETE FROM character_queststatus_objectives WHERE guid = ?",
+        "DELETE FROM character_queststatus_rewarded WHERE guid = ?",
+        "DELETE FROM character_reputation WHERE guid = ?",
+        "DELETE FROM character_spell WHERE guid = ?",
+        "DELETE FROM character_spell_cooldown WHERE guid = ?",
+        "DELETE FROM character_spell_charges WHERE guid = ?",
+        "DELETE iig FROM item_instance_gems iig LEFT JOIN item_instance ii ON iig.itemGuid = ii.guid WHERE ii.owner_guid = ?",
+        "DELETE iit FROM item_instance_transmog iit LEFT JOIN item_instance ii ON iit.itemGuid = ii.guid WHERE ii.owner_guid = ?",
+        "DELETE FROM item_instance WHERE owner_guid = ?",
+        "DELETE FROM character_social WHERE friend = ?",
+        "DELETE FROM character_social WHERE guid = ?",
+        "DELETE FROM mail WHERE receiver = ?",
+        "DELETE FROM mail_items WHERE receiver = ?",
+        "DELETE FROM character_pet WHERE owner = ?",
+        "DELETE FROM character_pet_declinedname WHERE owner = ?",
+        "DELETE FROM character_achievement WHERE guid = ? AND achievement NOT IN (456,457,458,459,460,461,462,463,464,465,466,467,1400,1402,1404,1405,1406,1407,1408,1409,1410,1411,1412,1413,1414,1415,1416,1417,1418,1419,1420,1421,1422,1423,1424,1425,1426,1427,1463,3117,3259,4078,4576,4998,4999,5000,5001,5002,5003,5004,5005,5006,5007,5008,5381,5382,5383,5384,5385,5386,5387,5388,5389,5390,5391,5392,5393,5394,5395,5396,6433,6523,6524,6743,6744,6745,6746,6747,6748,6749,6750,6751,6752,6829,6859,6860,6861,6862,6863,6864,6865,6866,6867,6868,6869,6870,6871,6872,6873)",
+        "DELETE FROM character_achievement_progress WHERE guid = ?",
+        "DELETE FROM character_equipmentsets WHERE guid = ?",
+        "DELETE FROM character_transmog_outfits WHERE guid = ?",
+        "DELETE FROM guild_eventlog WHERE PlayerGuid1 = ? OR PlayerGuid2 = ?",
+        "DELETE FROM guild_bank_eventlog WHERE PlayerGuid = ?",
+        "DELETE FROM character_glyphs WHERE guid = ?",
+        "DELETE FROM character_queststatus_daily WHERE guid = ?",
+        "DELETE FROM character_queststatus_weekly WHERE guid = ?",
+        "DELETE FROM character_queststatus_monthly WHERE guid = ?",
+        "DELETE FROM character_queststatus_seasonal WHERE guid = ?",
+        "DELETE FROM character_talent WHERE guid = ?",
+        "DELETE FROM character_skills WHERE guid = ?",
+        "DELETE FROM character_stats WHERE guid = ?",
+        "DELETE FROM character_fishingsteps WHERE guid = ?",
+        "DELETE FROM character_favorite_auctions WHERE guid = ?",
+        "DELETE FROM character_aura_stored_location WHERE Guid = ?",
+    ];
+
+    #[test]
+    fn the_delete_transaction_follows_the_cpp_append_order_and_binds_only_the_guid() {
+        let statements = character_delete_statements_like_cpp(4242);
+        assert_eq!(
+            statements.len(),
+            CPP_DELETE_ORDER.len(),
+            "C++ appends {} statements in its CHAR_DELETE_REMOVE branch",
+            CPP_DELETE_ORDER.len()
+        );
+        for (index, expected) in CPP_DELETE_ORDER.iter().enumerate() {
+            assert_eq!(
+                statements[index].sql(),
+                *expected,
+                "statement {index} out of C++ order"
+            );
+            let binds = statements[index].params();
+            let wanted = expected.matches('?').count();
+            assert_eq!(binds.len(), wanted, "statement {index} bind count");
+            for bind in binds {
+                assert_eq!(
+                    *bind,
+                    SqlParam::U64(4242),
+                    "statement {index} binds only the character guid"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_family_the_live_reproduction_leaked_is_now_deleted() {
+        // The tables measured as orphaned after a live delete, before this repair:
+        // 20 inventory rows, 20 item_instance, 30 skills, 48 glyphs,
+        // 210 reputation and 2 homebind, for four level-1 characters.
+        let statements = character_delete_statements_like_cpp(7);
+        let sql: Vec<&str> = statements.iter().map(|statement| statement.sql()).collect();
+        for table in [
+            "character_inventory",
+            "item_instance",
+            "character_skills",
+            "character_glyphs",
+            "character_reputation",
+            "character_homebind",
+        ] {
+            assert!(
+                sql.iter().any(|statement| statement.contains(table)),
+                "{table} would still be orphaned by a delete"
+            );
+        }
     }
 }
