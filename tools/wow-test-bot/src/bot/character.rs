@@ -11,15 +11,30 @@ pub(crate) fn validate_local_bot_character_owner(
     conn: &mut mysql::Conn,
     bot: &config::BotConfig,
 ) -> Result<()> {
+    if !validate_local_bot_character_owner_if_present(conn, bot)? {
+        bail!("No characters row for guid {}", bot.character_guid);
+    }
+    Ok(())
+}
+/// The same ownership and clean-fixture checks, but an absent row is reported as
+/// `false` instead of an error. Character provisioning needs that distinction:
+/// there is nothing to validate before the character exists, while a row owned
+/// by another account must still stop the run.
+pub(crate) fn validate_local_bot_character_owner_if_present(
+    conn: &mut mysql::Conn,
+    bot: &config::BotConfig,
+) -> Result<bool> {
     use mysql::prelude::Queryable;
 
-    let (owner, online, at_login) = conn
+    let Some((owner, online, at_login)) = conn
         .exec_first::<(u32, u8, u16), _, _>(
             "SELECT account, online, at_login FROM characters WHERE guid = ?",
             (bot.character_guid,),
         )
         .map_err(|e| anyhow!("Lookup character {}: {e}", bot.character_guid))?
-        .ok_or_else(|| anyhow!("No characters row for guid {}", bot.character_guid))?;
+    else {
+        return Ok(false);
+    };
 
     if owner != bot.account_id {
         bail!(
@@ -36,7 +51,7 @@ pub(crate) fn validate_local_bot_character_owner(
         );
     }
 
-    Ok(())
+    Ok(true)
 }
 pub(crate) fn rested_xp_character_restore_point_from_row(
     row: &mysql::Row,

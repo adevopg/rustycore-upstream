@@ -20,6 +20,48 @@ and an ignored password file by default. Use only authorized test identities and
 approved runtime/DB targets; disabling bootstrap does not make gameplay read-only.
 Runtime swaps and destructive fixture modes retain their separate explicit guards.
 
+## Character provisioning on a fresh realm — live and mutating
+
+Every other workflow needs a `characters` row to exist: the preflight refuses to
+run without one, and `config.example.json` points at a guid from a pre-existing
+development database. On a freshly bootstrapped realm there is none, and the run
+stops with `No characters row for guid <n>`.
+
+`--create-character` provisions one over the wire — no SQL insert:
+
+```bash
+set -a; . ./.env.local; set +a   # or export WOW_BOT_PASSWORD_… yourself
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --create-character-name Rustyqa
+```
+
+It runs alone (no other workflow flag) and needs exactly one enabled bot. The
+sequence is:
+
+```text
+BNet auth -> world auth -> CMSG_ENUM_CHARACTERS -> CMSG_CREATE_CHARACTER
+  -> SMSG_CREATE_CHAR -> CMSG_ENUM_CHARACTERS -> read back the row
+  -> CMSG_PLAYER_LOGIN -> SMSG_CONNECT_TO -> SMSG_LOGIN_VERIFY_WORLD
+  -> CMSG_LOGOUT_REQUEST -> SMSG_LOGOUT_COMPLETE -> read back the row
+```
+
+The first login is part of the mode on purpose: C++ character creation sets
+`AT_LOGIN_FIRST` (`Handlers/CharacterHandler.cpp:888`) and only the first
+`HandlePlayerLogin` clears it (`CharacterHandler.cpp:1271`), so a character that
+has never logged in is not yet the clean offline fixture the other workflows
+require. The mode prints the guid the server assigned; put it in
+`character_guid` in your ignored local `config.json`.
+
+Defaults are race 1 (Human) and class 1 (Warrior); override with
+`--create-character-race`, `--create-character-class` and
+`--create-character-sex`. The name must be 2–12 ASCII letters, and the server
+still has the final word: a refusal is reported with its C++ `ResponseCodes`
+name, for example `CHAR_CREATE_NAME_IN_USE`.
+
+This mode writes: it creates an account fixture if missing, writes
+`account.session_key_bnet` and `account.os`, and creates a character. Use it only
+against authorized test identities.
+
 ## Bounded normal save/relogin check (#578)
 
 With explicit approval to swap/restart `world-server` and use existing

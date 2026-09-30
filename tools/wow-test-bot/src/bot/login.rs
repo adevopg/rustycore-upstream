@@ -697,8 +697,18 @@ pub(crate) fn prepare_world_auth_context(
         .map_err(|e| anyhow!("Lookup username for {}: {}", email, e))?;
     let username = username.ok_or_else(|| anyhow!("No account for email {}", email))?;
 
+    // C++ writes the session key and the platform together: bnetserver's
+    // `LOGIN_UPD_BNET_GAME_ACCOUNT_LOGIN_INFO`
+    // (`Database/Implementation/LoginDatabase.cpp:132`) is
+    // `UPDATE account SET session_key_bnet = ?, ..., os = ?, ... WHERE username = ?`.
+    // This bot writes the key itself, so it must also state the platform, and
+    // `WorldSocket::HandleAuthSession` refuses an account whose `os` is not a
+    // platform it has a seed for. The digest below is computed with
+    // `build_info.win64AuthSeed`, so `Wn64` is the platform actually used —
+    // without it a freshly provisioned account fails with
+    // "unsupported platform:".
     conn.exec_drop(
-        "UPDATE account SET session_key_bnet = ? WHERE username = ?",
+        "UPDATE account SET session_key_bnet = ?, os = 'Wn64' WHERE username = ?",
         (session_key, &username),
     )
     .map_err(|e| anyhow!("UPDATE session_key_bnet for {}: {}", username, e))?;

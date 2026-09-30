@@ -646,6 +646,17 @@ pub(crate) fn print_help() {
     println!("  --require-group          Treat missing party info/group formation as failure");
     println!("  --ensure-test-accounts   Create missing local TESTBOT auth rows; validate existing rows without rewriting them");
     println!("  --login-only             Stop after SMSG_LOGIN_VERIFY_WORLD; do not run LFG");
+    println!(
+        "  --create-character       Create one character over CMSG_CREATE_CHARACTER and print its guid (used alone)"
+    );
+    println!("  --create-character-name <name>  Name to request (2-12 ASCII letters)");
+    println!("  --create-character-race <n>     Race id (default: 1, Human)");
+    println!("  --create-character-class <n>    Class id (default: 1, Warrior)");
+    println!("  --create-character-sex <n>      0 male, 1 female (default: 0)");
+    println!("  --create-character-timeout <secs>  Creation round-trip budget (default: 30)");
+    println!(
+        "                           Env: WOW_BOT_CREATE_CHARACTER, WOW_BOT_CREATE_CHARACTER_NAME, WOW_BOT_CREATE_CHARACTER_RACE, WOW_BOT_CREATE_CHARACTER_CLASS, WOW_BOT_CREATE_CHARACTER_SEX, WOW_BOT_CREATE_CHARACTER_TIMEOUT_SECS"
+    );
     println!("  --stand-state-smoke      After login, verify Sit then Stand state round-trips");
     println!(
         "  --stand-state <n>        Verify one state instead (0=Stand, 1=Sit, 3=Sleep, 8=Kneel)"
@@ -859,6 +870,20 @@ pub(crate) fn password_env_name(account: &str) -> String {
     format!("WOW_BOT_PASSWORD_{suffix}")
 }
 pub(crate) fn ensure_test_accounts(bots: &[config::BotConfig]) -> Result<()> {
+    ensure_test_accounts_with_character_policy(bots, false)
+}
+/// Provision the auth fixtures for a run that is about to create the character
+/// itself. A configured guid that already belongs to another account still stops
+/// the run; only its absence is tolerated.
+pub(crate) fn ensure_test_accounts_allowing_absent_character(
+    bots: &[config::BotConfig],
+) -> Result<()> {
+    ensure_test_accounts_with_character_policy(bots, true)
+}
+fn ensure_test_accounts_with_character_policy(
+    bots: &[config::BotConfig],
+    allow_absent_character: bool,
+) -> Result<()> {
     use mysql::prelude::Queryable;
 
     let auth_db = auth_db_url()?;
@@ -874,7 +899,11 @@ pub(crate) fn ensure_test_accounts(bots: &[config::BotConfig]) -> Result<()> {
     // provisioning is intentionally create-only: an ID collision must never
     // become authority to rewrite credentials or character ownership.
     for bot in bots {
-        validate_local_bot_character_owner(&mut char_conn, bot)?;
+        if allow_absent_character {
+            validate_local_bot_character_owner_if_present(&mut char_conn, bot)?;
+        } else {
+            validate_local_bot_character_owner(&mut char_conn, bot)?;
+        }
     }
     for bot in bots {
         let character_count: u64 = char_conn
