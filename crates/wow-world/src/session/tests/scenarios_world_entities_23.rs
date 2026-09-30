@@ -668,7 +668,7 @@ fn legacy_creature_aggro_tick_once_suppresses_empty_los_ai_like_cpp() {
     assert!(outcome.commands.is_empty());
 }
 #[test]
-fn legacy_creature_aggro_tick_once_fails_closed_for_script_ai_registry_gap_like_cpp() {
+fn legacy_creature_aggro_tick_once_falls_back_to_default_ai_for_a_script_name_like_cpp() {
     use crate::map_manager::RuntimeTickOwner;
     let manager = shared_map_manager();
     let (mut session, _, _) = make_session();
@@ -699,9 +699,17 @@ fn legacy_creature_aggro_tick_once_fails_closed_for_script_ai_registry_gap_like_
         legacy_aggro_hostile_config_like_cpp(),
     );
 
-    assert_eq!(outcome.ai_selection_unrepresented, 1);
-    assert_eq!(outcome.aggro_starts, 0);
-    assert!(outcome.commands.is_empty());
+    // C++ `FactorySelector::SelectAI` (`AI/CreatureAISelector.cpp:83-102`): when
+    // the DB ScriptName resolves to no CreatureAI, selection falls through to
+    // `SelectFactory<CreatureAI>` and the creature keeps a default AI — the C++
+    // failure log says so outright. With an empty AIName and a hostile,
+    // non-civilian, non-neutral creature that default is AggressorAI, so the
+    // creature must aggro instead of being skipped.
+    //
+    // This replaces an earlier assertion that the creature was skipped entirely
+    // (`ai_selection_unrepresented == 1`), which had no C++ basis.
+    assert_eq!(outcome.aggro_starts, 1);
+    assert!(!outcome.commands.is_empty());
 }
 #[test]
 fn creature_ai_spell_target_restrictions_require_hostile_unit_only_wire_like_cpp() {

@@ -54,8 +54,16 @@ impl MapManager {
     ///
     /// The key type matches `self.maps: HashMap<(u16, u32), MapInstance>` exactly.
     /// Order is unspecified (hash map iteration order).
+    /// Map iteration order for the legacy runtime phases.
+    ///
+    /// Sorted for the same reason as `creature_guids`: C++ `MapManager::Update`
+    /// (`Maps/MapManager.cpp:288`) walks `i_maps` in a stable order, and a
+    /// `HashMap` walk here would let the per-process hash seed decide which map
+    /// ticks first.
     pub fn active_map_keys(&self) -> Vec<(u16, u32)> {
-        self.maps.keys().copied().collect()
+        let mut keys: Vec<(u16, u32)> = self.maps.keys().copied().collect();
+        keys.sort_unstable();
+        keys
     }
 
     pub fn init_instance_ids_from_max(&mut self, max_existing_instance_id: u32) {
@@ -324,15 +332,35 @@ impl MapManager {
         })
     }
 
+    /// Per-tick creature visit order for the legacy runtime phases.
+    ///
+    /// C++ `Map::Update` reaches creatures through `VisitNearbyCellsOf`
+    /// (`Maps/Map.cpp:713`), which walks a cell coordinate range, so the visit
+    /// order within a tick is deterministic and reproducible.
+    ///
+    /// Iterating the `HashMap`s directly made the order depend on Rust's
+    /// per-process random hash seed. That is observable: it reorders emitted
+    /// packets, changes the order in which creatures consume the shared runtime
+    /// RNG authority, and made `scenarios_world_entities_34`'s split-damage
+    /// expectations flaky (measured 4 pass / 1 fail over five clean runs before
+    /// this ordering was introduced). Walk grids by coordinate and creatures by
+    /// GUID so one tick over one map state always produces one sequence.
     pub fn creature_guids(&self, map_id: u16, instance_id: u32) -> Vec<ObjectGuid> {
-        self.get_map(map_id, instance_id)
-            .map(|map| {
-                map.grids
-                    .values()
-                    .flat_map(|grid| grid.creatures.keys().copied())
-                    .collect()
-            })
-            .unwrap_or_default()
+        let Some(map) = self.get_map(map_id, instance_id) else {
+            return Vec::new();
+        };
+        let mut grid_coords: Vec<GridCoord> = map.grids.keys().copied().collect();
+        grid_coords.sort_by_key(|coord| (coord.x, coord.y));
+        let mut guids = Vec::new();
+        for coord in grid_coords {
+            let Some(grid) = map.grids.get(&coord) else {
+                continue;
+            };
+            let mut grid_guids: Vec<ObjectGuid> = grid.creatures.keys().copied().collect();
+            grid_guids.sort_by_key(|guid| (guid.high_value(), guid.low_value()));
+            guids.extend(grid_guids);
+        }
+        guids
     }
 
     pub fn active_creature_guids_for_player_update_like_cpp(

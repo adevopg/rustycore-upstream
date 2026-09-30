@@ -736,6 +736,40 @@ impl SpellStore {
         .and_then(|attributes| attributes.get(attribute_word).copied())
         .is_some_and(|attributes| attributes & attribute != 0)
     }
+    /// C++ `SpellMgr::LoadSpellAreas` (`Spells/SpellMgr.cpp:2510-2514`).
+    ///
+    /// Every `spell_area` row carrying `SPELL_AREA_FLAG_AUTOCAST` ORs
+    /// `SPELL_ATTR0_NO_AURA_CANCEL` into its spell's attributes, so the client
+    /// cannot voluntarily cancel an aura the server auto-applies on area entry.
+    /// C++ performs this mutation while loading the rows, after
+    /// `LoadSpellInfoStore` has populated the store.
+    ///
+    /// Returns how many spells were mutated. A row whose spell has no hydrated
+    /// `SpellMisc` attributes is skipped, matching the C++ `if (SpellInfo const*
+    /// spellInfo = GetSpellInfo(...))` guard.
+    pub fn apply_spell_area_no_aura_cancel_like_cpp(
+        &mut self,
+        areas: &[crate::spell::SpellAreaLikeCpp],
+    ) -> usize {
+        let mut mutated = 0;
+        for area in areas {
+            if area.flags & crate::SPELL_AREA_FLAG_AUTOCAST_LIKE_CPP == 0 {
+                continue;
+            }
+            let Ok(spell_id) = i32::try_from(area.spell_id) else {
+                continue;
+            };
+            let Some(attributes) = self.spell_misc_attributes.get_mut(&spell_id) else {
+                continue;
+            };
+            if attributes[0] & crate::spell::attributes::SPELL_ATTR0_NO_AURA_CANCEL != 0 {
+                continue;
+            }
+            attributes[0] |= crate::spell::attributes::SPELL_ATTR0_NO_AURA_CANCEL;
+            mutated += 1;
+        }
+        mutated
+    }
     /// C++ `SpellInfo::HasAttribute` for attributes hydrated from `SpellMisc.db2`.
     pub fn has_attribute0_like_cpp(&self, spell_id: i32, attribute: u32) -> bool {
         self.spell_misc_attributes

@@ -645,13 +645,7 @@ pub fn run_legacy_creature_aggro_tick_once_with_config_like_cpp(
                 outcome.sightless_creatures_skipped += 1;
                 continue;
             }
-            let ai_kind = match legacy_creature_ai_selection_decision_like_cpp(creature, &config) {
-                LegacyCreatureAiSelectionDecisionLikeCpp::Selected(ai_kind) => ai_kind,
-                LegacyCreatureAiSelectionDecisionLikeCpp::ScriptRegistryUnrepresented => {
-                    outcome.ai_selection_unrepresented += 1;
-                    continue;
-                }
-            };
+            let ai_kind = legacy_creature_ai_selection_decision_like_cpp(creature, &config);
             if !creature_ai_uses_base_move_in_line_of_sight_like_cpp(&ai_kind) {
                 outcome.ai_los_suppressed += 1;
                 continue;

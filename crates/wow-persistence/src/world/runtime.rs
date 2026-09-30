@@ -205,4 +205,47 @@ pub trait MapCorpsePersistencePortLikeCpp: Send + Sync {
         &'a self,
         request: MapCorpseLoadRequestLikeCpp,
     ) -> PersistenceFutureLikeCpp<'a, MapCorpseLoadOutcomeLikeCpp>;
+
+    /// C++ `Corpse::SaveToDB` (`Entities/Corpse/Corpse.cpp`).
+    ///
+    /// One transaction that first deletes the owner's existing corpse rows —
+    /// C++ calls `DeleteFromDB(trans)` before inserting "to prevent DB data
+    /// inconsistence problems and duplicates" — then inserts the corpse. The
+    /// row is keyed by the OWNER's guid counter, not the corpse's, which is why
+    /// the delete is a safe upsert.
+    fn persist_corpse_like_cpp<'a>(
+        &'a self,
+        row: MapCorpseSaveRowLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'a, MapCorpseSaveOutcomeLikeCpp>;
+}
+
+/// The corpse state C++ `Corpse::SaveToDB` binds to `CHAR_INS_CORPSE`, in the
+/// same field order as the statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MapCorpseSaveRowLikeCpp {
+    /// C++ `GetOwnerGUID().GetCounter()`: the dead player's guid counter, which
+    /// is the corpse table's key.
+    pub owner_guid: u64,
+    pub pos_x: f32,
+    pub pos_y: f32,
+    pub pos_z: f32,
+    pub orientation: f32,
+    pub map_id: u16,
+    pub display_id: u32,
+    /// C++ builds this as the space-separated `m_corpseData->Items` list.
+    pub item_cache: String,
+    pub race: u8,
+    pub class: u8,
+    pub sex: u8,
+    pub flags: u8,
+    pub dynamic_flags: u8,
+    pub ghost_time: u32,
+    pub corpse_type: u8,
+    pub instance_id: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MapCorpseSaveOutcomeLikeCpp {
+    Saved,
+    Failed { reason: String },
 }

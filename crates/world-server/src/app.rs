@@ -2667,10 +2667,17 @@ async fn run_inner(
     .await
     .context("Failed to load C++ spell_area rows")?;
     let spell_area_store = Arc::new(spell_area_outcome.store);
+    // C++ `SpellMgr::LoadSpellAreas` (`Spells/SpellMgr.cpp:2510-2514`) ORs
+    // `SPELL_ATTR0_NO_AURA_CANCEL` into every autocast row's spell while it
+    // loads the rows. This used to be skipped, so the client could cancel auras
+    // the server auto-applies on area entry.
+    let spell_area_no_aura_cancel =
+        spell_store.apply_spell_area_no_aura_cancel_like_cpp(spell_area_store.areas_like_cpp());
     info!(
-        "Loaded {} C++ spell_area rows ({} validation issues; SpellInfo no-aura-cancel mutation still pending)",
+        "Loaded {} C++ spell_area rows ({} validation issues; {} spells marked SPELL_ATTR0_NO_AURA_CANCEL)",
         spell_area_outcome.loaded_row_count,
-        spell_area_outcome.errors.len()
+        spell_area_outcome.errors.len(),
+        spell_area_no_aura_cancel
     );
     let access_requirement_outcome =
         crate::world::auxiliary_catalog::load_access_requirements_like_cpp(

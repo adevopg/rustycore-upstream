@@ -14,6 +14,7 @@ mod effects_player;
 mod effects_power;
 mod effects_progress;
 mod execution;
+pub(in crate::session) use execution::weapon_damage_effect_amount_like_cpp;
 mod execution_overloads;
 mod threat;
 mod ticks;

@@ -594,6 +594,16 @@ where
             } else {
                 Vec::new()
             };
+            // C++ `CombatManager::PurgeReference` publishes the owner's combat
+            // flag as soon as its last reference goes; without this the flag
+            // would stay set for the rest of the creature's life.
+            if !targets.is_empty() {
+                if let Some(owner) = self.get_typed_player_mut(owner_guid) {
+                    owner.unit_mut().update_owner_combat_state_like_cpp();
+                } else if let Some(owner) = self.get_typed_creature_mut(owner_guid) {
+                    owner.unit_mut().update_owner_combat_state_like_cpp();
+                }
+            }
             expired.extend(
                 targets
                     .into_iter()
@@ -608,12 +618,14 @@ where
                     .subsystems_mut()
                     .combat
                     .purge_combat_ref_like_cpp(*owner_guid);
+                target.unit_mut().update_owner_combat_state_like_cpp();
             } else if let Some(target) = self.get_typed_creature_mut(*target_guid) {
                 target
                     .unit_mut()
                     .subsystems_mut()
                     .combat
                     .purge_combat_ref_like_cpp(*owner_guid);
+                target.unit_mut().update_owner_combat_state_like_cpp();
             }
         }
 

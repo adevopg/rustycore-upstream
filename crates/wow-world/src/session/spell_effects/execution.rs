@@ -745,6 +745,39 @@ impl WorldSession {
                         );
                     }
                 }
+                x if matches!(
+                    x,
+                    wow_data::spell::spell_effect_types::SPELL_EFFECT_WEAPON_DAMAGE
+                        | wow_data::spell::spell_effect_types::SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+                        | wow_data::spell::spell_effect_types::SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+                        | wow_data::spell::spell_effect_types::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+                ) =>
+                {
+                    // C++ `Spell::EffectWeaponDmg` (`SpellEffects.cpp:3340`).
+                    // Before this arm existed all four weapon-damage effects
+                    // fell through the silent `_ => {}` below, so every melee
+                    // ability consumed power, started its cooldown, emitted
+                    // SPELL_GO and dealt zero damage.
+                    if let Some(weapon_damage) = self
+                        .represented_weapon_damage_effect_like_cpp(
+                            &spell_info,
+                            direct_effect_index,
+                        )
+                    {
+                        if weapon_damage > 0 {
+                            self.apply_damage_from_caster_like_cpp(
+                                item_guid_generator,
+                                Some(spell_id),
+                                caster_guid,
+                                target_guid,
+                                weapon_damage,
+                                cast_id,
+                                spell_visual_id,
+                            )
+                            .await?;
+                        }
+                    }
+                }
                 x if x
                     == wow_data::spell::spell_effect_types::SPELL_EFFECT_ENVIRONMENTAL_DAMAGE =>
                 {
@@ -1254,4 +1287,137 @@ impl WorldSession {
 
         Ok(())
     }
+
+    /// C++ `Spell::EffectWeaponDmg` (`Spells/SpellEffects.cpp:3340-3634`) —
+    /// generic weapon-damage arithmetic.
+    ///
+    /// Returns the damage this cast deals, or `None` when C++ would not compute
+    /// here because a later effect index is also a weapon-damage effect: only
+    /// the last one calculates, and it handles all of them at once
+    /// (`SpellEffects.cpp:3355-3367`).
+    ///
+    /// **Scope contract — intentional, bounded departure.** Ported here:
+    ///   * the last-effect guard (`:3355-3367`),
+    ///   * the first accumulation pass for `fixed_bonus`,
+    ///     `weaponDamagePercentMod` and `normalized` (`:3550-3571`),
+    ///   * `CalculateDamage` over the equipped range (`:3594`),
+    ///   * the order-sensitive second pass (`:3597-3620`),
+    ///   * the negative clamp (`:3628`).
+    ///
+    /// NOT ported. A spell that needs one of these deals correct base weapon
+    /// damage without that extra term; none of them is silently invented:
+    ///   * every `SpellFamilyName` special case (`:3373-3548`) — Warrior
+    ///     Devastate / Mocking Blow, Rogue Fan of Knives / Hemorrhage / Ghostly
+    ///     Strike / Mutilate and the remaining family branches, with their
+    ///     `totalDamagePercentMod` and `spell_bonus` contributions.
+    ///   * `normalized` is parsed and reported but not applied. C++ feeds it to
+    ///     `Unit::CalculateDamage(attType, normalized, addPctMods)` to choose a
+    ///     normalized weapon-speed AP multiplier; RustyCore's
+    ///     `weapon_damage_like_cpp` returns an already-recalculated `UnitData`
+    ///     range whose AP term used the non-normalized multiplier, so
+    ///     `SPELL_EFFECT_NORMALIZED_WEAPON_DMG` currently carries the
+    ///     non-normalized AP contribution.
+    ///   * the `addPctMods` `TOTAL_PCT` scaling of `fixed_bonus` (`:3574-3592`).
+    ///     The weapon term itself does carry its percent mods, because that is
+    ///     where C++ applies them and the Rust range is post-recalculation.
+    ///   * `ApplySpellMod(SpellModOp::HealingAndDamage)` (`:3624-3625`).
+    ///   * `MeleeDamageBonusDone`/`MeleeDamageBonusTaken` (`:3631-3633`) are
+    ///     not applied yet, so aura-driven done/taken melee modifiers do not
+    ///     reach ability damage; the white-swing path applies its own.
+    ///   * the `Mechanic` selection (`:3617-3619`).
+    fn represented_weapon_damage_effect_like_cpp(
+        &mut self,
+        spell_info: &wow_data::SpellInfo,
+        effect_index: u32,
+    ) -> Option<u32> {
+        use wow_data::spell::spell_effect_types::{
+            SPELL_EFFECT_NORMALIZED_WEAPON_DMG, SPELL_EFFECT_WEAPON_DAMAGE,
+            SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL, SPELL_EFFECT_WEAPON_PERCENT_DAMAGE,
+        };
+
+        let range = self.with_owned_player_like_cpp(|player| {
+            player.weapon_damage_like_cpp(wow_constants::WeaponAttackType::BaseAttack)
+        })?;
+        let rolled = i64::from(crate::session_rules::white_swing_roll_like_cpp(
+            range[0], range[1],
+        ));
+        let (damage, normalized) =
+            weapon_damage_effect_amount_like_cpp(spell_info.effects(), effect_index, rolled)?;
+        if normalized {
+            tracing::debug!(
+                spell_id = spell_info.spell_id,
+                "SPELL_EFFECT_NORMALIZED_WEAPON_DMG uses the non-normalized attack-power multiplier; see the scope contract above"
+            );
+        }
+        Some(damage)
+    }
+}
+
+/// Pure C++ `Spell::EffectWeaponDmg` arithmetic (`SpellEffects.cpp:3550-3628`),
+/// separated from the caster lookup so it can be tested without a session.
+///
+/// `rolled` is `Unit::CalculateDamage`'s result over the equipped range.
+/// Returns `None` when a later effect index is also a weapon-damage effect,
+/// mirroring the C++ "calculate only at last weapon effect" guard (`:3355`).
+pub(in crate::session) fn weapon_damage_effect_amount_like_cpp(
+    effects: &[wow_data::SpellEffectInfo],
+    effect_index: u32,
+    rolled: i64,
+) -> Option<(u32, bool)> {
+    use wow_data::spell::spell_effect_types::{
+        SPELL_EFFECT_NORMALIZED_WEAPON_DMG, SPELL_EFFECT_WEAPON_DAMAGE,
+        SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL, SPELL_EFFECT_WEAPON_PERCENT_DAMAGE,
+    };
+    const fn is_weapon_effect(effect: u32) -> bool {
+        matches!(
+            effect,
+            SPELL_EFFECT_WEAPON_DAMAGE
+                | SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+                | SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+                | SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+        )
+    }
+    if effects
+        .iter()
+        .any(|effect| effect.effect_index > effect_index && is_weapon_effect(effect.effect))
+    {
+        return None;
+    }
+
+    // First pass. C++ starts the percent mod at `1.0f` and folds each percent
+    // effect in with `ApplyPct(base, pct) => base = base * pct / 100`.
+    let mut fixed_bonus: i64 = 0;
+    let mut percent_mod: f32 = 1.0;
+    let mut normalized = false;
+    for effect in effects {
+        match effect.effect {
+            SPELL_EFFECT_WEAPON_DAMAGE | SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL => {
+                fixed_bonus += i64::from(effect.effect_base_points);
+            }
+            SPELL_EFFECT_NORMALIZED_WEAPON_DMG => {
+                fixed_bonus += i64::from(effect.effect_base_points);
+                normalized = true;
+            }
+            SPELL_EFFECT_WEAPON_PERCENT_DAMAGE => {
+                percent_mod = percent_mod * effect.effect_base_points as f32 / 100.0;
+            }
+            _ => {}
+        }
+    }
+
+    // Second pass: "Sequence is important" (`:3598`).
+    let mut damage = rolled;
+    for effect in effects {
+        match effect.effect {
+            SPELL_EFFECT_WEAPON_DAMAGE
+            | SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+            | SPELL_EFFECT_NORMALIZED_WEAPON_DMG => damage += fixed_bonus,
+            SPELL_EFFECT_WEAPON_PERCENT_DAMAGE => {
+                damage = (damage as f32 * percent_mod) as i64;
+            }
+            _ => {}
+        }
+    }
+
+    Some((u32::try_from(damage.max(0)).unwrap_or(u32::MAX), normalized))
 }
