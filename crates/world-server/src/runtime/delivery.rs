@@ -1018,6 +1018,31 @@ pub(crate) fn run_legacy_player_melee_tick_and_deliver_once_like_cpp(
         )
     };
     let delivery = deliver_player_melee_results_like_cpp(&outcome.commands, registry);
+    // `RUSTYCORE_PLAYER_MELEE_TRACE=1` reports why a swing did not happen. The
+    // phase runs on every tick, so the trace is throttled to roughly one line
+    // per second and only speaks when a player is actually in the world.
+    if outcome.attackers_seen > 0 && std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+        static TRACE_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let tick = TRACE_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if tick % 100 == 0 {
+            tracing::info!(
+                attackers_seen = outcome.attackers_seen,
+                maps_seen = outcome.maps_seen,
+                victims_resolved = outcome.victims_resolved,
+                swings_ready = outcome.swings_ready,
+                attacker_unavailable = outcome.attacker_unavailable,
+                victim_missing = outcome.victim_missing,
+                victim_not_alive = outcome.victim_not_alive,
+                creature_hits = outcome.creature_hits,
+                creature_kills = outcome.creature_kills,
+                canonical_mirror_rejections = outcome.canonical_mirror_rejections,
+                in_combat_reconciles = outcome.in_combat_reconciles,
+                commands = outcome.commands.len(),
+                delivered = delivery.commands_seen,
+                "RUST_PLAYER_MELEE phase"
+            );
+        }
+    }
     (outcome, delivery)
 }
 

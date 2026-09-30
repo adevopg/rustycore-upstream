@@ -280,6 +280,7 @@ opcode_value	opcode_name	handler_name	session_status	packet_processing
 0x367D	CalendarEventSignUp	handle_calendar_event_sign_up	LoggedIn	ThreadUnsafe
 0x367F	CalendarAddEvent	handle_calendar_add_event	LoggedIn	ThreadUnsafe
 0x3680	CalendarUpdateEvent	handle_calendar_update_event	LoggedIn	ThreadUnsafe
+0x3683	Who	handle_who	LoggedIn	ThreadSafe
 0x3684	SetDungeonDifficulty	handle_set_dungeon_difficulty	LoggedIn	ThreadUnsafe
 0x3685	ResurrectResponse	handle_resurrect_response	LoggedIn	ThreadUnsafe
 0x3687	BugReport	handle_bug_report	LoggedIn	ThreadUnsafe

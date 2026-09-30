@@ -538,17 +538,20 @@ async fn import_transition_history(
             continue;
         }
         if let Some(query) = &migration.adopt_query {
-            let matches: i64 = sqlx::query_scalar(query)
-                .fetch_one(&mut **connection)
-                .await
-                .with_context(|| {
-                    format!(
-                        "schema adoption probe failed for {}:{}",
-                        migration.component, migration.version
-                    )
-                })?;
-            if matches == 1 {
-                imports.push(migration);
+            let probe: Result<i64, sqlx::Error> =
+                sqlx::query_scalar(query).fetch_one(&mut **connection).await;
+            match probe {
+                Ok(1) => imports.push(migration),
+                Ok(_) => {}
+                Err(error) if adoption_probe_error_reports_absent_schema(&error) => {}
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!(
+                            "schema adoption probe failed for {}:{}",
+                            migration.component, migration.version
+                        )
+                    });
+                }
             }
         }
     }
@@ -713,21 +716,56 @@ async fn legacy_import_candidates(
             continue;
         }
         if let Some(query) = &migration.adopt_query {
-            let matches: i64 = sqlx::query_scalar(query)
-                .fetch_one(pool)
-                .await
-                .with_context(|| {
-                    format!(
-                        "schema adoption probe failed for {}:{}",
-                        migration.component, migration.version
-                    )
-                })?;
-            if matches == 1 {
-                candidates.insert((migration.component.clone(), migration.version.clone()));
+            let probe: Result<i64, sqlx::Error> = sqlx::query_scalar(query).fetch_one(pool).await;
+            match probe {
+                Ok(1) => {
+                    candidates.insert((migration.component.clone(), migration.version.clone()));
+                }
+                Ok(_) => {}
+                Err(error) if adoption_probe_error_reports_absent_schema(&error) => {}
+                Err(error) => {
+                    return Err(error).with_context(|| {
+                        format!(
+                            "schema adoption probe failed for {}:{}",
+                            migration.component, migration.version
+                        )
+                    });
+                }
             }
         }
     }
     Ok(candidates)
+}
+
+/// MariaDB/MySQL errors an adoption probe can legitimately raise on an
+/// installation that simply does not have the final schema yet.
+///
+/// A probe is a read-only question — "is this migration's end state already
+/// present?" — and a probe that names a table or column the installation lacks
+/// has answered it: no. MariaDB resolves every table in the statement even when
+/// an `IF(...)` guard would discard the branch, so a data-level probe such as
+/// `core:2026.09.25.01`'s cannot guard itself in SQL: on a freshly imported TDB,
+/// where `battlepay_product` is created by the preceding migration,
+/// `rustycore-db migrate` aborted with
+/// "schema adoption probe failed for core:2026.09.25.01" and could not bootstrap
+/// at all. Anything other than these codes is still a real failure.
+///
+/// 1146 ER_NO_SUCH_TABLE, 1109 ER_UNKNOWN_TABLE, 1054 ER_BAD_FIELD_ERROR. The
+/// MariaDB error number, not `DatabaseError::code`, which is the SQLSTATE
+/// (`42S02` also covers unrelated statements).
+pub(crate) fn adoption_probe_number_reports_absent_schema(number: Option<u16>) -> bool {
+    matches!(number, Some(1146 | 1109 | 1054))
+}
+
+fn adoption_probe_error_reports_absent_schema(error: &sqlx::Error) -> bool {
+    adoption_probe_number_reports_absent_schema(
+        error
+            .as_database_error()
+            .and_then(|database_error| {
+                database_error.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+            })
+            .map(sqlx::mysql::MySqlDatabaseError::number),
+    )
 }
 
 async fn baseline_matches(pool: &MySqlPool, baseline: &BaselineRequirement) -> Result<bool> {

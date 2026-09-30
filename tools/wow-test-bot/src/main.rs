@@ -59,24 +59,9 @@ async fn main() -> Result<()> {
         cli.creature_spell_fixture_manifest.as_deref(),
     )?;
     if cli.recover_loot_fixture {
-        let conflicting_mode = cli.ensure_test_accounts
-            || cli.login_only
-            || cli.stand_state_smoke
-            || cli.bank_smoke
-            || cli.void_storage_smoke
-            || cli.void_storage_query_capture
-            || cli.homebind_smoke
-            || cli.inventory_swap_smoke
-            || cli.vendor_smoke
-            || cli.equipment_set_race_smoke
-            || cli.rested_xp_smoke
-            || cli.detour_chase_capture
-            || cli.creature_spell_capture
-            || cli.cast_lifecycle
-            || cli.loot_race_smoke
-            || cli.loot_item_capture
-            || cli.group_capacity_race_smoke
-            || cli.quest_smoke
+        let conflicting_mode = any_exclusive_workflow_mode_selected(&cli)
+            || cli.ensure_test_accounts
+            || cli.create_character
             || cli.single_account.is_some();
         if conflicting_mode {
             bail!("--recover-loot-fixture must be used alone");
@@ -168,6 +153,12 @@ async fn main() -> Result<()> {
         });
     }
     apply_password_overrides(&mut bots);
+    if cli.create_character {
+        return run_create_character_mode(&cli, bots).await;
+    }
+    if cli.melee_smoke {
+        return run_melee_smoke_mode(&cli, bots).await;
+    }
 
     if bots.is_empty() {
         bail!("No enabled bots matched the current config/filter");

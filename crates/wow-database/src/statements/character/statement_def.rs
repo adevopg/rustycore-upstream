@@ -1126,6 +1126,7 @@ impl StatementDef for CharStatements {
             Self::UPD_CHAR_EXPLORED_ZONES => {
                 "UPDATE characters SET exploredZones = ? WHERE guid = ?"
             }
+            Self::UPD_CHAR_AT_LOGIN_FLAGS => "UPDATE characters SET at_login = ? WHERE guid = ?",
             Self::SEL_MAX_ITEM_GUID => "SELECT MAX(guid) FROM item_instance",
             Self::SEL_MAX_EQUIPMENT_SET_GUID => {
                 // The equipment table uses BIGINT UNSIGNED while the canonical

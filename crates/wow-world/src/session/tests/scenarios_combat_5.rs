@@ -421,3 +421,220 @@ fn represented_melee_ignore_absorb_matches_calc_absorb_resist_like_cpp() {
         (100, 0, 100)
     );
 }
+
+fn weapon_effect(index: u32, effect: u32, base_points: i32) -> wow_data::SpellEffectInfo {
+    wow_data::SpellEffectInfo {
+        effect_index: index,
+        effect,
+        effect_base_points: base_points,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn weapon_damage_effect_adds_the_fixed_bonus_once_like_cpp() {
+    use wow_data::spell::spell_effect_types::SPELL_EFFECT_WEAPON_DAMAGE;
+    // C++ `Spell::EffectWeaponDmg` (`SpellEffects.cpp:3550-3628`): a single
+    // SPELL_EFFECT_WEAPON_DAMAGE adds its base points to the rolled weapon
+    // damage exactly once.
+    let effects = [weapon_effect(0, SPELL_EFFECT_WEAPON_DAMAGE, 40)];
+    let (damage, normalized) =
+        crate::session::spell_effects::weapon_damage_effect_amount_like_cpp(&effects, 0, 100)
+            .expect("last weapon effect must calculate");
+    assert_eq!(damage, 140);
+    assert!(!normalized);
+}
+
+#[test]
+fn weapon_damage_effect_applies_percent_mod_from_one_hundred_base_like_cpp() {
+    use wow_data::spell::spell_effect_types::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE;
+    // C++ starts `weaponDamagePercentMod` at `1.0f` (`:3553`) and folds the
+    // effect in with `ApplyPct(base, pct) => base * pct / 100` (`:3567`), then
+    // multiplies the weapon damage by it (`:3611`). 150 base points therefore
+    // means 150% of the rolled damage, not 150x.
+    let effects = [weapon_effect(0, SPELL_EFFECT_WEAPON_PERCENT_DAMAGE, 150)];
+    let (damage, _) =
+        crate::session::spell_effects::weapon_damage_effect_amount_like_cpp(&effects, 0, 200)
+            .expect("last weapon effect must calculate");
+    assert_eq!(damage, 300);
+}
+
+#[test]
+fn weapon_damage_effect_only_the_last_weapon_effect_calculates_like_cpp() {
+    use wow_data::spell::spell_effect_types::{
+        SPELL_EFFECT_WEAPON_DAMAGE, SPELL_EFFECT_WEAPON_PERCENT_DAMAGE,
+    };
+    // C++ `:3355-3367`: an earlier weapon-damage effect returns without
+    // computing, so the spell is not counted twice. The later one handles all of
+    // them at once.
+    let effects = [
+        weapon_effect(0, SPELL_EFFECT_WEAPON_DAMAGE, 40),
+        weapon_effect(1, SPELL_EFFECT_WEAPON_PERCENT_DAMAGE, 200),
+    ];
+    assert!(
+        crate::session::spell_effects::weapon_damage_effect_amount_like_cpp(&effects, 0, 100,)
+            .is_none(),
+        "the earlier weapon effect must defer to the last one"
+    );
+    let (damage, _) =
+        crate::session::spell_effects::weapon_damage_effect_amount_like_cpp(&effects, 1, 100)
+            .expect("the last weapon effect calculates");
+    // Sequence matters (`:3598`): +40 for the WEAPON_DAMAGE arm, then x2.00 for
+    // the percent arm => (100 + 40) * 2 = 280.
+    assert_eq!(damage, 280);
+}
+
+#[test]
+fn weapon_damage_effect_reports_normalized_and_never_goes_negative_like_cpp() {
+    use wow_data::spell::spell_effect_types::SPELL_EFFECT_NORMALIZED_WEAPON_DMG;
+    // `normalized` is reported so the caller can log the documented departure,
+    // and C++ clamps the result with `std::max(weaponDamage, 0)` (`:3628`).
+    let effects = [weapon_effect(0, SPELL_EFFECT_NORMALIZED_WEAPON_DMG, -500)];
+    let (damage, normalized) =
+        crate::session::spell_effects::weapon_damage_effect_amount_like_cpp(&effects, 0, 100)
+            .expect("last weapon effect must calculate");
+    assert!(
+        normalized,
+        "NORMALIZED_WEAPON_DMG must report normalization"
+    );
+    assert_eq!(damage, 0, "negative weapon damage is clamped to zero");
+}
+
+#[test]
+fn the_test_only_roll_pin_is_scoped_and_leaves_the_table_intact() {
+    use crate::session_rules::{
+        RepresentedMeleeAttackerFactsLikeCpp as Attacker,
+        RepresentedMeleeOutcomeLikeCpp as Outcome, RepresentedMeleeVictimFactsLikeCpp as Victim,
+        TEST_MELEE_OUTCOME_ROLL_LIKE_CPP, melee_outcome_inputs_like_cpp,
+        pin_melee_outcome_roll_like_cpp, rolled_melee_outcome_like_cpp,
+    };
+
+    // A level-2 creature victim facing a level-2 attacker: a 5% miss band plus
+    // dodge and parry. The default test pin is the top of the roll range, which
+    // loses every partial band, so a whole-tick test gets a landed swing instead
+    // of an intermittent avoid.
+    let attacker = Attacker {
+        level: 2,
+        ..Default::default()
+    };
+    let victim = Victim {
+        level: 2,
+        is_creature: true,
+        dodge_pct: 3.0,
+        parry_pct: 6.0,
+        ..Default::default()
+    };
+    let inputs = melee_outcome_inputs_like_cpp(&attacker, &victim);
+    assert_eq!(TEST_MELEE_OUTCOME_ROLL_LIKE_CPP, 9_999);
+    assert_eq!(rolled_melee_outcome_like_cpp(&inputs[0]), Outcome::Hit);
+
+    // A pin is scoped to its guard, so one test cannot change what the next one
+    // on the same thread draws. At equal levels the first band is the 5% miss,
+    // so the bottom of the range resolves there.
+    {
+        let _miss = pin_melee_outcome_roll_like_cpp(0);
+        assert_eq!(rolled_melee_outcome_like_cpp(&inputs[0]), Outcome::Miss);
+        {
+            let _hit = pin_melee_outcome_roll_like_cpp(TEST_MELEE_OUTCOME_ROLL_LIKE_CPP);
+            assert_eq!(rolled_melee_outcome_like_cpp(&inputs[0]), Outcome::Hit);
+        }
+        assert_eq!(rolled_melee_outcome_like_cpp(&inputs[0]), Outcome::Miss);
+    }
+    assert_eq!(rolled_melee_outcome_like_cpp(&inputs[0]), Outcome::Hit);
+}
+
+#[test]
+fn white_swing_publishes_an_evade_like_cpp() {
+    use wow_packet::packets::combat::{
+        HIT_INFO_MISS, HIT_INFO_SWING_NO_HIT_SOUND, VICTIM_STATE_EVADES,
+    };
+
+    let (mut session, _, _) = make_session();
+    let manager = shared_map_manager();
+    let canonical = shared_canonical_map_manager();
+    let guid = test_creature_guid(18_042);
+    let player = ObjectGuid::create_player(1, 100);
+
+    canonical.lock().unwrap().create_world_map(0, 0);
+    session.set_canonical_map_manager(Arc::clone(&canonical));
+    session.set_map_store(Arc::new(wow_data::MapStore::from_entries([
+        wow_data::MapEntry {
+            id: 0,
+            instance_type: wow_data::map::MAP_COMMON,
+            expansion_id: 0,
+            parent_map_id: -1,
+            cosmetic_parent_map_id: -1,
+            flags1: 0,
+            flags2: 0,
+        },
+    ])));
+    session.attach_player_controller_like_cpp(SessionPlayerController::new(
+        player,
+        "Evade".to_string(),
+        Position::new(10.0, 10.0, 0.0, 0.0),
+        0,
+        1,
+        1,
+        80,
+        0,
+    ));
+    let _ = session.ensure_canonical_world_map_for_current_player_like_cpp();
+    session
+        .mutate_canonical_player_like_cpp(|player| {
+            let unit = player.unit_mut();
+            unit.set_attacking(Some(guid));
+            unit.set_target(guid);
+            unit.add_unit_state(UnitState::MELEE_ATTACKING.bits());
+            unit.set_base_attack_time_like_cpp(WeaponAttackType::BaseAttack, 2_000);
+            unit.set_attack_timer(WeaponAttackType::BaseAttack, 0);
+            unit.set_weapon_damage(WeaponAttackType::BaseAttack, 7.0, 7.0);
+        })
+        .unwrap();
+    session.combat_target = Some(guid);
+    session.in_combat = true;
+    register_test_creature(&mut session, manager.clone(), guid, 40);
+    let swing = |session: &mut WorldSession| {
+        let melee_damage_bonus = session.represented_melee_damage_bonus_like_cpp();
+        let armor_mitigation = session.represented_melee_armor_mitigation_like_cpp();
+        let outcome_facts = session.represented_melee_outcome_facts_like_cpp();
+        let damage_taken = session.represented_melee_damage_taken_like_cpp();
+        session
+            .mutate_canonical_player_like_cpp(|player| {
+                player
+                    .unit_mut()
+                    .set_attack_timer(WeaponAttackType::BaseAttack, 0);
+                take_canonical_player_attack_swings_like_cpp(
+                    player,
+                    0,
+                    true,
+                    true,
+                    true,
+                    melee_damage_bonus,
+                    armor_mitigation,
+                    outcome_facts,
+                    damage_taken,
+                )
+            })
+            .flatten()
+            .map(|(swings, _)| swings)
+    };
+
+    // A free victim lands a normal hit.
+    assert_eq!(swing(&mut session).map(|s| s[0].damage), Some(7));
+
+    // C++ `IsEvadingAttacks()` returns `MELEE_HIT_EVADE` before any band.
+    session
+        .mutate_world_creature(guid, |creature| {
+            creature.creature.set_in_evade_mode_like_cpp(true);
+        })
+        .unwrap();
+    let facts = session.represented_melee_outcome_facts_like_cpp();
+    assert!(facts.1.is_evading_attacks);
+    let swings = swing(&mut session).expect("white swing resolves");
+    assert_eq!(swings[0].damage, 0);
+    assert_eq!(
+        swings[0].hit_info,
+        HIT_INFO_MISS | HIT_INFO_SWING_NO_HIT_SOUND
+    );
+    assert_eq!(swings[0].victim_state, VICTIM_STATE_EVADES);
+}

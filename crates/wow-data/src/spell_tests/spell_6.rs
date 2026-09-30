@@ -693,3 +693,77 @@ fn serverside_spell_store_does_not_validate_main_row_difficulty_like_cpp() {
         "C++ LoadSpellInfoServerside validates DifficultyID for effect rows, not for the main serverside_spell row"
     );
 }
+#[test]
+fn hydrating_serverside_spells_publishes_the_payload_get_like_cpp() {
+    // C++ `SpellMgr::LoadSpellInfoServerside` emplaces every serverside row into
+    // the same `mSpellInfoMap` the DB2 spells live in (SpellMgr.cpp:3180), so
+    // `GetSpellInfo` returns a full body — not merely "this id exists".
+    let effect_outcome = ServersideSpellEffectStoreLikeCpp::from_rows_like_cpp(
+        [serverside_effect_row(200, 0)],
+        |_| false,
+        |_| true,
+        |_| true,
+    );
+    let serverside = ServersideSpellStoreLikeCpp::from_rows_like_cpp(
+        [
+            serverside_spell_row(200, 0),
+            serverside_spell_row(201, 2),
+            serverside_spell_row(300, 0),
+        ],
+        &effect_outcome.store,
+        |_| false,
+    );
+    assert!(serverside.errors.is_empty());
+
+    let mut store = SpellStore::new();
+    // 300 stands for a spell the DB2 payload already owns. `emplace` keeps the
+    // incumbent, so the serverside row must not replace it.
+    store.spells.insert(300, test_spell_info_without_aura(300));
+
+    assert!(
+        store.get(200).is_none(),
+        "the payload map holds no serverside body before hydration"
+    );
+
+    let inserted = store.hydrate_serverside_spell_infos_like_cpp(&serverside.store);
+
+    assert_eq!(
+        inserted, 1,
+        "only the DIFFICULTY_NONE row enters a map keyed by spell id alone"
+    );
+    let hydrated = store
+        .get(200)
+        .expect("a serverside spell answers GetSpellInfo with a body");
+    assert_eq!(hydrated.spell_id, 200);
+    assert_eq!(hydrated.recovery_time_ms, 38);
+    assert_eq!(hydrated.cooldown_ms, 39);
+    assert_eq!(hydrated.requires_spell_focus, 23);
+    assert_eq!(hydrated.effects.len(), 1);
+    assert_eq!(
+        hydrated.effects[0].effect,
+        spell_effect_types::SPELL_EFFECT_APPLY_AURA
+    );
+    assert_eq!(hydrated.effects[0].effect_aura, SPELL_AURA_DUMMY_LIKE_CPP);
+    assert_eq!(
+        hydrated.effects[0].effect_base_points, 1,
+        "the float serverside column truncates into int32 BasePoints"
+    );
+    assert_eq!(
+        hydrated.effect_type,
+        spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+        "the primary-effect summary is derived, not left empty"
+    );
+    assert_eq!(hydrated.aura_type, Some(SPELL_AURA_DUMMY_LIKE_CPP));
+
+    assert!(
+        store.get(201).is_none(),
+        "a serverside row that only exists at another difficulty stays out of the payload map"
+    );
+    let incumbent = store.get(300).expect("the DB2 body survives hydration");
+    assert_eq!(
+        incumbent.effect_type,
+        spell_effect_types::SPELL_EFFECT_NONE,
+        "hydration must not overwrite an id the DB2 payload already owns"
+    );
+    assert_eq!(incumbent.recovery_time_ms, 0);
+}

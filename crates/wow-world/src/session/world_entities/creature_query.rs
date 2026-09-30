@@ -103,6 +103,15 @@ impl WorldSession {
                         Some(&player_phase_shift),
                     )
             };
+            // Same `RUSTYCORE_CREATURE_VIS_TRACE` switch the visibility handler
+            // uses. The handler only reports the surviving candidates, which
+            // cannot distinguish "the legacy grid holds nothing here" from
+            // "every candidate was filtered out" — the two have very different
+            // causes.
+            let trace = std::env::var_os("RUSTYCORE_CREATURE_VIS_TRACE").is_some();
+            let legacy_found = legacy_candidates.len();
+            let mut legacy_in_range = 0usize;
+            let mut legacy_visible = 0usize;
             creatures.extend(
                 legacy_candidates
                     .into_iter()
@@ -115,19 +124,50 @@ impl WorldSession {
                             visibility_range,
                         )
                     })
+                    .inspect(|_| legacy_in_range += 1)
                     .filter(|creature| {
                         self.represented_can_see_or_detect_world_creature_like_cpp(creature)
                     })
+                    .inspect(|_| legacy_visible += 1)
                     .filter(|creature| seen.insert(creature.guid())),
             );
+            if trace {
+                tracing::info!(
+                    account = self.account_id,
+                    map_id,
+                    instance_id,
+                    x = position.x,
+                    y = position.y,
+                    visibility_range,
+                    source_combat_reach,
+                    legacy_found,
+                    legacy_in_range,
+                    legacy_visible,
+                    "RUST_CREATURE_VIS legacy_scan"
+                );
+            }
         }
 
         // C++ has one map-owned Creature object. During Rust's temporary
         // canonical/legacy split, the legacy creature owns live movement
         // splines, so prefer it for duplicate GUIDs and use canonical only as
         // a fallback for objects absent from the legacy runtime.
+        let canonical = self.visible_creatures_from_canonical_map_like_cpp(map_id, position);
+        if std::env::var_os("RUSTYCORE_CREATURE_VIS_TRACE").is_some() {
+            tracing::info!(
+                account = self.account_id,
+                map_id,
+                // `None` means the canonical scan could not run at all — no map
+                // key, no owned Player, no manager or a poisoned lock — which is
+                // not the same as finding nothing.
+                canonical_scan_ran = canonical.is_some(),
+                canonical_found = canonical.as_ref().map(Vec::len),
+                legacy_accepted = creatures.len(),
+                "RUST_CREATURE_VIS canonical_scan"
+            );
+        }
         creatures.extend(
-            self.visible_creatures_from_canonical_map_like_cpp(map_id, position)
+            canonical
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|creature| seen.insert(creature.guid())),

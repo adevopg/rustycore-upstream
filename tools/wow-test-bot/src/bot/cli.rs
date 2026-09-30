@@ -105,7 +105,41 @@ pub(crate) struct CliOptions {
     pub(crate) expect_trainer_list: bool,
     pub(crate) expect_trainer_id: Option<i32>,
     pub(crate) quest_timeout_secs: u64,
+    pub(crate) create_character: bool,
+    pub(crate) create_character_name: Option<String>,
+    pub(crate) create_character_race: u8,
+    pub(crate) create_character_class: u8,
+    pub(crate) create_character_sex: i8,
+    pub(crate) create_character_timeout_secs: u64,
+    pub(crate) melee_smoke: bool,
+    pub(crate) melee_creature_entry: Option<u32>,
+    pub(crate) melee_creature_spawn_guid: Option<u64>,
+    pub(crate) melee_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
+}
+/// The post-login workflow modes that are exclusive with each other and with
+/// the standalone fixture/provisioning modes. `--ensure-test-accounts`,
+/// `--single` and the provisioning modes themselves are deliberately not here:
+/// each caller states which of those it tolerates.
+pub(crate) fn any_exclusive_workflow_mode_selected(cli: &CliOptions) -> bool {
+    cli.login_only
+        || cli.melee_smoke
+        || cli.stand_state_smoke
+        || cli.bank_smoke
+        || cli.void_storage_smoke
+        || cli.void_storage_query_capture
+        || cli.homebind_smoke
+        || cli.inventory_swap_smoke
+        || cli.vendor_smoke
+        || cli.equipment_set_race_smoke
+        || cli.rested_xp_smoke
+        || cli.detour_chase_capture
+        || cli.creature_spell_capture
+        || cli.cast_lifecycle
+        || cli.loot_race_smoke
+        || cli.loot_item_capture
+        || cli.group_capacity_race_smoke
+        || cli.quest_smoke
 }
 pub(crate) fn parse_cli() -> Result<CliOptions> {
     let stand_state = std::env::var("WOW_BOT_STAND_STATE")
@@ -482,6 +516,48 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(5),
+        create_character: std::env::var("WOW_BOT_CREATE_CHARACTER")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        create_character_name: std::env::var("WOW_BOT_CREATE_CHARACTER_NAME").ok(),
+        create_character_race: std::env::var("WOW_BOT_CREATE_CHARACTER_RACE")
+            .ok()
+            .map(|value| value.parse::<u8>())
+            .transpose()?
+            .unwrap_or(DEFAULT_CREATE_CHARACTER_RACE),
+        create_character_class: std::env::var("WOW_BOT_CREATE_CHARACTER_CLASS")
+            .ok()
+            .map(|value| value.parse::<u8>())
+            .transpose()?
+            .unwrap_or(DEFAULT_CREATE_CHARACTER_CLASS),
+        create_character_sex: std::env::var("WOW_BOT_CREATE_CHARACTER_SEX")
+            .ok()
+            .map(|value| value.parse::<i8>())
+            .transpose()?
+            .unwrap_or(0),
+        create_character_timeout_secs: std::env::var("WOW_BOT_CREATE_CHARACTER_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_CREATE_CHARACTER_TIMEOUT_SECS),
+        melee_smoke: std::env::var("WOW_BOT_MELEE_SMOKE")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        melee_creature_entry: std::env::var("WOW_BOT_MELEE_CREATURE_ENTRY")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?,
+        melee_creature_spawn_guid: std::env::var("WOW_BOT_MELEE_CREATURE_GUID")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?,
+        melee_timeout_secs: std::env::var("WOW_BOT_MELEE_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_MELEE_SMOKE_TIMEOUT_SECS),
         report_path: std::env::var("WOW_BOT_REPORT").ok(),
     };
 
@@ -769,6 +845,40 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             }
             "--quest-timeout" => {
                 opts.quest_timeout_secs = next_arg(&mut args, "--quest-timeout")?.parse()?;
+            }
+            "--create-character" => opts.create_character = true,
+            "--create-character-name" => {
+                opts.create_character = true;
+                opts.create_character_name = Some(next_arg(&mut args, "--create-character-name")?);
+            }
+            "--create-character-race" => {
+                opts.create_character_race =
+                    next_arg(&mut args, "--create-character-race")?.parse()?;
+            }
+            "--create-character-class" => {
+                opts.create_character_class =
+                    next_arg(&mut args, "--create-character-class")?.parse()?;
+            }
+            "--create-character-sex" => {
+                opts.create_character_sex =
+                    next_arg(&mut args, "--create-character-sex")?.parse()?;
+            }
+            "--create-character-timeout" => {
+                opts.create_character_timeout_secs =
+                    next_arg(&mut args, "--create-character-timeout")?.parse()?;
+            }
+            "--melee-smoke" => opts.melee_smoke = true,
+            "--melee-creature-entry" => {
+                opts.melee_smoke = true;
+                opts.melee_creature_entry =
+                    Some(next_arg(&mut args, "--melee-creature-entry")?.parse()?);
+            }
+            "--melee-creature-guid" => {
+                opts.melee_creature_spawn_guid =
+                    Some(next_arg(&mut args, "--melee-creature-guid")?.parse()?);
+            }
+            "--melee-timeout" => {
+                opts.melee_timeout_secs = next_arg(&mut args, "--melee-timeout")?.parse()?;
             }
             "--report" => opts.report_path = Some(next_arg(&mut args, "--report")?),
             "--help" | "-h" => {

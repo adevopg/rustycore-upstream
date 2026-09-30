@@ -244,7 +244,10 @@ async fn repop_request_dead_non_ghost_sets_ghost_and_repop_count_like_cpp() {
     session.set_player_alive_like_cpp(false);
 
     session
-        .handle_repop_request(repop_request_packet(true))
+        .handle_repop_request(
+            &wow_data::GraveyardStore::default(),
+            repop_request_packet(true),
+        )
         .await;
 
     assert!(!session.player_is_alive_like_cpp());
@@ -271,7 +274,10 @@ async fn repop_request_alive_or_already_ghost_returns_like_cpp() {
 
     session.set_player_alive_like_cpp(true);
     session
-        .handle_repop_request(repop_request_packet(false))
+        .handle_repop_request(
+            &wow_data::GraveyardStore::default(),
+            repop_request_packet(false),
+        )
         .await;
     assert_eq!(session.represented_repop_at_graveyard_count, 0);
     assert!(!session.player_has_ghost_flag_like_cpp());
@@ -279,7 +285,10 @@ async fn repop_request_alive_or_already_ghost_returns_like_cpp() {
     session.set_player_alive_like_cpp(false);
     session.set_player_ghost_flag_like_cpp(true);
     session
-        .handle_repop_request(repop_request_packet(false))
+        .handle_repop_request(
+            &wow_data::GraveyardStore::default(),
+            repop_request_packet(false),
+        )
         .await;
     assert_eq!(session.represented_repop_at_graveyard_count, 0);
     assert!(session.player_has_ghost_flag_like_cpp());
@@ -304,7 +313,10 @@ async fn client_port_graveyard_dead_ghost_repops_like_cpp() {
     session.set_player_ghost_flag_like_cpp(true);
 
     let handled = session
-        .try_handle_client_port_graveyard_like_cpp(port_graveyard_packet())
+        .try_handle_client_port_graveyard_like_cpp(
+            &wow_data::GraveyardStore::default(),
+            port_graveyard_packet(),
+        )
         .await;
 
     assert!(handled);
@@ -333,7 +345,10 @@ async fn client_port_graveyard_alive_or_not_ghost_returns_like_cpp() {
     session.set_player_alive_like_cpp(true);
     assert!(
         session
-            .try_handle_client_port_graveyard_like_cpp(port_graveyard_packet())
+            .try_handle_client_port_graveyard_like_cpp(
+                &wow_data::GraveyardStore::default(),
+                port_graveyard_packet()
+            )
             .await
     );
     assert_eq!(session.represented_repop_at_graveyard_count, 0);
@@ -343,7 +358,10 @@ async fn client_port_graveyard_alive_or_not_ghost_returns_like_cpp() {
     session.set_player_ghost_flag_like_cpp(false);
     assert!(
         session
-            .try_handle_client_port_graveyard_like_cpp(port_graveyard_packet())
+            .try_handle_client_port_graveyard_like_cpp(
+                &wow_data::GraveyardStore::default(),
+                port_graveyard_packet()
+            )
             .await
     );
     assert_eq!(session.represented_repop_at_graveyard_count, 0);
@@ -354,7 +372,10 @@ async fn client_port_graveyard_alive_or_not_ghost_returns_like_cpp() {
     non_empty.reset_read();
     assert!(
         !session
-            .try_handle_client_port_graveyard_like_cpp(non_empty)
+            .try_handle_client_port_graveyard_like_cpp(
+                &wow_data::GraveyardStore::default(),
+                non_empty
+            )
             .await
     );
 }
@@ -441,4 +462,42 @@ async fn instance_lock_response_decline_repops_and_clears_pending_bind_like_cpp(
     assert!(session.pending_bind.is_none());
     assert!(session.represented_confirmed_pending_binds.is_empty());
     assert_eq!(session.represented_repop_at_graveyard_count, 1);
+}
+
+#[tokio::test]
+async fn releasing_the_spirit_creates_a_real_corpse_on_the_map_like_cpp() {
+    // C++ `Player::BuildPlayerRepop` (`Entities/Player/Player.cpp:4190-4193`)
+    // creates the corpse and adds it to the map before the graveyard teleport.
+    // Before this was ported, `handle_repop_request` only flipped alive/ghost
+    // flags: no corpse object existed anywhere, so `CMSG_RECLAIM_CORPSE` had
+    // nothing to reclaim and the death loop could not close.
+    let (mut session, _send_rx) = make_session();
+    let canonical = shared_canonical_map_manager_for_misc_test();
+    let player_guid = ObjectGuid::create_player(1, 42);
+    session.set_player_guid(Some(player_guid));
+    session.set_loaded_player_identity_like_cpp(571, 1, 1, 80, 0);
+    session.set_canonical_map_manager(Arc::clone(&canonical));
+    add_canonical_test_player_on_map_for_misc_test(
+        &canonical,
+        player_guid,
+        Position::new(1.0, 2.0, 3.0, 0.0),
+        571,
+        0,
+    );
+    session.set_player_alive_like_cpp(false);
+
+    let corpse_guid = session
+        .create_player_corpse_for_repop_like_cpp()
+        .expect("a dead player must produce a corpse");
+
+    let manager = canonical.lock().unwrap();
+    let map = manager.find_map(571, 0).expect("seeded map").map();
+    let corpse = map
+        .get_typed_corpse(corpse_guid)
+        .expect("the corpse must be registered on the map");
+    assert_eq!(
+        corpse.world().object().guid(),
+        corpse_guid,
+        "the registered corpse must carry the map-generated HighGuid::Corpse guid"
+    );
 }

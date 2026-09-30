@@ -54,6 +54,10 @@ pub(super) enum PlayerCharacterSaveStepLikeCpp {
         reset_time: u64,
         guid: u64,
     },
+    AtLoginFlags {
+        at_login_flags: u16,
+        guid: u64,
+    },
     ExploredZones {
         explored_zones: String,
         guid: u64,
@@ -313,6 +317,16 @@ pub(super) fn player_character_save_statement_like_cpp(
             let mut stmt =
                 PreparedStatement::for_statement(CharStatements::UPD_CHAR_EXPLORED_ZONES);
             stmt.set_string(0, explored_zones.clone());
+            stmt.set_u64(1, *guid);
+            stmt
+        }
+        Step::AtLoginFlags {
+            at_login_flags,
+            guid,
+        } => {
+            let mut stmt =
+                PreparedStatement::for_statement(CharStatements::UPD_CHAR_AT_LOGIN_FLAGS);
+            stmt.set_u16(0, *at_login_flags);
             stmt.set_u64(1, *guid);
             stmt
         }

@@ -2541,11 +2541,19 @@ async fn run_inner(
     .await
     .context("Failed to load C++ serverside_spell rows")?;
     spell_store.apply_serverside_spell_interrupts_like_cpp(&serverside_spell_outcome.store);
+    // C++ `SpellMgr::LoadServersideSpells` (`Spells/SpellMgr.cpp:3180`) inserts
+    // each row into the same `mSpellInfoMap` as the DB2 spells, so
+    // `GetSpellInfo` returns a full SpellInfo for a serverside id. Existence
+    // already resolved here through the serverside store, but the payload map did
+    // not hold these spells, so `SpellStore::get` returned nothing for them.
+    let serverside_spell_infos =
+        spell_store.hydrate_serverside_spell_infos_like_cpp(&serverside_spell_outcome.store);
     let serverside_spell_store = Arc::new(serverside_spell_outcome.store);
     info!(
-        "Loaded {} C++ serverside_spell rows ({} validation errors; authoritative SpellInfo insertion still pending)",
+        "Loaded {} C++ serverside_spell rows ({} validation errors; {} hydrated into the SpellInfo payload)",
         serverside_spell_outcome.loaded_spell_count,
-        serverside_spell_outcome.errors.len()
+        serverside_spell_outcome.errors.len(),
+        serverside_spell_infos
     );
 
     let spell_acquisition_bootstrap = spell::acquisition_loader::load_like_cpp(
@@ -2667,10 +2675,17 @@ async fn run_inner(
     .await
     .context("Failed to load C++ spell_area rows")?;
     let spell_area_store = Arc::new(spell_area_outcome.store);
+    // C++ `SpellMgr::LoadSpellAreas` (`Spells/SpellMgr.cpp:2510-2514`) ORs
+    // `SPELL_ATTR0_NO_AURA_CANCEL` into every autocast row's spell while it
+    // loads the rows. This used to be skipped, so the client could cancel auras
+    // the server auto-applies on area entry.
+    let spell_area_no_aura_cancel =
+        spell_store.apply_spell_area_no_aura_cancel_like_cpp(spell_area_store.areas_like_cpp());
     info!(
-        "Loaded {} C++ spell_area rows ({} validation issues; SpellInfo no-aura-cancel mutation still pending)",
+        "Loaded {} C++ spell_area rows ({} validation issues; {} spells marked SPELL_ATTR0_NO_AURA_CANCEL)",
         spell_area_outcome.loaded_row_count,
-        spell_area_outcome.errors.len()
+        spell_area_outcome.errors.len(),
+        spell_area_no_aura_cancel
     );
     let access_requirement_outcome =
         crate::world::auxiliary_catalog::load_access_requirements_like_cpp(

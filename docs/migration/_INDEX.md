@@ -163,7 +163,7 @@ Layer: L0–L8 según `MIGRATION_ROADMAP.md` § 2.
 | Pri | Módulo | Bug | Impacto | Ref |
 |---|---|---|---|---|
 | 🔴 P0 | dungeonfinding | `CMSG_DF_JOIN` no registrado → spinner infinito en "Find Group" | UX bloqueante | `dungeonfinding.md` §13 |
-| 🔴 P0 | worldserver | No existe `MapManager::update()` global — mundo congelado con 0 sesiones | Simulación rota | `worldserver.md` §13 |
+| 🟢 fixed | worldserver | Existe reloj global de mapas independiente de sesiones: `spawn_canonical_map_update_loop` se lanza sin condición en `world-server/src/app.rs:5414` (intervalo `CONFIG_INTERVAL_MAPUPDATE`), y el dueño del tick legacy pasa a `RuntimeTickOwner::GlobalLegacy` en `app.rs:5397` con `RustyCore.LegacyCreatureGlobalRuntime` en `true` por defecto (`bootstrap/config.rs:152-156`) | Corregido 2026-09-30 contra anclas de código; evidencia de cableado de arranque, no QA de runtime en vivo. Los ticks legacy por sesión sólo corren si el dueño es `GlobalLegacy` (`creature_movement_tick.rs:388`, `creature_lifecycle_tick.rs:64`, `creature_aggro_tick.rs:279`, `player_tick.rs:38`) | `worldserver.md` §13 / [`adr-runtime-tick-ownership.md`](adr-runtime-tick-ownership.md) |
 | 🔴 P0 | grids | `GRID_SIZE=64` en Rust vs `533.33` en C++ — creature.position hashea a grid wrong | Spawns mal ubicados | `grids.md` §13 |
 | 🔴 P0 | entities | Sin `UpdateMask` — cada broadcast es full re-create | Banda + CPU | `entities.md` §13 |
 | 🟠 P1 | handlers | `handle_quest_giver_choose_reward` decodifica wrong (Choice = u32,u32 vs LootItemType+ItemInstance+Quantity) | Selección de reward corrompida | `handlers.md` §13 |
@@ -200,6 +200,7 @@ Layer: L0–L8 según `MIGRATION_ROADMAP.md` § 2.
 | 2026-05-01 | Fase A Wave A — game core: maps/grids/world/entities/pets/inventory/handlers + L5 motors. Hallazgos: GRID_SIZE 8.33× equivocado, sin UpdateMask, wow-combat/spell/movement crates 0 líneas, 2/5 spot-checks de handlers son bugs reales (40% defect). Audit: 19/64. |
 | 2026-05-01 | Fase A Wave B — L6 game systems (16 módulos): quests/loot/chat/social/groups/guilds/skills/reputation/mails/auctions/calendar/achievements/petitions/pools/conditions/phasing + scripting/scripts/warden/events/weather. Bugs P0/P1 confirmados: silent loot loss, /ignore-no-filter, daily-flag wrong, condition default-true, phasing always-Unphased. Audit: 35/64. |
 | 2026-05-01 | Fase A Wave C — L0/L1 foundation + L7 PvP + n/a markers (21 módulos). 🔴 CRIT: CMSG_DF_JOIN unregistered → "Find Group" infinite spinner. Bugs: time::to_packed broken, RealmHandle packing missing, services BNet RPC NotImplemented para todo. n/a confirmados: shared-dynamic/json/battlepets/scenarios. Audit: 64/64 — PRIMER BARRIDO COMPLETO. |
+| 2026-09-30 | Fila P0 `worldserver` retirada: el reloj global de mapas existe (`spawn_canonical_map_update_loop`, `app.rs:5414`) y `RustyCore.LegacyCreatureGlobalRuntime` está habilitado por defecto, así que la simulación no depende de que haya sesiones. Corrección por anclas de código, no por QA de runtime en vivo; el [ADR de propiedad del tick](adr-runtime-tick-ownership.md) ya era la autoridad correcta. Las entradas históricas de 2026-05-01 se conservan tal cual. |
 
 ---
 

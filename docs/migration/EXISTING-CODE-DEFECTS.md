@@ -44,6 +44,51 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## Later verified open findings
 
+- **2026-09-30, live: the player's melee swing never happens — the canonical Player the
+  runtime phase reads has no attack state.** First **live reproduction** on this branch,
+  with a real client session (tools/wow-test-bot `--melee-smoke`) against a running
+  world-server on map 0. Sequence observed on the wire: CMSG_ATTACK_SWING is accepted and
+  the server publishes SMSG_ATTACK_START for (player → creature), then **no
+  SMSG_ATTACKER_STATE_UPDATE ever follows**, in either direction, for the whole window;
+  the creature never takes damage and never dies.
+  Server-side, with `RUSTYCORE_PLAYER_MELEE_TRACE=1`, the player auto-attack phase
+  (`world-server/src/runtime/delivery.rs:993`, Phase 0 of the legacy creature runtime tick)
+  reports every tick:
+  `attackers_seen=1 maps_seen=1 victims_resolved=0 swings_ready=0 attacker_unavailable=0`,
+  and the per-attacker line says the Player it reads is
+  `is_alive=true is_in_world=true has_combat=false in_combat_mirror=false` with
+  `attacking()` empty — *after* the accepted swing.
+  So the phase finds the map, finds the Player, and that Player carries none of the state
+  the handler just wrote: `handlers/combat.rs:210` → `start_player_attack_like_cpp`
+  (`session/combat/melee.rs:728`) returned `Accepted { send_attack_start: true }`, which
+  means `attack_with_context_like_cpp` accepted and `set_in_combat_like_cpp(true)` ran.
+  The write goes through `mutate_canonical_player_like_cpp` →
+  `mutate_canonical_player_by_guid_like_cpp` (`session/canonical_access/operations.rs:64`),
+  which prefers `manager.with_player_mut_like_cpp(handle, ..)`, while the phase reads
+  `managed.map().get_typed_player(guid)` (`session/legacy_runtime/player_tick.rs:94`).
+  The evidence says those two resolve **different Player instances**; C++ has exactly one
+  map-owned `Player`, and `Unit::Attack` writes the same object `Player::Update` later
+  swings from. This is an ownership/authority defect, not a combat-arithmetic one: the
+  melee table, the swing timer and the creature side are all exercised by unit tests, but
+  nothing in production connects the accepted request to the object that ticks.
+  Not yet repaired, and deliberately not repaired blind: the fix is a choice about which
+  Player the runtime phases must read, which belongs to the ownership plan
+  (`docs/architecture/ownership-and-boundaries.md`) and to #584's core work.
+  Reproduce with: `--melee-smoke --melee-creature-entry <entry>` and
+  `RUSTYCORE_PLAYER_MELEE_TRACE=1` on the server.
+
+- **2026-09-30, live: a player sees nothing until it acknowledges its active mover — this is
+  C++ behaviour, recorded because it looks like a visibility defect.** While investigating the
+  above, the first `--melee-smoke` runs found `candidate_creatures=0` with 22 creatures within
+  100 yards, and `RUSTYCORE_CREATURE_VIS_TRACE=1` showed the scan finding 29 candidates in the
+  legacy grid, 22 in range and **0 surviving** `can_see_or_detect_unit_like_cpp`, with
+  `is_in_map=true` and `in_same_phase=true`. The cause is faithful:
+  `Player::CanNeverSee` (`Entities/Player/Player.cpp:23214-23218`) hides every object from a
+  player that lacks `PLAYER_LOCAL_FLAG_OVERRIDE_TRANSPORT_SERVER_TIME`, which the server sets
+  when the client sends `CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE`. RustyCore implements it at
+  `session/mod.rs:9530`. No defect: a harness that skips that packet simply sees an empty world.
+  The existing bot workflows already send it; `--melee-smoke` now does too.
+
 - **2026-09-11, #743 group removal — the member's own state clear can be dropped.**
   Source-verified on `6aeca244`. When a member is kicked or the group disbands,
   the acting session mutates the registry and then asks the affected member's

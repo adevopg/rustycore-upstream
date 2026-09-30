@@ -1225,6 +1225,12 @@ pub enum CharStatements {
     /// C++ `CHAR_UPD_CHARACTER` persists this field in the full save.
     /// UPDATE characters SET exploredZones = ? WHERE guid = ?
     UPD_CHAR_EXPLORED_ZONES,
+    /// C++ `CHAR_UPD_CHARACTER` persists this field in the full save
+    /// (`Player.cpp:19849` binds `m_atLoginFlags`). The absolute value, not the
+    /// `at_login | ?` / `at_login & ~ ?` masks that C++ uses for the immediate
+    /// `SetAtLoginFlag`/`RemoveAtLoginFlag(.., true)` writes.
+    /// UPDATE characters SET at_login = ? WHERE guid = ?
+    UPD_CHAR_AT_LOGIN_FLAGS,
 
     /// SELECT MAX(guid) FROM item_instance
     SEL_MAX_ITEM_GUID,

@@ -3598,12 +3598,14 @@ where
                     .subsystems_mut()
                     .combat
                     .purge_combat_ref_like_cpp(*target_guid);
+                owner.unit_mut().update_owner_combat_state_like_cpp();
             } else if let Some(owner) = self.get_typed_creature_mut(*owner_guid) {
                 owner
                     .unit_mut()
                     .subsystems_mut()
                     .combat
                     .purge_combat_ref_like_cpp(*target_guid);
+                owner.unit_mut().update_owner_combat_state_like_cpp();
             }
 
             if let Some(target) = self.get_typed_player_mut(*target_guid) {
@@ -3612,12 +3614,14 @@ where
                     .subsystems_mut()
                     .combat
                     .purge_combat_ref_like_cpp(*owner_guid);
+                target.unit_mut().update_owner_combat_state_like_cpp();
             } else if let Some(target) = self.get_typed_creature_mut(*target_guid) {
                 target
                     .unit_mut()
                     .subsystems_mut()
                     .combat
                     .purge_combat_ref_like_cpp(*owner_guid);
+                target.unit_mut().update_owner_combat_state_like_cpp();
             }
         }
 

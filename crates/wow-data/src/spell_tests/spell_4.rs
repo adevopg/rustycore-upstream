@@ -865,3 +865,69 @@ fn spell_custom_attribute_store_applies_non_effect_attribute_with_unknown_effect
         SPELL_ATTR0_CU_IS_TALENT_LIKE_CPP
     );
 }
+
+#[test]
+fn spell_area_autocast_rows_mark_no_aura_cancel_like_cpp() {
+    // C++ `SpellMgr::LoadSpellAreas` (`Spells/SpellMgr.cpp:2510-2514`) ORs
+    // `SPELL_ATTR0_NO_AURA_CANCEL` into the spell of every row carrying
+    // `SPELL_AREA_FLAG_AUTOCAST`, and leaves non-autocast rows untouched.
+    let autocast_spell = 58_600_i32;
+    let plain_spell = 58_601_i32;
+
+    let misc_store = crate::spell_db2::SpellMiscStore::from_entries([
+        test_spell_misc_entry_like_cpp(1, autocast_spell as u32, 0, 0),
+        test_spell_misc_entry_like_cpp(2, plain_spell as u32, 0, 0),
+    ]);
+    let mut store = SpellStore::from_spell_db2_stores_like_cpp(
+        &crate::spell_db2::SpellCategoriesStore::from_entries([]),
+        &misc_store,
+        &crate::spell_db2::SpellEffectDb2Store::from_entries([]),
+        &crate::spell_db2::SpellShapeshiftStore::from_entries([]),
+    );
+
+    let areas = [
+        crate::spell::SpellAreaLikeCpp {
+            spell_id: autocast_spell as u32,
+            area_id: 1,
+            quest_start: 0,
+            quest_end: 0,
+            aura_spell: 0,
+            race_mask: 0,
+            gender: 2,
+            quest_start_status: 0,
+            quest_end_status: 0,
+            flags: SPELL_AREA_FLAG_AUTOCAST_LIKE_CPP,
+        },
+        crate::spell::SpellAreaLikeCpp {
+            spell_id: plain_spell as u32,
+            area_id: 2,
+            quest_start: 0,
+            quest_end: 0,
+            aura_spell: 0,
+            race_mask: 0,
+            gender: 2,
+            quest_start_status: 0,
+            quest_end_status: 0,
+            flags: 0,
+        },
+    ];
+
+    assert_eq!(
+        store.apply_spell_area_no_aura_cancel_like_cpp(&areas),
+        1,
+        "only the autocast row mutates its spell"
+    );
+    assert!(
+        store.has_attribute0_like_cpp(autocast_spell, attributes::SPELL_ATTR0_NO_AURA_CANCEL),
+        "an autocast spell_area row must set SPELL_ATTR0_NO_AURA_CANCEL"
+    );
+    assert!(
+        !store.has_attribute0_like_cpp(plain_spell, attributes::SPELL_ATTR0_NO_AURA_CANCEL),
+        "a non-autocast row must not touch its spell's attributes"
+    );
+    assert_eq!(
+        store.apply_spell_area_no_aura_cancel_like_cpp(&areas),
+        0,
+        "re-applying the same rows is idempotent"
+    );
+}

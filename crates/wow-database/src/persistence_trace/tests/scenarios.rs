@@ -542,3 +542,34 @@ fn recorders_share_one_recording_when_cloned() {
     });
     assert_eq!(recorder.snapshot().events.len(), 1);
 }
+
+#[test]
+fn a_recording_in_this_test_binary_is_scoped_to_the_thread_that_installed_it() {
+    let _serialized = capture_flag_test_lock();
+    let recorder = PersistenceRecorder::new();
+    let _recording = RecordingSession::install(recorder.clone());
+
+    assert!(
+        ambient_recorder().is_some(),
+        "the installing thread records"
+    );
+
+    // The recorder and the capture flag are process-wide, so an unrelated test
+    // running in parallel — one that merely opens a transaction and never asks
+    // for a trace — used to emit its events into this recording. The test
+    // binary therefore scopes a recording to its installing thread;
+    // `capture_flag_test_lock` cannot cover that case, because it only
+    // serializes the tests that record.
+    let seen_from_another_thread = std::thread::spawn(ambient_recorder)
+        .join()
+        .expect("probe thread");
+    assert!(
+        seen_from_another_thread.is_none(),
+        "another thread must not record into this test's recording"
+    );
+
+    assert!(
+        recorder.take().events.is_empty(),
+        "nothing was emitted on this thread"
+    );
+}

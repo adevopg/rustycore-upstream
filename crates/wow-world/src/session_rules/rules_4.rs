@@ -215,13 +215,79 @@ pub(crate) fn melee_outcome_like_cpp(
     RepresentedMeleeOutcomeLikeCpp::Hit
 }
 
+/// The roll this crate's own tests draw instead of `urand(0, 9999)`.
+///
+/// The maximum roll loses every partial band in [`melee_outcome_like_cpp`], so
+/// an ordinary swing resolves to `Hit`, while a band a test pinned at 100%
+/// still wins — `chance_units_like_cpp(100.0)` is 10000 and the comparison is
+/// `roll < sum`. The deterministic paths before the bands (immune, evade,
+/// always-crit) are unaffected.
+#[cfg(test)]
+pub(crate) const TEST_MELEE_OUTCOME_ROLL_LIKE_CPP: i32 = MELEE_OUTCOME_ROLL_MAX_LIKE_CPP as i32;
+
+// Runtime tests drive whole melee ticks, which draw one roll per landed swing.
+// With the real draw a test that needs three consecutive landed swings fails
+// whenever the 5% miss band wins, which made the creature-melee scenarios
+// intermittently red for reasons unrelated to what they assert. Test builds
+// therefore pin the draw; production keeps `urand`. This state exists only under
+// `cfg(test)`, is per-thread — each test drives its tick on its own thread — and
+// a pin is scoped to a guard, so it cannot leak into the next test.
+#[cfg(test)]
+thread_local! {
+    /// `None` restores the production `urand` draw for a test that asserts the
+    /// distribution itself.
+    static PINNED_MELEE_OUTCOME_ROLL_LIKE_CPP: std::cell::Cell<Option<i32>> =
+        const { std::cell::Cell::new(Some(TEST_MELEE_OUTCOME_ROLL_LIKE_CPP)) };
+}
+
+/// Pin the per-swing roll for the lifetime of the returned guard, so a test can
+/// exercise one exact band through a real tick.
+#[cfg(test)]
+pub(crate) fn pin_melee_outcome_roll_like_cpp(roll: i32) -> PinnedMeleeOutcomeRollGuardLikeCpp {
+    set_melee_outcome_roll_pin_like_cpp(Some(roll))
+}
+
+/// Restore the production `urand(0, 9999)` draw for the lifetime of the guard.
+/// Only a test that asserts the distribution over many swings needs this.
+#[cfg(test)]
+pub(crate) fn draw_melee_outcome_roll_like_cpp() -> PinnedMeleeOutcomeRollGuardLikeCpp {
+    set_melee_outcome_roll_pin_like_cpp(None)
+}
+
+#[cfg(test)]
+fn set_melee_outcome_roll_pin_like_cpp(roll: Option<i32>) -> PinnedMeleeOutcomeRollGuardLikeCpp {
+    let previous = PINNED_MELEE_OUTCOME_ROLL_LIKE_CPP.get();
+    PINNED_MELEE_OUTCOME_ROLL_LIKE_CPP.set(roll);
+    PinnedMeleeOutcomeRollGuardLikeCpp { previous }
+}
+
+#[cfg(test)]
+pub(crate) struct PinnedMeleeOutcomeRollGuardLikeCpp {
+    previous: Option<i32>,
+}
+
+#[cfg(test)]
+impl Drop for PinnedMeleeOutcomeRollGuardLikeCpp {
+    fn drop(&mut self) {
+        PINNED_MELEE_OUTCOME_ROLL_LIKE_CPP.set(self.previous);
+    }
+}
+
 /// C++ `urand(0, 9999)` then [`melee_outcome_like_cpp`]; the owners call this
 /// once per landed swing, never for a timer that is not ready.
 pub(crate) fn rolled_melee_outcome_like_cpp(
     inputs: &RepresentedMeleeOutcomeInputsLikeCpp,
 ) -> RepresentedMeleeOutcomeLikeCpp {
-    let roll = i32::try_from(wow_core::urand_like_cpp(0, MELEE_OUTCOME_ROLL_MAX_LIKE_CPP))
-        .unwrap_or_default();
+    let drawn = || {
+        i32::try_from(wow_core::urand_like_cpp(0, MELEE_OUTCOME_ROLL_MAX_LIKE_CPP))
+            .unwrap_or_default()
+    };
+    #[cfg(test)]
+    let roll = PINNED_MELEE_OUTCOME_ROLL_LIKE_CPP
+        .get()
+        .unwrap_or_else(drawn);
+    #[cfg(not(test))]
+    let roll = drawn();
     melee_outcome_like_cpp(inputs, roll)
 }
 

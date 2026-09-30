@@ -271,3 +271,44 @@ async fn live_mariadb_lock_order_and_incomplete_state_fail_closed() -> Result<()
     fs::remove_dir_all(root)?;
     Ok(())
 }
+
+#[test]
+fn a_data_level_adoption_probe_cannot_guard_itself_and_is_tolerated_when_absent() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../database/migrations/manifest.toml");
+    let manifest = MigrationManifest::load(&path).expect("bundled manifest must validate");
+    let services = manifest
+        .migrations
+        .iter()
+        .find(|migration| migration.version == "2026.09.25.01")
+        .expect("battlepay services world migration");
+
+    // This probe counts rows, so it names tables the preceding migration
+    // creates. MariaDB resolves every table in the statement even when the
+    // `IF(...)` guard would discard the branch, so it cannot be made safe in
+    // SQL: on a freshly imported TDB it raises ER_NO_SUCH_TABLE.
+    let adopt = services.adopt_query.as_deref().expect("adopt query");
+    assert!(adopt.contains("FROM battlepay_product WHERE ProductID IN"));
+    assert!(
+        !adopt.contains("information_schema"),
+        "a data-level probe has no schema guard to fall back on"
+    );
+
+    // The runner therefore treats "that table/column does not exist" as the
+    // probe's own answer — the end state is not present — instead of a failure
+    // that aborts the whole bootstrap.
+    for absent in [1146, 1109, 1054] {
+        assert!(
+            adoption_probe_number_reports_absent_schema(Some(absent)),
+            "{absent} means the final schema is not there yet"
+        );
+    }
+    // Anything else stays a real error: a lost connection or a denied
+    // permission must not be read as "not adopted".
+    for real_failure in [1045, 2006, 1064, 1317] {
+        assert!(!adoption_probe_number_reports_absent_schema(Some(
+            real_failure
+        )));
+    }
+    assert!(!adoption_probe_number_reports_absent_schema(None));
+}

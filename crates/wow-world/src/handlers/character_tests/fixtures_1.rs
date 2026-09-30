@@ -250,6 +250,8 @@ pub(super) struct MapCorpseLoadPortFixtureLikeCpp {
     pub(super) requests: std::sync::Mutex<Vec<MapCorpseLoadRequestLikeCpp>>,
     pub(super) outcomes:
         std::sync::Mutex<std::collections::VecDeque<PersistedMapCorpseLoadOutcomeLikeCpp>>,
+    /// Every row C++ `Corpse::SaveToDB` would have written, in call order.
+    pub(super) saved_corpses: std::sync::Mutex<Vec<wow_persistence::MapCorpseSaveRowLikeCpp>>,
 }
 
 impl MapCorpseLoadPortFixtureLikeCpp {
@@ -259,15 +261,30 @@ impl MapCorpseLoadPortFixtureLikeCpp {
         Arc::new(Self {
             requests: std::sync::Mutex::new(Vec::new()),
             outcomes: std::sync::Mutex::new(outcomes.into_iter().collect()),
+            saved_corpses: std::sync::Mutex::new(Vec::new()),
         })
     }
 
     pub(super) fn requests(&self) -> Vec<MapCorpseLoadRequestLikeCpp> {
         self.requests.lock().unwrap().clone()
     }
+
+    pub(super) fn saved_corpses(&self) -> Vec<wow_persistence::MapCorpseSaveRowLikeCpp> {
+        self.saved_corpses.lock().unwrap().clone()
+    }
 }
 
 impl MapCorpsePersistencePortLikeCpp for MapCorpseLoadPortFixtureLikeCpp {
+    /// Records the save so a test can assert C++ `Corpse::SaveToDB` was reached
+    /// with the exact row, and always reports success.
+    fn persist_corpse_like_cpp<'a>(
+        &'a self,
+        row: wow_persistence::MapCorpseSaveRowLikeCpp,
+    ) -> PersistenceFutureLikeCpp<'a, wow_persistence::MapCorpseSaveOutcomeLikeCpp> {
+        self.saved_corpses.lock().unwrap().push(row);
+        Box::pin(async move { wow_persistence::MapCorpseSaveOutcomeLikeCpp::Saved })
+    }
+
     fn load_map_corpses_like_cpp<'a>(
         &'a self,
         request: MapCorpseLoadRequestLikeCpp,

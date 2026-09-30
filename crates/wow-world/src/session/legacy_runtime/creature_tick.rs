@@ -30,15 +30,21 @@ pub(in crate::session) fn legacy_creature_snapshot_is_hostile_to_creature_like_c
 pub(in crate::session) fn legacy_creature_ai_selection_decision_like_cpp(
     creature: &crate::map_manager::WorldCreature,
     config: &LegacyCreatureAggroConfigLikeCpp,
-) -> LegacyCreatureAiSelectionDecisionLikeCpp {
+) -> CreatureAiKindLikeCpp {
     let metadata = creature.creature.lifecycle_metadata();
     let is_pet = creature.guid().is_pet();
 
-    // C++ pet override runs before ScriptName and AIName.
-    if !is_pet && !metadata.script_name.is_empty() {
-        return LegacyCreatureAiSelectionDecisionLikeCpp::ScriptRegistryUnrepresented;
-    }
-
+    // C++ `FactorySelector::SelectAI` (`AI/CreatureAISelector.cpp:83-102`) tries
+    // the DB ScriptName through `sScriptMgr->GetCreatureAI` and, when that yields
+    // nothing or throws, explicitly falls through to `SelectFactory<CreatureAI>`
+    // — its own error log says "this Creature will have a default AI". RustyCore
+    // has no CreatureScript registry yet, so `script_can_create_creature_ai`
+    // stays false below and the selector takes the AIName/Permissible path,
+    // which is the same outcome.
+    //
+    // Returning early here instead made every creature carrying a ScriptName
+    // inert: both the aggro tick and the creature spell tick skipped it
+    // entirely, so quest NPCs and bosses never aggroed and never cast.
     let flags_extra = CreatureFlagsExtra::from_bits_truncate(metadata.flags_extra);
     let input = CreatureAiSelectionInputLikeCpp {
         ai_name: metadata.ai_name.clone(),
@@ -70,7 +76,7 @@ pub(in crate::session) fn legacy_creature_ai_selection_decision_like_cpp(
             .is_some_and(|guid| guid.is_player()),
     };
 
-    LegacyCreatureAiSelectionDecisionLikeCpp::Selected(select_creature_ai_like_cpp(&input))
+    select_creature_ai_like_cpp(&input)
 }
 pub(in crate::session) fn legacy_creature_ai_can_attack_decision_like_cpp(
     ai_kind: &CreatureAiKindLikeCpp,

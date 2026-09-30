@@ -391,7 +391,24 @@ pub(crate) fn capture_flag_test_lock() -> std::sync::MutexGuard<'static, ()> {
 /// recorder through all of them would be a far larger change than the contract
 /// it serves, and would leave the ones nobody updated silently untraced — so
 /// the recorder is ambient and `SqlTransaction::new` finds it.
-static AMBIENT: Mutex<Option<PersistenceRecorder>> = Mutex::new(None);
+static AMBIENT: Mutex<Option<AmbientRecording>> = Mutex::new(None);
+
+#[derive(Debug, Clone)]
+struct AmbientRecording {
+    recorder: PersistenceRecorder,
+    /// The thread that installed the recording.
+    ///
+    /// Production ignores it: a real trace may legitimately span tasks and
+    /// threads. This crate's own tests read it, because the recorder is
+    /// process-wide while the test binary is parallel: an unrelated test that
+    /// merely opens a transaction emitted its `TransactionBegin` into whatever
+    /// recording happened to be installed, which made
+    /// `a_failed_pooled_statement_carries_no_observed_row_count` read a
+    /// neighbour's first event. `capture_flag_test_lock` cannot prevent that —
+    /// it only serializes the tests that record.
+    #[cfg_attr(not(test), allow(dead_code))]
+    installed_on: std::thread::ThreadId,
+}
 
 /// The installed recorder, if a recording is in progress.
 pub fn ambient_recorder() -> Option<PersistenceRecorder> {
@@ -410,10 +427,13 @@ pub fn ambient_recorder() -> Option<PersistenceRecorder> {
     if !recording_enabled() {
         return None;
     }
-    AMBIENT
-        .lock()
-        .ok()
-        .and_then(|recorder| recorder.as_ref().cloned())
+    let ambient = AMBIENT.lock().ok()?;
+    let recording = ambient.as_ref()?;
+    #[cfg(test)]
+    if recording.installed_on != std::thread::current().id() {
+        return None;
+    }
+    Some(recording.recorder.clone())
 }
 
 /// Installs `recorder` as ambient and enables capture until dropped.
@@ -423,7 +443,7 @@ pub fn ambient_recorder() -> Option<PersistenceRecorder> {
 #[derive(Debug)]
 pub struct RecordingSession {
     /// Restored on drop, so nesting is transparent to the outer recording.
-    previous: Option<PersistenceRecorder>,
+    previous: Option<AmbientRecording>,
     _capture: RecordingGuard,
 }
 
@@ -434,10 +454,12 @@ impl RecordingSession {
         // instead of restoring it meant a nested session left the outer one
         // recording into nothing, so a helper that installs its own session
         // silently truncated the trace its caller was collecting.
-        let previous = AMBIENT
-            .lock()
-            .ok()
-            .and_then(|mut ambient| ambient.replace(recorder));
+        let previous = AMBIENT.lock().ok().and_then(|mut ambient| {
+            ambient.replace(AmbientRecording {
+                recorder,
+                installed_on: std::thread::current().id(),
+            })
+        });
         Self {
             previous,
             _capture: RecordingGuard::enable(),

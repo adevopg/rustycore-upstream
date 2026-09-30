@@ -129,7 +129,7 @@ inventory::submit! {
         status: SessionStatus::LoggedIn,
         processing: PacketProcessing::ThreadUnsafe,
         handler_name: "handle_set_loot_specialization",
-        handler: |session, _catalogs, mut pkt| {
+        handler: |session, catalogs, mut pkt| {
             Box::pin(async move {
                 if session
                     .try_handle_cancel_mod_speed_no_control_auras_like_cpp(pkt.clone())
@@ -138,7 +138,7 @@ inventory::submit! {
                     return;
                 }
                 if session
-                    .try_handle_client_port_graveyard_like_cpp(pkt.clone())
+                    .try_handle_client_port_graveyard_like_cpp(catalogs.graveyards.as_ref(), pkt.clone())
                     .await
                 {
                     return;

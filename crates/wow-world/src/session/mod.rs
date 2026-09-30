@@ -9,6 +9,8 @@
 mod admission;
 mod appearance;
 mod connection;
+mod corpse_creation;
+pub(crate) use corpse_creation::create_player_corpse_on_map_like_cpp;
 mod deferred_visibility;
 pub use crate::player_directory as directory;
 mod dispatch;
@@ -4228,6 +4230,9 @@ pub struct LegacyCreatureMovementTickOutcomeLikeCpp {
     pub creatures_seen: usize,
     pub movement_packets: usize,
     pub canonical_syncs: usize,
+    /// Creatures routed through `Map::CreatureRelocation` this tick, i.e. how
+    /// many cell/grid placements the canonical map actually re-evaluated.
+    pub canonical_cell_relocations: usize,
     pub plan: crate::map_manager::RuntimePlan,
 }
 
@@ -4628,7 +4633,6 @@ pub struct LegacyCreatureAggroTickOutcomeLikeCpp {
     pub attacker_evade_rejections: usize,
     pub home_range_rejections: usize,
     pub gray_aggro_rejections: usize,
-    pub ai_selection_unrepresented: usize,
     pub ai_los_suppressed: usize,
     pub ai_can_attack_unrepresented: usize,
     pub ai_can_attack_rejections: usize,
@@ -4686,7 +4690,6 @@ pub struct LegacyCreatureSpellTickOutcomeLikeCpp {
     pub skipped_owner_not_global: bool,
     pub maps_seen: usize,
     pub creatures_seen: usize,
-    pub ai_selection_unrepresented: usize,
     pub missing_spell_metadata: usize,
     pub schedules_initialized: usize,
     pub casts_ready: usize,
@@ -17035,12 +17038,6 @@ enum LegacyCreatureAggroVisibilityDecisionLikeCpp {
     Unrepresented,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum LegacyCreatureAiSelectionDecisionLikeCpp {
-    Selected(CreatureAiKindLikeCpp),
-    ScriptRegistryUnrepresented,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LegacyCreatureAiCanAttackDecisionLikeCpp {
     Allowed,
@@ -18784,6 +18781,11 @@ fn represented_spell_click_school_damage_amount_like_cpp(
     }
 
     Some(damage_amount)
+}
+
+/// Current Unix timestamp (seconds since epoch).
+pub(crate) fn unix_now_like_cpp() -> i64 {
+    unix_now()
 }
 
 /// Current Unix timestamp (seconds since epoch).

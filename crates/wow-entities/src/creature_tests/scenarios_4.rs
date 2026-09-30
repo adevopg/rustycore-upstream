@@ -351,3 +351,109 @@ fn creature_runtime_update_plan_covers_dead_corpse_and_alive_branches() {
         CreatureRuntimeEvadeReason::NoPath
     )));
 }
+
+#[test]
+fn owner_combat_state_publishes_in_combat_flag_from_combat_references_like_cpp() {
+    // C++ `CombatManager::UpdateOwnerCombatState`
+    // (src/server/game/Combat/CombatManager.cpp:381) drives
+    // `UNIT_FLAG_IN_COMBAT` from `HasCombat()`, i.e. from combat references and
+    // not from the AI/attacking state.
+    let target = ObjectGuid::new(1, 42);
+    let mut creature = Creature::new(false);
+
+    assert!(
+        !creature
+            .unit()
+            .unit_flags_like_cpp()
+            .contains(UnitFlags::IN_COMBAT),
+        "a fresh Creature holds no combat reference and must not advertise combat"
+    );
+
+    creature
+        .unit_mut()
+        .subsystems_mut()
+        .combat
+        .set_in_combat_with(target, false, false);
+    assert!(
+        creature.unit_mut().update_owner_combat_state_like_cpp(),
+        "the first reference must flip the published flag"
+    );
+    assert!(
+        creature
+            .unit()
+            .unit_flags_like_cpp()
+            .contains(UnitFlags::IN_COMBAT),
+        "UNIT_FLAG_IN_COMBAT must be set while an unsuppressed reference exists"
+    );
+
+    // Idempotent: a tick that changes no reference must not produce a second
+    // UpdateField revision for the same value.
+    assert!(
+        !creature.unit_mut().update_owner_combat_state_like_cpp(),
+        "an unchanged combat state must not report a flag transition"
+    );
+
+    creature
+        .unit_mut()
+        .subsystems_mut()
+        .combat
+        .purge_combat_ref_like_cpp(target);
+    assert!(
+        creature.unit_mut().update_owner_combat_state_like_cpp(),
+        "losing the last reference must flip the published flag back"
+    );
+    assert!(
+        !creature
+            .unit()
+            .unit_flags_like_cpp()
+            .contains(UnitFlags::IN_COMBAT),
+        "UNIT_FLAG_IN_COMBAT must clear once the last reference is gone"
+    );
+}
+
+#[test]
+fn owner_combat_state_ignores_attacking_target_without_a_combat_reference_like_cpp() {
+    // Negative: RustyCore's `Creature::is_in_combat` reads the attacking target,
+    // which is NOT what C++ `IsInCombat()` means. A unit with an attack target
+    // but no combat reference must stay out of published combat.
+    let target = ObjectGuid::new(1, 7);
+    let mut creature = Creature::new(false);
+
+    creature.unit_mut().set_attacking(Some(target));
+    assert!(
+        creature.is_in_combat(),
+        "fixture precondition: the attacking target is set"
+    );
+    assert!(
+        !creature.unit_mut().update_owner_combat_state_like_cpp(),
+        "an attack target alone is not a combat reference and must publish nothing"
+    );
+    assert!(
+        !creature
+            .unit()
+            .unit_flags_like_cpp()
+            .contains(UnitFlags::IN_COMBAT),
+        "UNIT_FLAG_IN_COMBAT must not follow the attacking target"
+    );
+}
+
+#[test]
+fn owner_combat_state_marks_the_flags_field_dirty_for_the_client_like_cpp() {
+    // The flag is only worth setting if it reaches the client: the transition
+    // must leave the UNIT_DATA flags field in the pending update mask.
+    let target = ObjectGuid::new(1, 11);
+    let mut creature = Creature::new(false);
+    creature.clear_data_changes();
+
+    creature
+        .unit_mut()
+        .subsystems_mut()
+        .combat
+        .set_in_combat_with(target, false, false);
+    assert!(creature.unit_mut().update_owner_combat_state_like_cpp());
+
+    assert!(
+        creature.unit().unit_data_changes_mask().is_any_set(),
+        "the published combat flag must be queued in the unit UpdateMask"
+    );
+}

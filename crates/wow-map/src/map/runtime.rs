@@ -384,7 +384,9 @@ impl MapRuntime {
                 let combat = &mut attacker.unit_mut().subsystems_mut().combat;
                 combat.set_in_combat_with(victim_guid, false, false);
                 combat.add_threat(victim_guid, 0.0);
-                combat.threat_ref(victim_guid).copied()
+                let threat_ref = combat.threat_ref(victim_guid).copied();
+                attacker.unit_mut().update_owner_combat_state_like_cpp();
+                threat_ref
             })
             .expect("validated Creature must remain in the single-writer entity world");
         let previous_victim_unlinked =
@@ -401,6 +403,7 @@ impl MapRuntime {
                     combat.put_threatened_by_me_ref(attacker_guid, threat_ref);
                 }
                 victim.unit_mut().add_attacker_like_cpp(attacker_guid);
+                victim.unit_mut().update_owner_combat_state_like_cpp();
                 victim.unit().subsystems().combat.has_combat()
             }
             AccessorObjectKind::Creature => self
@@ -412,6 +415,7 @@ impl MapRuntime {
                         combat.put_threatened_by_me_ref(attacker_guid, threat_ref);
                     }
                     victim.unit_mut().add_attacker_like_cpp(attacker_guid);
+                    victim.unit_mut().update_owner_combat_state_like_cpp();
                     victim.unit().subsystems().combat.has_combat()
                 })
                 .expect("validated Creature must remain in the single-writer entity world"),
@@ -454,6 +458,7 @@ impl MapRuntime {
                 if victim_kind == AccessorObjectKind::Player {
                     attacker.unit_mut().remove_attacker_like_cpp(victim_guid);
                 }
+                attacker.unit_mut().update_owner_combat_state_like_cpp();
             })
             .expect("validated Creature must remain in the single-writer entity world");
         let (victim_still_in_combat, victim_attack_stopped) = match victim_kind {
@@ -480,6 +485,7 @@ impl MapRuntime {
                     .combat
                     .purge_threatened_by_me_ref(attacker_guid);
                 victim.unit_mut().remove_attacker_like_cpp(attacker_guid);
+                victim.unit_mut().update_owner_combat_state_like_cpp();
                 (
                     victim.unit().subsystems().combat.has_combat(),
                     attack_stopped,
@@ -494,6 +500,7 @@ impl MapRuntime {
                             .combat
                             .purge_combat_ref_like_cpp(attacker_guid);
                         victim.unit_mut().remove_attacker_like_cpp(attacker_guid);
+                        victim.unit_mut().update_owner_combat_state_like_cpp();
                         victim.unit().subsystems().combat.has_combat()
                     })
                     .expect("validated Creature must remain in the single-writer entity world"),

@@ -62,6 +62,7 @@ fn character_save_adapter_preserves_the_frozen_statement_order_like_cpp() {
             dungeon_difficulty: 0,
             raid_difficulty: 0,
             legacy_raid_difficulty: 0,
+            at_login_flags: 0,
         },
         spells: Some(PlayerSpellSaveGroupLikeCpp::Complete {
             rows: vec![PlayerSpellSaveLikeCpp {
@@ -284,4 +285,46 @@ fn cooldown_and_charge_groups_drop_expired_rows_but_keep_the_group_replace_like_
     );
     assert!(sql.contains(&CharStatements::DEL_CHAR_SPELL_COOLDOWNS.sql()));
     assert!(sql.contains(&CharStatements::DEL_CHAR_SPELL_CHARGES.sql()));
+}
+
+#[test]
+fn the_full_save_persists_the_absolute_at_login_flags_like_cpp() {
+    // C++ `Player::RemoveAtLoginFlag(AT_LOGIN_FIRST)` on the first login does
+    // not write: it clears `m_atLoginFlags` and lets the next
+    // `Player::SaveToDB` bind it into `CHAR_UPD_CHARACTER`
+    // (`Player.cpp:19849`). Without this statement the flag survives in the row
+    // and every later login is treated as the first one.
+    let mut request = minimal_character_request();
+    request.character.at_login_flags = 0;
+    let statements = player_character_save_statements_like_cpp(&request);
+    let cleared = statements
+        .iter()
+        .find(|statement| statement.sql() == CharStatements::UPD_CHAR_AT_LOGIN_FLAGS.sql())
+        .expect("the full save writes at_login");
+    assert_eq!(
+        cleared.params(),
+        &[
+            crate::params::SqlParam::U16(0),
+            crate::params::SqlParam::U64(request.player_guid),
+        ],
+        "the save binds the absolute flag value and the guid"
+    );
+
+    // The value is whatever the snapshot carries, not a mask: C++ writes
+    // `at_login = ?`, while `at_login | ?` / `at_login & ~ ?` belong to the
+    // immediate SetAtLoginFlag/RemoveAtLoginFlag(.., true) writes.
+    request.character.at_login_flags = 0x021;
+    let statements = player_character_save_statements_like_cpp(&request);
+    let retained = statements
+        .iter()
+        .find(|statement| statement.sql() == CharStatements::UPD_CHAR_AT_LOGIN_FLAGS.sql())
+        .expect("the full save writes at_login");
+    assert_eq!(
+        retained.params().first(),
+        Some(&crate::params::SqlParam::U16(0x021))
+    );
+    assert!(
+        !CharStatements::UPD_CHAR_AT_LOGIN_FLAGS.sql().contains('|'),
+        "the full save is an absolute assignment, not an OR mask"
+    );
 }

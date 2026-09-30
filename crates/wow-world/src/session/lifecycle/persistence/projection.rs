@@ -58,6 +58,11 @@ pub(super) fn request(
         dungeon_difficulty,
         raid_difficulty,
         legacy_raid_difficulty,
+        // C++ `Player::SaveToDB` binds `m_atLoginFlags` (`Player.cpp:19849`),
+        // which is how `RemoveAtLoginFlag(AT_LOGIN_FIRST)` on the first login
+        // reaches the row: that call does not write immediately, the next full
+        // save does.
+        at_login_flags: player.persistent_capability_state_like_cpp().at_login_flags,
     };
 
     let spell_runtime = Some(&game.spells);

@@ -376,6 +376,7 @@ pub fn run_legacy_creature_movement_tick_once_like_cpp(
         creatures_seen: 0,
         movement_packets: 0,
         canonical_syncs: 0,
+        canonical_cell_relocations: 0,
         plan: RuntimePlan { events: Vec::new() },
     };
     let mut canonical_syncs: Vec<(u32, u32, wow_core::ObjectGuid, wow_entities::Creature)> =
@@ -492,12 +493,37 @@ pub fn run_legacy_creature_movement_tick_once_like_cpp(
         for (map_id, instance_id, guid, creature) in canonical_syncs {
             let expected_legacy_authority = creature.loot_authority_like_cpp().clone();
             let expected_legacy_stamp = expected_legacy_authority.stamp_like_cpp();
+            // C++ `Unit::UpdatePosition` (`Entities/Unit/Unit.cpp:13796`) funnels
+            // EVERY creature position write into `Map::CreatureRelocation`
+            // (`Maps/Map.cpp:1042`), which moves the object between cells and
+            // grids (deferring a diff-cell/diff-grid move to the move list that
+            // `Map::MoveAllCreaturesInMoveList` drains).
+            //
+            // The entity sync below only replaces the stored entity state; it
+            // does not touch cell membership. Without the relocation call a
+            // creature that wanders or chases keeps its spawn cell forever, so
+            // every cell-scoped read (`exact_cell_guids_like_cpp`), the marked-
+            // cell tick and grid unload all see it at the wrong place while its
+            // coordinates advance. The flat "scan every grid for the GUID"
+            // lookup in the legacy manager is what hides the divergence today.
+            let relocated_position = creature.position();
             let authority = sync_canonical_creature_entity_on_map_like_cpp(
                 canonical_map_manager,
                 map_id,
                 instance_id,
                 creature,
             );
+            // Relocate after the entity sync so the cell placement is the final
+            // word: the sync re-inserts the record and must not be able to undo
+            // the move.
+            relocate_canonical_creature_map_object_on_map_like_cpp(
+                canonical_map_manager,
+                map_id,
+                instance_id,
+                guid,
+                relocated_position,
+            );
+            outcome.canonical_cell_relocations += 1;
             if let Some(authority) = authority {
                 let mut legacy = legacy_map_manager
                     .write()

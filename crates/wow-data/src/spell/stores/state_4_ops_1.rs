@@ -136,6 +136,94 @@ impl SpellStore {
             effects: Vec::new(),
         }
     }
+    /// C++ `SpellMgr::LoadServersideSpells` (`Spells/SpellMgr.cpp:3161`).
+    ///
+    /// C++ inserts every `serverside_spell` row into the SAME `mSpellInfoMap`
+    /// that holds the DB2 spells (`SpellMgr.cpp:3180`), so `GetSpellInfo`
+    /// returns a full `SpellInfo` for a serverside id exactly as it does for a
+    /// client one.
+    ///
+    /// RustyCore already answered existence for these rows — the difficulty walk
+    /// in `contains_spell_info_difficulty_none_like_cpp` consults the serverside
+    /// store — but the payload map did not hold them, so `get(spell_id)`
+    /// returned `None` and every consumer that needs the SpellInfo body saw a
+    /// missing spell. This hydrates the payload.
+    ///
+    /// Returns how many `SpellInfo` entries were inserted.
+    ///
+    /// **Scope contract.** Only the `DIFFICULTY_NONE` (0) variant enters the
+    /// payload map, because `SpellStore::spells` is keyed by spell id alone
+    /// while C++ keys `mSpellInfoMap` by `(spellId, difficulty)`. Per-difficulty
+    /// serverside variants remain represented in the key store, which is what
+    /// the existence walk uses. An id already present from DB2 is never
+    /// overwritten: C++ `emplace` likewise keeps the existing entry.
+    ///
+    /// Not carried across, because RustyCore's `SpellInfo` has no field for
+    /// them: `cast_time_ms` (C++ resolves `casting_time_index` through
+    /// `sSpellCastTimesStore`), `display_flags` and `power_costs` (serverside
+    /// rows carry no SpellPower), and `effect_die_sides` (absent from
+    /// `serverside_spell_effect`).
+    pub fn hydrate_serverside_spell_infos_like_cpp(
+        &mut self,
+        serverside: &crate::spell::ServersideSpellStoreLikeCpp,
+    ) -> usize {
+        let mut inserted = 0;
+        for (key, info) in &serverside.spell_infos_by_spell_and_difficulty {
+            if key.difficulty_id != 0 {
+                continue;
+            }
+            let Ok(spell_id) = i32::try_from(key.spell_id) else {
+                continue;
+            };
+            if self.spells.contains_key(&spell_id) {
+                continue;
+            }
+            let mut spell_info = Self::empty_spell_info_like_cpp(spell_id);
+            spell_info.recovery_time_ms = info.row.recovery_time;
+            spell_info.cooldown_ms = info.row.category_recovery_time;
+            spell_info.requires_spell_focus = info.row.requires_spell_focus;
+            spell_info.effects = info
+                .effects
+                .iter()
+                .map(Self::spell_effect_from_serverside_like_cpp)
+                .collect();
+            Self::hydrate_primary_effect_like_cpp(&mut spell_info);
+            self.spells.insert(spell_id, spell_info);
+            inserted += 1;
+        }
+        inserted
+    }
+
+    /// The serverside twin of `spell_effect_from_db2_like_cpp`.
+    ///
+    /// `effect_die_sides` has no serverside column, so it stays at the
+    /// `empty_spell_info_like_cpp` default rather than being invented.
+    fn spell_effect_from_serverside_like_cpp(
+        effect: &crate::spell::ServersideSpellEffectLikeCpp,
+    ) -> SpellEffectInfo {
+        SpellEffectInfo {
+            effect_index: u32::try_from(effect.effect_index).unwrap_or(0),
+            effect: u32::try_from(effect.effect).unwrap_or(0),
+            effect_aura: effect.effect_aura,
+            // C++ `SpellEffectInfo::BasePoints` is int32 assigned from the float
+            // column, i.e. an implicit truncation. Mirror it rather than round.
+            effect_base_points: effect.effect_base_points as i32,
+            effect_mechanic: effect.effect_mechanic,
+            effect_amplitude: effect.effect_amplitude,
+            effect_die_sides: 0,
+            effect_bonus_coefficient_from_ap: effect.bonus_coefficient_from_ap,
+            effect_spell_class_mask: effect.effect_spell_class_mask.map(|mask| mask as u32),
+            effect_misc_value_1: effect.effect_misc_value[0],
+            effect_misc_value_2: effect.effect_misc_value[1],
+            effect_trigger_spell: effect.effect_trigger_spell,
+            effect_radius_index_1: effect.effect_radius_index[0],
+            position_facing: effect.effect_pos_facing,
+            chain_targets: effect.effect_chain_targets,
+            implicit_target_1: u32::try_from(effect.implicit_target[0]).unwrap_or(0),
+            implicit_target_2: u32::try_from(effect.implicit_target[1]).unwrap_or(0),
+        }
+    }
+
     pub(super) fn spell_effect_from_db2_like_cpp(
         effect: &crate::spell_db2::SpellEffectDb2Entry,
     ) -> SpellEffectInfo {
@@ -735,6 +823,40 @@ impl SpellStore {
         )
         .and_then(|attributes| attributes.get(attribute_word).copied())
         .is_some_and(|attributes| attributes & attribute != 0)
+    }
+    /// C++ `SpellMgr::LoadSpellAreas` (`Spells/SpellMgr.cpp:2510-2514`).
+    ///
+    /// Every `spell_area` row carrying `SPELL_AREA_FLAG_AUTOCAST` ORs
+    /// `SPELL_ATTR0_NO_AURA_CANCEL` into its spell's attributes, so the client
+    /// cannot voluntarily cancel an aura the server auto-applies on area entry.
+    /// C++ performs this mutation while loading the rows, after
+    /// `LoadSpellInfoStore` has populated the store.
+    ///
+    /// Returns how many spells were mutated. A row whose spell has no hydrated
+    /// `SpellMisc` attributes is skipped, matching the C++ `if (SpellInfo const*
+    /// spellInfo = GetSpellInfo(...))` guard.
+    pub fn apply_spell_area_no_aura_cancel_like_cpp(
+        &mut self,
+        areas: &[crate::spell::SpellAreaLikeCpp],
+    ) -> usize {
+        let mut mutated = 0;
+        for area in areas {
+            if area.flags & crate::SPELL_AREA_FLAG_AUTOCAST_LIKE_CPP == 0 {
+                continue;
+            }
+            let Ok(spell_id) = i32::try_from(area.spell_id) else {
+                continue;
+            };
+            let Some(attributes) = self.spell_misc_attributes.get_mut(&spell_id) else {
+                continue;
+            };
+            if attributes[0] & crate::spell::attributes::SPELL_ATTR0_NO_AURA_CANCEL != 0 {
+                continue;
+            }
+            attributes[0] |= crate::spell::attributes::SPELL_ATTR0_NO_AURA_CANCEL;
+            mutated += 1;
+        }
+        mutated
     }
     /// C++ `SpellInfo::HasAttribute` for attributes hydrated from `SpellMisc.db2`.
     pub fn has_attribute0_like_cpp(&self, spell_id: i32, attribute: u32) -> bool {

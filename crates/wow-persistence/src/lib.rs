@@ -327,9 +327,10 @@ pub use world::{
     GameEventPersistencePortLikeCpp, MapCorpseAuxiliaryLoadOutcomeLikeCpp,
     MapCorpseCustomizationLoadRowLikeCpp, MapCorpseLoadOutcomeLikeCpp, MapCorpseLoadRequestLikeCpp,
     MapCorpseLoadRowLikeCpp, MapCorpsePersistencePortLikeCpp, MapCorpsePhaseLoadRowLikeCpp,
-    RespawnPersistenceKeyLikeCpp, RespawnPersistenceLoadOutcomeLikeCpp,
-    RespawnPersistenceMutationLikeCpp, RespawnPersistenceMutationOutcomeLikeCpp,
-    RespawnPersistencePortLikeCpp, RespawnPersistenceRowLikeCpp,
+    MapCorpseSaveOutcomeLikeCpp, MapCorpseSaveRowLikeCpp, RespawnPersistenceKeyLikeCpp,
+    RespawnPersistenceLoadOutcomeLikeCpp, RespawnPersistenceMutationLikeCpp,
+    RespawnPersistenceMutationOutcomeLikeCpp, RespawnPersistencePortLikeCpp,
+    RespawnPersistenceRowLikeCpp,
 };
 
 mod bnet_friends;

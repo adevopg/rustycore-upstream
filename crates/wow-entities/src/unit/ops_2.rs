@@ -513,6 +513,34 @@ impl Unit {
     pub fn unit_flags_like_cpp(&self) -> UnitFlags {
         UnitFlags::from_bits_truncate(self.data.flags)
     }
+    /// C++ `CombatManager::UpdateOwnerCombatState`
+    /// (`src/server/game/Combat/CombatManager.cpp:381`).
+    ///
+    /// Publishes `UNIT_FLAG_IN_COMBAT` from the combat-reference state. The C++
+    /// owner of this flag is the combat manager, not the AI state: a unit is in
+    /// combat exactly while it holds at least one unsuppressed reference,
+    /// independent of whether it currently has an attack target. Idempotent, so
+    /// a tick that changes no reference produces no redundant UpdateField
+    /// revision.
+    ///
+    /// Scope: this ports the client-visible flag publication only. The C++
+    /// `AtEnterCombat`/`AtExitCombat` and `AtEngage`/`AtDisengage` callbacks in
+    /// the same function are not part of this transition; creature AI state is
+    /// still owned by `Creature::enter_ai_combat`.
+    pub fn update_owner_combat_state_like_cpp(&mut self) -> bool {
+        let combat_state = self.subsystems().combat.has_combat();
+        let mut flags = self.unit_flags_like_cpp();
+        if combat_state == flags.contains(UnitFlags::IN_COMBAT) {
+            return false;
+        }
+        if combat_state {
+            flags.insert(UnitFlags::IN_COMBAT);
+        } else {
+            flags.remove(UnitFlags::IN_COMBAT);
+        }
+        self.set_unit_flags_like_cpp(flags);
+        true
+    }
     pub fn set_unit_flags2_like_cpp(&mut self, flags: UnitFlags2) {
         if self.data.flags2 != flags.bits() {
             self.data.flags2 = flags.bits();

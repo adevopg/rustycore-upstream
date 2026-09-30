@@ -66,6 +66,14 @@ pub(super) fn player_character_save_statements_like_cpp(
             explored_zones: character.explored_zones.clone(),
             guid,
         },
+        // C++ writes `at_login` inside the single `CHAR_UPD_CHARACTER`
+        // (`Player.cpp:19849`). This port decomposes that update into field
+        // groups, so the flags get their own statement in the same transaction;
+        // the committed row is identical either way.
+        Step::AtLoginFlags {
+            at_login_flags: character.at_login_flags,
+            guid,
+        },
     ]);
 
     match &request.spells {
