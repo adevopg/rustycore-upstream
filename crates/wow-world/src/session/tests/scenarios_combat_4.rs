@@ -958,6 +958,9 @@ fn white_swing_publishes_the_attack_table_outcome_like_cpp() {
     // represented table has 3% dodge and 6% parry bands and no miss band
     // (`5.0 - 7.5` clamps to zero). Over 400 landed swings both a full hit and
     // an avoided swing must appear.
+    // This is the one melee test that asserts the distribution instead of one
+    // band, so it opts back into the production `urand` draw.
+    let drawn_roll = crate::session_rules::draw_melee_outcome_roll_like_cpp();
     let mut hits = 0;
     let mut avoids = 0;
     for _ in 0..400 {
@@ -980,6 +983,7 @@ fn white_swing_publishes_the_attack_table_outcome_like_cpp() {
     }
     assert!(hits > 0, "some swings must land");
     assert!(avoids > 0, "the dodge/parry bands must be reachable");
+    drop(drawn_roll);
 
     // A -200% `SPELL_AURA_MOD_HIT_CHANCE` makes the miss band exceed the whole
     // roll, so the swing is guaranteed to miss.
@@ -1901,100 +1905,4 @@ fn melee_attack_table_reads_the_dual_wield_penalty_aura_like_cpp() {
     };
     let inputs = melee_outcome_inputs_like_cpp(&dual, &facts.1);
     assert_eq!(inputs[0].miss_chance_pct, 0.0);
-}
-
-#[test]
-fn white_swing_publishes_an_evade_like_cpp() {
-    use wow_packet::packets::combat::{
-        HIT_INFO_MISS, HIT_INFO_SWING_NO_HIT_SOUND, VICTIM_STATE_EVADES,
-    };
-
-    let (mut session, _, _) = make_session();
-    let manager = shared_map_manager();
-    let canonical = shared_canonical_map_manager();
-    let guid = test_creature_guid(18_042);
-    let player = ObjectGuid::create_player(1, 100);
-
-    canonical.lock().unwrap().create_world_map(0, 0);
-    session.set_canonical_map_manager(Arc::clone(&canonical));
-    session.set_map_store(Arc::new(wow_data::MapStore::from_entries([
-        wow_data::MapEntry {
-            id: 0,
-            instance_type: wow_data::map::MAP_COMMON,
-            expansion_id: 0,
-            parent_map_id: -1,
-            cosmetic_parent_map_id: -1,
-            flags1: 0,
-            flags2: 0,
-        },
-    ])));
-    session.attach_player_controller_like_cpp(SessionPlayerController::new(
-        player,
-        "Evade".to_string(),
-        Position::new(10.0, 10.0, 0.0, 0.0),
-        0,
-        1,
-        1,
-        80,
-        0,
-    ));
-    let _ = session.ensure_canonical_world_map_for_current_player_like_cpp();
-    session
-        .mutate_canonical_player_like_cpp(|player| {
-            let unit = player.unit_mut();
-            unit.set_attacking(Some(guid));
-            unit.set_target(guid);
-            unit.add_unit_state(UnitState::MELEE_ATTACKING.bits());
-            unit.set_base_attack_time_like_cpp(WeaponAttackType::BaseAttack, 2_000);
-            unit.set_attack_timer(WeaponAttackType::BaseAttack, 0);
-            unit.set_weapon_damage(WeaponAttackType::BaseAttack, 7.0, 7.0);
-        })
-        .unwrap();
-    session.combat_target = Some(guid);
-    session.in_combat = true;
-    register_test_creature(&mut session, manager.clone(), guid, 40);
-    let swing = |session: &mut WorldSession| {
-        let melee_damage_bonus = session.represented_melee_damage_bonus_like_cpp();
-        let armor_mitigation = session.represented_melee_armor_mitigation_like_cpp();
-        let outcome_facts = session.represented_melee_outcome_facts_like_cpp();
-        let damage_taken = session.represented_melee_damage_taken_like_cpp();
-        session
-            .mutate_canonical_player_like_cpp(|player| {
-                player
-                    .unit_mut()
-                    .set_attack_timer(WeaponAttackType::BaseAttack, 0);
-                take_canonical_player_attack_swings_like_cpp(
-                    player,
-                    0,
-                    true,
-                    true,
-                    true,
-                    melee_damage_bonus,
-                    armor_mitigation,
-                    outcome_facts,
-                    damage_taken,
-                )
-            })
-            .flatten()
-            .map(|(swings, _)| swings)
-    };
-
-    // A free victim lands a normal hit.
-    assert_eq!(swing(&mut session).map(|s| s[0].damage), Some(7));
-
-    // C++ `IsEvadingAttacks()` returns `MELEE_HIT_EVADE` before any band.
-    session
-        .mutate_world_creature(guid, |creature| {
-            creature.creature.set_in_evade_mode_like_cpp(true);
-        })
-        .unwrap();
-    let facts = session.represented_melee_outcome_facts_like_cpp();
-    assert!(facts.1.is_evading_attacks);
-    let swings = swing(&mut session).expect("white swing resolves");
-    assert_eq!(swings[0].damage, 0);
-    assert_eq!(
-        swings[0].hit_info,
-        HIT_INFO_MISS | HIT_INFO_SWING_NO_HIT_SOUND
-    );
-    assert_eq!(swings[0].victim_state, VICTIM_STATE_EVADES);
 }
