@@ -121,6 +121,22 @@ pub fn run_legacy_player_melee_tick_once_like_cpp(
             }
 
             let Some(victim_guid) = victim else {
+                // `RUSTYCORE_PLAYER_MELEE_TRACE=1`: a player in combat with no
+                // attack target is the difference between "the client never
+                // asked" and "the request did not reach the Player this phase
+                // reads", which the counters alone cannot tell apart.
+                if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+                    tracing::info!(
+                        player_guid = ?attacker.player_guid,
+                        map_id = attacker.map_id,
+                        instance_id = attacker.instance_id,
+                        is_alive = player.unit().is_alive(),
+                        is_in_world = player.unit().world().object().is_in_world(),
+                        has_combat,
+                        in_combat_mirror = attacker.in_combat_mirror,
+                        "RUST_PLAYER_MELEE no_attack_target"
+                    );
+                }
                 continue;
             };
             outcome.victims_resolved += 1;

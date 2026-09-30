@@ -90,15 +90,41 @@ impl WorldSession {
         if self.current_canonical_player_map_key_like_cpp() != Some(expected) {
             return false;
         }
-        self.with_owned_player_like_cpp(|player| {
-            player.unit().can_see_or_detect_unit_like_cpp(
-                creature.creature.unit(),
-                false,
-                true,
-                false,
-            )
-        })
-        .unwrap_or(false)
+        let visible = self
+            .with_owned_player_like_cpp(|player| {
+                let seer = player.unit().world();
+                let target = creature.creature.unit().world();
+                let allowed = player.unit().can_see_or_detect_unit_like_cpp(
+                    creature.creature.unit(),
+                    false,
+                    true,
+                    false,
+                );
+                // Same `RUSTYCORE_CREATURE_VIS_TRACE` switch as the scan. The
+                // gate is a single bool, so without the inputs a rejection
+                // cannot be told apart from "no candidate was near".
+                if !allowed && std::env::var_os("RUSTYCORE_CREATURE_VIS_TRACE").is_some() {
+                    tracing::info!(
+                        account = self.account_id,
+                        creature_guid = ?creature.guid(),
+                        entry = creature.entry(),
+                        seer_in_world = seer.object().is_in_world(),
+                        seer_has_map = seer.has_current_map(),
+                        seer_map = seer.map_id(),
+                        seer_instance = seer.instance_id(),
+                        target_in_world = target.object().is_in_world(),
+                        target_has_map = target.has_current_map(),
+                        target_map = target.map_id(),
+                        target_instance = target.instance_id(),
+                        is_in_map = seer.is_in_map(target),
+                        in_same_phase = seer.in_same_phase(target),
+                        "RUST_CREATURE_VIS rejected"
+                    );
+                }
+                allowed
+            })
+            .unwrap_or(false);
+        visible
     }
     pub(in crate::session) fn represented_can_receive_creature_message_to_set_like_cpp(
         &self,
