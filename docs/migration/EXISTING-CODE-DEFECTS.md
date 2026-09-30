@@ -91,16 +91,32 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   clears the target and the session's own `run_combat_tick` still publishes no swing in a
   60-second engagement at 4 yards.
 
-  This is a C0/C3 authority defect, not combat arithmetic: the creature's combat state has
-  two owners, and the legacy one's periodic evade overrides the canonical attack the
-  handler just committed. **Bounded repair candidate, not yet implemented:** an accepted
-  player attack must give the legacy creature a zero-value threat reference, exactly as the
-  creature-initiated direction already does in `apply_creature_attack_start`
-  (`wow-map/src/map/runtime.rs:380-390`: `set_in_combat_with` then `add_threat(guid, 0.0)`),
-  mirroring C++ `Unit::Attack` → `AI()->AttackedBy` → `ThreatManager::AddThreat(who, 0.0f)`;
-  a creature with a live zero-threat reference does not reach
-  `EnterEvadeMode(EVADE_REASON_NO_HOSTILES)`. Reproduce with
-  `--melee-smoke --melee-creature-entry <entry>` and `RUSTYCORE_PLAYER_MELEE_TRACE=1`.
+  **Repaired for the player-initiated case on 2026-10-01.** The source of step 2 was
+  RustyCore's own addition: `handle_attack_swing` put the victim into AI combat, which C++
+  `Unit::Attack` does not do for a player attacker — it records the attacker in the victim's
+  set (already done here through `add_attacker_like_cpp`) and reaches `EngageWithTarget`
+  only inside `if (creature && !IsControlledByPlayer())` (`Unit.cpp:6254-6256`). The victim
+  engages when damage lands. A first candidate repair — adding a zero threat reference — was
+  **rejected** after reading that code: it would have invented C++ behaviour to keep an
+  unfaithful combat entry alive. Removing the entry is the faithful fix, and it is what made
+  the loop work live: `player_landed=1 (10 damage)`, `SMSG_ATTACK_STOP reports the target
+  dead`, `--melee-smoke` exit 0 against entry 721.
+
+  **Still open, and exposed by that same fix:** a *hostile* creature aggroes the player
+  during the approach, enters combat legitimately, and then evades anyway — two
+  `creature_combat_stop_applied` commands were traced for one run (entries 299 and 525,
+  both with the player as victim), each cancelling the player's attack again, and the
+  creature never reached melee range to swing (`creature_landed=0`). That is the
+  aggro → chase → melee-range progression, not the attack handler: it belongs to the M2
+  "patrol/path/aggro/evade" exit and the #26/#28 runtime work. Reproduce with
+  `--melee-smoke --melee-creature-entry 299 --melee-timeout 90` and
+  `RUSTYCORE_PLAYER_MELEE_TRACE=1`.
+
+  **Also still open:** nothing engages a creature when *player* damage lands. C++
+  `Unit::DealDamage` gives the victim its threat and AI combat; the Rust equivalent exists
+  only for creature attackers (`legacy_runtime/creature_melee_threat.rs`), so a creature
+  killed by a player never fights back. The critter run shows the symptom benignly
+  (`creature_landed=0` against a rabbit, which would not fight back anyway).
 
 - **2026-09-30, live: a player sees nothing until it acknowledges its active mover — this is
   C++ behaviour, recorded because it looks like a visibility defect.** While investigating the

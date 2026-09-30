@@ -221,11 +221,21 @@ impl WorldSession {
             PlayerAttackStartLikeCppResult::Accepted { send_attack_start } => send_attack_start,
         };
 
-        // Start combat with the canonical map-owned creature after C++-style
-        // attack validation succeeds.
-        let _ = self.mutate_world_creature(swing.victim, |creature| {
-            creature.enter_combat(player_guid);
-        });
+        // C++ `Unit::Attack` does **not** put the victim into combat for a player
+        // attacker. It records the attacker in the victim's set — which
+        // `start_player_attack_like_cpp` already does through
+        // `add_attacker_like_cpp` — and reaches `EngageWithTarget` only inside
+        // `if (creature && !IsControlledByPlayer())` (`Unit.cpp:6254-6256`). The
+        // victim engages later, when damage lands.
+        //
+        // Entering AI combat here was worse than unfaithful, it cancelled the
+        // attack: an in-combat creature with no threat reference reaches
+        // `LegacyCreatureThreatUpdateLikeCpp::Evade` on the next aggro tick, and
+        // that evade's attack-stop command clears this player's own `attacking`
+        // through `apply_creature_combat_stop`, which is C++
+        // `Unit::CombatStop` → `RemoveAllAttackers` → `AttackStop`. The player
+        // therefore never swung. Recorded with its live trace in
+        // docs/migration/EXISTING-CODE-DEFECTS.md.
 
         // Unit::Attack only emits a melee start packet for new targets or a
         // same-target ranged-to-melee switch; same-target no-op is accepted.
