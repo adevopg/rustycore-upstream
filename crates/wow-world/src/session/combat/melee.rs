@@ -849,6 +849,12 @@ impl WorldSession {
                 let player = managed.map().get_typed_player(guid)?;
                 Some(player.unit().attacking())
             });
+            let identity = self.with_owned_player_like_cpp(|player| {
+                (
+                    player.unit().health_state_revision_like_cpp(),
+                    player.unit().data().target,
+                )
+            });
             tracing::info!(
                 account = self.account_id,
                 ?player_guid,
@@ -857,6 +863,9 @@ impl WorldSession {
                 ?outcome,
                 attacking_via_handle = ?via_handle,
                 attacking_via_map = ?via_map,
+                // Same identity pair the runtime phase reports, so the two
+                // observations can be compared directly.
+                ?identity,
                 "RUST_PLAYER_MELEE attack_accepted"
             );
         }

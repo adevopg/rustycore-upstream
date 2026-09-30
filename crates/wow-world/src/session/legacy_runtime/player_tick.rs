@@ -126,6 +126,10 @@ pub fn run_legacy_player_melee_tick_once_like_cpp(
                 // asked" and "the request did not reach the Player this phase
                 // reads", which the counters alone cannot tell apart.
                 if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+                    // The revision is a cheap identity for the object itself: a
+                    // replaced Player starts a new one, so a trace that reports
+                    // the same revision as the accepted attack proves the state
+                    // was reset in place rather than the object swapped.
                     tracing::info!(
                         player_guid = ?attacker.player_guid,
                         map_id = attacker.map_id,
@@ -134,6 +138,8 @@ pub fn run_legacy_player_melee_tick_once_like_cpp(
                         is_in_world = player.unit().world().object().is_in_world(),
                         has_combat,
                         in_combat_mirror = attacker.in_combat_mirror,
+                        health_revision = player.unit().health_state_revision_like_cpp(),
+                        selection = ?player.unit().data().target,
                         "RUST_PLAYER_MELEE no_attack_target"
                     );
                 }

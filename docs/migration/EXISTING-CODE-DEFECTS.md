@@ -44,47 +44,63 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## Later verified open findings
 
-- **2026-09-30, live: the player's melee swing never happens, in either tick-owner
-  configuration.** First **live reproduction** on this branch, with a real client session
-  (tools/wow-test-bot `--melee-smoke`) against a running world-server on map 0, reproduced
-  against a critter (entry 721) and a hostile creature (entry 299). On the wire:
-  CMSG_ATTACK_SWING is accepted and the server publishes SMSG_ATTACK_START for
-  (player → creature), and then **no SMSG_ATTACKER_STATE_UPDATE ever follows**, in either
-  direction; the creature never takes damage and never dies.
+- **2026-09-30, live: a creature a player attacks evades on the next aggro tick, and the
+  evade cancels the player's attack — so the player never swings.** Root cause traced
+  end to end on a running server with a real client session (tools/wow-test-bot
+  `--melee-smoke`), reproduced against a critter (entry 721) and a hostile creature
+  (entry 299), and in **both** tick-owner configurations.
 
-  The handler does its part. With `RUSTYCORE_PLAYER_MELEE_TRACE=1`, the end of
-  `start_player_attack_like_cpp` (`session/combat/melee.rs:728`) reports
-  `outcome=NewTarget{previous:None}`, `residence=MapKey{map_id:0,instance_id:0}` and the
-  target read back as present through **both** routes the code uses —
-  `attacking_via_handle=Some(Creature …)` and `attacking_via_map=Some(Creature …)`. An earlier
-  version of this entry claimed the session and the runtime hold two different Player
-  instances; that is **disproven** by this read-back and has been corrected.
+  The chain, each step observed:
 
-  What happens next depends on the tick owner, and both settings fail:
+  1. The request is accepted and the state is written to the right object. At the end of
+     `start_player_attack_like_cpp` (`session/combat/melee.rs:728`) the trace reports
+     `outcome=NewTarget{previous:None}`, `residence=MapKey{0,0}` and the target read back
+     through **both** routes the code uses: `attacking_via_handle=Some(Creature …)` and
+     `attacking_via_map=Some(Creature …)`. There is one canonical Player and it has the
+     victim. (An earlier version of this entry claimed two Player instances; that is
+     disproven and corrected.)
+  2. The creature only exists in the **legacy** runtime. The canonical creature scan
+     reports `canonical_scan_ran=true canonical_found=0` while the legacy grid holds 29
+     candidates. `begin_canonical_player_combat_ref_like_cpp`
+     (`session/combat/state.rs:212`) therefore applies its combat reference on a map that
+     does not contain the victim, and the legacy creature receives only
+     `enter_combat` → `enter_ai_combat` (`wow-entities/src/creature/ops_1.rs:895`), which
+     sets AI state, combat target and `attacking` — **no threat reference**.
+  3. On the next aggro tick the legacy threat update finds no usable hostile for that
+     creature and returns `LegacyCreatureThreatUpdateLikeCpp::Evade`
+     (`session/legacy_runtime/creature_threat.rs:201,239,257`), which sets `UnitState::EVADE`
+     and resets its combat.
+  4. Evade emits one `CreatureAttackStopLikeCppCommand` per participant
+     (`creature_aggro_tick.rs:595`). Observed exactly once, for our pair:
+     `creature_combat_stop_applied attacker_guid=Creature[721 #48] victim_guid=Player[#5]`.
+  5. Applying it runs `apply_creature_combat_stop` (`wow-map/src/map/runtime.rs:437`), whose
+     Player-victim branch does `set_attacking(None)` and purges the player's combat
+     reference. That mapping is faithful — C++ `Unit::CombatStop` → `RemoveAllAttackers` →
+     each attacker's `AttackStop` — so the player's attack is cancelled 13-17 ms after it
+     was accepted.
+  6. The runtime phase that would swing then reads the same Player and sees
+     `has_combat=false` with no `attacking()`, while **`selection` still holds the
+     creature** — the fingerprint of step 5 rather than of `attack_stop_like_cpp`, which
+     would also have cleared the selection. Confirmed by tracing the three session paths
+     that could clear it (`run_combat_tick`'s vanish branch, `combat_stop_like_cpp`,
+     `stop_player_attack_like_cpp`): **none fires**.
 
-  * `RustyCore.LegacyCreatureGlobalRuntime = 1` (default, owner `GlobalLegacy`): the player
-    auto-attack phase (`world-server/src/runtime/delivery.rs:993`, Phase 0) reports on every
-    10 ms tick `attackers_seen=1 maps_seen=1 victims_resolved=0 swings_ready=0
-    attacker_unavailable=0`, and its per-attacker line says the Player it reads — same map,
-    same instance, same guid — is `is_alive=true is_in_world=true has_combat=false` with
-    `attacking()` empty, 13-17 ms after the accepted swing. Nothing in the session clears it:
-    the three paths that could were traced and **none fires** — `run_combat_tick`'s
-    target-vanished branch (`spell_effects/ticks.rs`), `combat_stop_like_cpp`
-    (`session/combat/state.rs:261`) and `stop_player_attack_like_cpp`
-    (`session/combat/melee.rs`).
-  * `RustyCore.LegacyCreatureGlobalRuntime = 0` (owner `Session`): Phase 0 correctly does not
-    run, no path clears the target — and `tick_combat_sync` → `run_combat_tick`, the driver
-    that owns the swing in this configuration, still publishes no swing in a 60-second
-    engagement at 4 yards.
+  Both tick owners fail for this one reason: with
+  `RustyCore.LegacyCreatureGlobalRuntime = 1` the global player-melee phase reports
+  `victims_resolved=0 attacker_unavailable=0` every 10 ms tick; with `= 0` nothing else
+  clears the target and the session's own `run_combat_tick` still publishes no swing in a
+  60-second engagement at 4 yards.
 
-  So there are two distinct failures behind one symptom: under `GlobalLegacy` the attack state
-  does not survive to the phase that would swing, and under `Session` the surviving state does
-  not produce a swing. Neither is combat arithmetic: the melee table, the swing timer and the
-  creature-attacker side are covered by unit tests. Not repaired here, and deliberately not
-  repaired blind — the first half is an authority/lifetime question that belongs to the
-  ownership plan (`docs/architecture/ownership-and-boundaries.md`) and #584's core work.
-  Reproduce with `--melee-smoke --melee-creature-entry <entry> --melee-timeout 90` and
-  `RUSTYCORE_PLAYER_MELEE_TRACE=1` on the server.
+  This is a C0/C3 authority defect, not combat arithmetic: the creature's combat state has
+  two owners, and the legacy one's periodic evade overrides the canonical attack the
+  handler just committed. **Bounded repair candidate, not yet implemented:** an accepted
+  player attack must give the legacy creature a zero-value threat reference, exactly as the
+  creature-initiated direction already does in `apply_creature_attack_start`
+  (`wow-map/src/map/runtime.rs:380-390`: `set_in_combat_with` then `add_threat(guid, 0.0)`),
+  mirroring C++ `Unit::Attack` → `AI()->AttackedBy` → `ThreatManager::AddThreat(who, 0.0f)`;
+  a creature with a live zero-threat reference does not reach
+  `EnterEvadeMode(EVADE_REASON_NO_HOSTILES)`. Reproduce with
+  `--melee-smoke --melee-creature-entry <entry>` and `RUSTYCORE_PLAYER_MELEE_TRACE=1`.
 
 - **2026-09-30, live: a player sees nothing until it acknowledges its active mover — this is
   C++ behaviour, recorded because it looks like a visibility defect.** While investigating the
