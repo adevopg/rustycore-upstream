@@ -29,6 +29,17 @@ This is the Part 1 M3 exit reached for a single solo melee kill on one spawn. It
 a claim about group credit, loot, quest kill credit, ranged or spell combat, chase over
 distance, or any other creature family; those remain unproven here.
 
+**The scenario is not yet repeatable, for harness reasons.** Across eleven runs the full
+chain closed three times and landed at least one swing in three more. The residual cause
+is measured, not guessed: the only hostile spawns near the QA start position carry
+`MovementType = 1` with a 10-yard wander, the harness follows the position
+`SMSG_ON_MONSTER_MOVE` reports at the *start* of a spline, and C++
+`Unit::DoMeleeAttackIfReady` correctly refuses a swing that is out of reach or out of
+arc — the server's phase counters show the swing timer firing and the request answered
+with `SMSG_ATTACKSWING_ERROR`, not a lost swing. A level-1 QA character in that area is
+also killed repeatedly by the other hostile spawns, and a dead attacker cannot swing.
+Making this deterministic is QA-tool work on tools/wow-test-bot, not a server finding.
+
 **Historical integration head — 2026-09-19:** the current integration head on `3.4.3` is
 `a82f4b2f` (PR #1226, following PR #1225's #29 creature-victim damage-immunity
 slice and PR #1224's school-absorb slice). The older #31
