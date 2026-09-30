@@ -3458,6 +3458,13 @@
   "handler": "handle_void_storage_transfer"
  },
  {
+  "opcode": "Who",
+  "value": 13955,
+  "status": "LoggedIn",
+  "processing": "ThreadSafe",
+  "handler": "handle_who"
+ },
+ {
   "opcode": "WorldPortResponse",
   "value": 13818,
   "status": "Transfer",
