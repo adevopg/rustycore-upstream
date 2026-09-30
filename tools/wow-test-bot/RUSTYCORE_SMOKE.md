@@ -62,6 +62,51 @@ This mode writes: it creates an account fixture if missing, writes
 `account.session_key_bnet` and `account.os`, and creates a character. Use it only
 against authorized test identities.
 
+## Live melee engagement check — live and mutating
+
+`--melee-smoke` drives the MVP combat loop against a real spawn and reports what
+the server published, with nothing inferred:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --melee-creature-entry 721 --melee-creature-guid 279982
+```
+
+It runs alone, needs exactly one enabled bot and an existing character, and the
+sequence is:
+
+```text
+login -> CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE -> walk to the spawn with
+CMSG_MOVE_HEARTBEAT while reading SMSG_UPDATE_OBJECT -> discover the live
+ObjectGuid -> CMSG_ATTACK_SWING -> observe SMSG_ATTACK_START,
+SMSG_ATTACKER_STATE_UPDATE both ways, SMSG_ATTACK_STOP (NowDead) and
+SMSG_LOG_XP_GAIN
+```
+
+`CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE` is not optional: C++
+`Player::CanNeverSee` (`Entities/Player/Player.cpp:23214-23218`) hides every
+object from a player that has not set
+`PLAYER_LOCAL_FLAG_OVERRIDE_TRANSPORT_SERVER_TIME`, so without that packet the
+world looks empty and no target can be discovered.
+
+The walk is made of ordinary heartbeat steps of at most 20 yards that stop one
+yard inside melee reach; it does not teleport. The target is selected by
+`creature_template.entry`, optionally pinned to one `world.creature.guid`, and its
+live ObjectGuid must be discovered within 60 yards of that SQL position — the mode
+fails closed rather than attacking a guessed GUID.
+
+A run fails if SMSG_ATTACK_START never arrives or if no player swing lands. The
+retaliation, the death and the XP are reported but not required: a critter neither
+fights back nor grants XP. With `--report <path>` the summary is written as JSON.
+
+The server-side switches that explain a failure are
+`RUSTYCORE_CREATURE_VIS_TRACE=1` (why a creature is or is not visible) and
+`RUSTYCORE_PLAYER_MELEE_TRACE=1` (why a swing did or did not happen).
+
+This mode writes: it moves and saves the character's position, and it puts the
+character in combat. Use it only against authorized test identities.
+
 ## Bounded normal save/relogin check (#578)
 
 With explicit approval to swap/restart `world-server` and use existing

@@ -13,6 +13,7 @@ mod items_2;
 mod items_3;
 mod login;
 mod loot;
+mod melee_smoke;
 mod misc_1;
 mod misc_2;
 mod misc_3;
@@ -51,6 +52,8 @@ pub(crate) use items_3::*;
 pub(crate) use login::*;
 #[allow(unused_imports)]
 pub(crate) use loot::*;
+#[allow(unused_imports)]
+pub(crate) use melee_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use misc_1::*;
 #[allow(unused_imports)]

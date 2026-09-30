@@ -156,6 +156,9 @@ async fn main() -> Result<()> {
     if cli.create_character {
         return run_create_character_mode(&cli, bots).await;
     }
+    if cli.melee_smoke {
+        return run_melee_smoke_mode(&cli, bots).await;
+    }
 
     if bots.is_empty() {
         bail!("No enabled bots matched the current config/filter");

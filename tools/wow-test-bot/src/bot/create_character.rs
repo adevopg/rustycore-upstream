@@ -282,112 +282,6 @@ pub(crate) fn verify_first_login_cleared_the_fixture(row: &CreatedCharacterRow) 
     Ok(())
 }
 
-async fn expect_encrypted_opcode(
-    connection: &mut EncryptedWorldConnection,
-    wanted: u16,
-    deadline: std::time::Instant,
-    label: &str,
-) -> Result<Vec<u8>> {
-    loop {
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        if remaining.is_zero() {
-            bail!("Timed out waiting for {label}");
-        }
-        let read = tokio::time::timeout(
-            remaining.min(Duration::from_secs(3)),
-            read_encrypted_packet(
-                &mut connection.stream,
-                &mut connection.crypt,
-                &mut connection.inflater,
-            ),
-        )
-        .await;
-        match read {
-            Ok(Ok((op, payload))) => {
-                if op == wanted {
-                    return Ok(payload);
-                }
-                debug!("while waiting for {label}: 0x{:04X}", op);
-            }
-            Ok(Err(e)) => bail!("Read error while waiting for {label}: {e}"),
-            Err(_) => { /* keep waiting until the deadline */ }
-        }
-    }
-}
-
-/// `SMSG_CONNECT_TO` (3.4.3 `0x304D`): the login answer that redirects the
-/// client to the instance socket. SMSG_LOGIN_VERIFY_WORLD arrives there, not on
-/// the realm connection, so the wait has to follow the redirect.
-const SMSG_CONNECT_TO: u16 = 0x304D;
-
-async fn expect_login_opcode_across_connect_to(
-    bot_index: usize,
-    connection: &mut EncryptedWorldConnection,
-    realm_connection: &mut Option<EncryptedWorldConnection>,
-    derived_session_key: &[u8; 40],
-    wanted: u16,
-    deadline: std::time::Instant,
-    label: &str,
-) -> Result<Vec<u8>> {
-    loop {
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        if remaining.is_zero() {
-            bail!("Timed out waiting for {label}");
-        }
-        let read = tokio::time::timeout(
-            remaining.min(Duration::from_secs(3)),
-            read_encrypted_packet(
-                &mut connection.stream,
-                &mut connection.crypt,
-                &mut connection.inflater,
-            ),
-        )
-        .await;
-        match read {
-            Ok(Ok((op, payload))) => {
-                if op == wanted {
-                    return Ok(payload);
-                }
-                if op != SMSG_CONNECT_TO {
-                    debug!("while waiting for {label}: 0x{:04X}", op);
-                    continue;
-                }
-                let target = parse_connect_to(&payload)
-                    .ok_or_else(|| anyhow!("Unable to parse SMSG_CONNECT_TO payload"))?;
-                info!(
-                    "[Bot {}] SMSG_CONNECT_TO: {}:{} serial={} con={} key={}",
-                    bot_index,
-                    target.address,
-                    target.port,
-                    target.serial,
-                    target.connection_type,
-                    target.key
-                );
-                if realm_connection.is_some() {
-                    bail!("Received more than one SMSG_CONNECT_TO");
-                }
-                let (instance_stream, instance_crypt) =
-                    connect_to_instance(bot_index, &target, derived_session_key).await?;
-                // The server keeps cross-socket ordering fences alive after
-                // SMSG_CONNECT_TO, so the realm socket stays open: closing it
-                // makes the realm writer vanish before it acknowledges the
-                // fence and the session is kicked.
-                let realm_stream = std::mem::replace(&mut connection.stream, instance_stream);
-                let realm_crypt = std::mem::replace(&mut connection.crypt, instance_crypt);
-                let realm_inflater = std::mem::take(&mut connection.inflater);
-                *realm_connection = Some(EncryptedWorldConnection {
-                    stream: realm_stream,
-                    crypt: realm_crypt,
-                    inflater: realm_inflater,
-                });
-                info!("[Bot {}] ✅ Instance socket authenticated", bot_index);
-            }
-            Ok(Err(e)) => bail!("Read error while waiting for {label}: {e}"),
-            Err(_) => { /* keep waiting until the deadline */ }
-        }
-    }
-}
-
 /// Create one character for `bot` over the wire and return the guid the server
 /// assigned.
 pub(crate) async fn run_create_character(
@@ -403,33 +297,7 @@ pub(crate) async fn run_create_character(
         bot_index, options.name, options.race, options.class, options.sex
     );
 
-    let bnet_url = format!("https://{}:{}", bnet_host(), bnet_port());
-    let (_login_ticket, session_key_32) =
-        bot_srp6::authenticate_bot(&bnet_url, &bot.account, &bot.password)
-            .await
-            .map_err(|e| anyhow!("Bot SRP6 failed: {e}"))?;
-    if session_key_32.len() != 32 {
-        bail!(
-            "Bot SRP6 returned K of unexpected length: {}",
-            session_key_32.len()
-        );
-    }
-    let session_key = expand_session_key(&session_key_32).to_vec();
-
-    let account_for_db = bot.account.clone();
-    let session_key_for_db = session_key.clone();
-    let realm_id_for_db = realm_id();
-    let world_auth_context = tokio::task::spawn_blocking(move || {
-        prepare_world_auth_context(&account_for_db, &session_key_for_db, realm_id_for_db)
-    })
-    .await
-    .map_err(|e| anyhow!("DB worker join failed for {}: {e}", bot.account))?
-    .map_err(|e| {
-        anyhow!(
-            "Failed to prepare world auth context for {}: {e}",
-            bot.account
-        )
-    })?;
+    let (session_key, world_auth_context) = prepare_live_world_session_key_like_cpp(bot).await?;
 
     let authenticated = establish_encrypted_world_session_like_cpp(
         bot_index,
@@ -566,6 +434,7 @@ pub(crate) async fn run_create_character(
         SMSG_LOGIN_VERIFY_WORLD,
         login_deadline,
         "SMSG_LOGIN_VERIFY_WORLD",
+        None,
     )
     .await?;
     info!("[Bot {}] ✅ SMSG_LOGIN_VERIFY_WORLD received", bot_index);

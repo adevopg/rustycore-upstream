@@ -647,6 +647,15 @@ pub(crate) fn print_help() {
     println!("  --ensure-test-accounts   Create missing local TESTBOT auth rows; validate existing rows without rewriting them");
     println!("  --login-only             Stop after SMSG_LOGIN_VERIFY_WORLD; do not run LFG");
     println!(
+        "  --melee-smoke            Walk to a creature spawn, attack it and report the published combat (used alone)"
+    );
+    println!("  --melee-creature-entry <id>     creature_template.entry of the target");
+    println!("  --melee-creature-guid <guid>    optional exact world.creature spawn");
+    println!("  --melee-timeout <secs>          engagement budget (default: 60)");
+    println!(
+        "                           Env: WOW_BOT_MELEE_SMOKE, WOW_BOT_MELEE_CREATURE_ENTRY, WOW_BOT_MELEE_CREATURE_GUID, WOW_BOT_MELEE_TIMEOUT_SECS"
+    );
+    println!(
         "  --create-character       Create one character over CMSG_CREATE_CHARACTER and print its guid (used alone)"
     );
     println!("  --create-character-name <name>  Name to request (2-12 ASCII letters)");
