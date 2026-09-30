@@ -805,6 +805,16 @@ impl WorldSession {
                 | wow_entities::UnitAttackStartOutcome::InvalidAttackTarget,
             )
             | None => {
+                if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+                    tracing::info!(
+                        account = self.account_id,
+                        ?victim,
+                        ?outcome,
+                        victim_alive,
+                        victim_in_world,
+                        "RUST_PLAYER_MELEE attack_rejected"
+                    );
+                }
                 self.set_combat_target_like_cpp(None);
                 self.set_in_combat_like_cpp(false);
                 if self.selection_guid_like_cpp() == Some(victim) {

@@ -304,3 +304,163 @@ fn legacy_creature_melee_tick_once_absorbs_creature_victim_damage_like_cpp() {
         wow_packet::packets::combat::VICTIM_STATE_IS_IMMUNE
     );
 }
+
+/// Faction templates that are neither hostile nor friendly to each other, which
+/// C++ `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2899`)
+/// resolves as `REP_NEUTRAL`.
+fn legacy_aggro_neutral_config_like_cpp() -> LegacyCreatureAggroConfigLikeCpp {
+    legacy_aggro_relation_config_like_cpp(
+        faction_template_entry(14, 72, 0, 0, 0),
+        faction_template_entry(1, 930, 0, 0, 0),
+        FactionEntry::for_test_like_cpp(72, 1),
+    )
+}
+
+/// C++ `Creature::_IsTargetAcceptable`
+/// (`Entities/Creature/Creature.cpp:2717`) accepts `IsEngagedBy(target) ||
+/// IsHostileTo(target)`, and `Unit::IsEngagedBy` (`Entities/Unit/Unit.h:1025`)
+/// reads the threat list through `Unit::IsThreatenedBy` (`:1055`) with
+/// `includeOffline = true`. A neutral participant that already holds a threat
+/// reference is therefore acceptable, so
+/// `ThreatReference::ShouldBeOffline` (`Combat/ThreatManager.cpp:99-108`) keeps
+/// it online and the creature does not evade.
+///
+/// Requiring hostility here instead emptied the threat list of every neutral
+/// participant, evaded, and — through the evade's `CombatStop` →
+/// `RemoveAllAttackers` → `AttackStop` (`Unit.cpp:6377`) — cancelled the
+/// attacking player's own swing, which is why a player could never land a hit
+/// on a neutral creature.
+#[test]
+fn legacy_creature_keeps_an_engaged_neutral_participant_online_like_cpp() {
+    use crate::map_manager::RuntimeTickOwner;
+
+    let manager = shared_map_manager();
+    let (mut session, _, _) = make_session();
+    let creature_guid = test_creature_guid(91_940);
+    let neutral_player = ObjectGuid::create_player(1, 91_941);
+    register_test_creature(&mut session, manager.clone(), creature_guid, 100);
+    session
+        .mutate_world_creature(creature_guid, |creature| {
+            creature.enter_combat(neutral_player);
+            creature
+                .creature
+                .unit_mut()
+                .subsystems_mut()
+                .combat
+                .add_threat(neutral_player, 12.0);
+        })
+        .unwrap();
+    manager
+        .write()
+        .unwrap()
+        .set_tick_owner(RuntimeTickOwner::GlobalLegacy);
+
+    let candidate =
+        legacy_aggro_candidate_like_cpp(neutral_player, Position::new(0.5, 0.5, 0.0, 0.0));
+    let outcome = run_legacy_creature_aggro_tick_once_with_config_like_cpp(
+        &manager,
+        &[candidate],
+        legacy_aggro_neutral_config_like_cpp(),
+    );
+
+    assert!(!outcome.skipped_owner_not_global);
+    assert_eq!(outcome.evades_started, 0, "an engaged target is acceptable");
+    assert!(outcome.stop_commands.is_empty());
+    let guard = manager.read().unwrap();
+    let creature = guard.find_creature(0, 0, creature_guid).unwrap();
+    assert_eq!(
+        creature.creature.ai_ownership().combat_target,
+        Some(neutral_player)
+    );
+    assert!(
+        creature
+            .creature
+            .unit()
+            .subsystems()
+            .combat
+            .threat_ref(neutral_player)
+            .is_some_and(wow_entities::ThreatReferenceState::is_online)
+    );
+}
+
+/// The acceptance is not a licence to start a fight: with no threat reference
+/// the C++ clause falls back to `IsHostileTo`, so a neutral candidate is still
+/// refused admission by `Creature::CanStartAttack`'s `_IsTargetAcceptable`.
+#[test]
+fn legacy_creature_still_refuses_to_aggro_an_unengaged_neutral_player_like_cpp() {
+    use crate::map_manager::RuntimeTickOwner;
+
+    let manager = shared_map_manager();
+    let (mut session, _, _) = make_session();
+    let creature_guid = test_creature_guid(91_942);
+    let neutral_player = ObjectGuid::create_player(1, 91_943);
+    register_test_creature(&mut session, manager.clone(), creature_guid, 100);
+    session
+        .mutate_world_creature(creature_guid, |creature| {
+            creature.creature.ai_ownership_mut().aggro_radius = 5.0;
+        })
+        .unwrap();
+    manager
+        .write()
+        .unwrap()
+        .set_tick_owner(RuntimeTickOwner::GlobalLegacy);
+
+    let candidate =
+        legacy_aggro_candidate_like_cpp(neutral_player, Position::new(0.5, 0.5, 0.0, 0.0));
+    let outcome = run_legacy_creature_aggro_tick_once_with_config_like_cpp(
+        &manager,
+        &[candidate],
+        legacy_aggro_neutral_config_like_cpp(),
+    );
+
+    assert_eq!(outcome.candidates_seen, 1);
+    assert_eq!(outcome.hostility_rejections, 1);
+    assert_eq!(outcome.aggro_starts, 0);
+    assert!(outcome.commands.is_empty());
+}
+
+/// The first clause of `_IsTargetAcceptable` (`Creature.cpp:2702`) rejects a
+/// friendly target before the engagement clause is reached, so an existing
+/// threat reference does not keep a friendly participant online.
+#[test]
+fn legacy_creature_takes_an_engaged_friendly_participant_offline_like_cpp() {
+    use crate::map_manager::RuntimeTickOwner;
+
+    let manager = shared_map_manager();
+    let (mut session, _, _) = make_session();
+    let creature_guid = test_creature_guid(91_944);
+    let friendly_player = ObjectGuid::create_player(1, 91_945);
+    register_test_creature(&mut session, manager.clone(), creature_guid, 100);
+    session
+        .mutate_world_creature(creature_guid, |creature| {
+            creature.enter_combat(friendly_player);
+            creature
+                .creature
+                .unit_mut()
+                .subsystems_mut()
+                .combat
+                .add_threat(friendly_player, 12.0);
+        })
+        .unwrap();
+    manager
+        .write()
+        .unwrap()
+        .set_tick_owner(RuntimeTickOwner::GlobalLegacy);
+
+    let candidate =
+        legacy_aggro_candidate_like_cpp(friendly_player, Position::new(0.5, 0.5, 0.0, 0.0));
+    let outcome = run_legacy_creature_aggro_tick_once_with_config_like_cpp(
+        &manager,
+        &[candidate],
+        legacy_aggro_relation_config_like_cpp(
+            faction_template_entry(14, 72, 0, 1, 0),
+            faction_template_entry(1, 930, 1, 0, 0),
+            FactionEntry::for_test_like_cpp(72, 1),
+        ),
+    );
+
+    assert_eq!(outcome.evades_started, 1);
+    let guard = manager.read().unwrap();
+    let creature = guard.find_creature(0, 0, creature_guid).unwrap();
+    assert_eq!(creature.creature.ai_ownership().combat_target, None);
+}

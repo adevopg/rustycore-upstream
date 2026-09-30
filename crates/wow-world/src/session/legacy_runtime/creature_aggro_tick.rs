@@ -146,16 +146,30 @@ fn legacy_creature_aggro_candidate_has_forced_reputation_rank_like_cpp(
             (*candidate_faction_id == faction_id).then_some(*rank)
         })
 }
-pub(in crate::session) fn legacy_creature_aggro_candidate_is_hostile_to_creature_like_cpp(
+/// C++ `WorldObject::GetFactionReactionTo`
+/// (`Entities/Object/Object.cpp:2855-2900`) for a creature reading a player
+/// candidate.
+///
+/// `IsHostileTo`/`IsFriendlyTo` are both derived from this one reaction
+/// (`Object.cpp:2902-2911`: `<= REP_HOSTILE` and `>= REP_FRIENDLY`), so they
+/// must not be computed separately: a neutral reaction is neither, and the
+/// callers below need to tell "not hostile" from "friendly" apart.
+///
+/// `None` means the reaction is unrepresented, which is the pre-existing
+/// contract of the hostility wrapper and is reported as its own outcome.
+pub(in crate::session) fn legacy_creature_aggro_candidate_reaction_to_creature_like_cpp(
     creature: &crate::map_manager::WorldCreature,
     candidate: &LegacyCreatureAggroCandidateLikeCpp,
     config: &LegacyCreatureAggroConfigLikeCpp,
-) -> Option<bool> {
+) -> Option<wow_data::reputation::ReputationRankLikeCpp> {
+    use wow_data::reputation::ReputationRankLikeCpp;
+
     let faction_template_store = config.faction_template_store.as_ref()?;
     let creature_faction_template_id =
         creature.creature.unit().data().faction_template.max(0) as u32;
+    // C++ returns REP_NEUTRAL when either template entry is missing.
     if creature_faction_template_id == 0 || candidate.player_faction_template_id == 0 {
-        return Some(false);
+        return Some(ReputationRankLikeCpp::Neutral);
     }
 
     let creature_faction_template = faction_template_store.get(creature_faction_template_id)?;
@@ -165,7 +179,7 @@ pub(in crate::session) fn legacy_creature_aggro_candidate_is_hostile_to_creature
     if creature_faction_template.is_contested_guard_faction_like_cpp()
         && candidate.player_is_contested_pvp
     {
-        return Some(true);
+        return Some(ReputationRankLikeCpp::Hostile);
     }
 
     let creature_faction_id = u32::from(creature_faction_template.faction);
@@ -176,7 +190,7 @@ pub(in crate::session) fn legacy_creature_aggro_candidate_is_hostile_to_creature
                 creature_faction_id,
             )
         {
-            return Some(forced_rank <= wow_data::reputation::ReputationRankLikeCpp::Hostile);
+            return Some(forced_rank);
         }
         if candidate
             .player_forced_reputation_faction_ids
@@ -195,36 +209,94 @@ pub(in crate::session) fn legacy_creature_aggro_candidate_is_hostile_to_creature
                 creature_faction_id,
             )
         {
-            if !legacy_creature_aggro_candidate_is_at_war_like_cpp(candidate, creature_faction_id) {
-                return Some(false);
-            }
-
+            // C++ caps an at-war reaction at neutral and otherwise returns the
+            // standing's own rank. The previous shape returned "not hostile" for
+            // every not-at-war faction, which reads the same for hostility —
+            // `ReputationMgr::SetReputation` sets at-war for a hostile standing —
+            // but cannot express a friendly reaction at all.
             let rank = wow_data::reputation::reputation_rank_from_standing_like_cpp(
                 legacy_creature_aggro_candidate_reputation_standing_like_cpp(
                     candidate,
                     creature_faction_id,
                 ),
             );
-            // C++ `GetFactionReactionTo` caps an at-war player reaction to at
-            // most neutral; `Creature::_IsTargetAcceptable` still requires an
-            // actually hostile reaction to start aggro.
-            return Some(rank <= wow_data::reputation::ReputationRankLikeCpp::Hostile);
+            if legacy_creature_aggro_candidate_is_at_war_like_cpp(candidate, creature_faction_id) {
+                return Some(rank.min(ReputationRankLikeCpp::Neutral));
+            }
+            return Some(rank);
         }
     }
 
     if creature_faction_template.is_hostile_to_like_cpp(player_faction_template) {
-        return Some(true);
+        return Some(ReputationRankLikeCpp::Hostile);
     }
     if creature_faction_template.is_friendly_to_like_cpp(player_faction_template) {
-        return Some(false);
+        return Some(ReputationRankLikeCpp::Friendly);
     }
     if player_faction_template.is_friendly_to_like_cpp(creature_faction_template) {
-        return Some(false);
+        return Some(ReputationRankLikeCpp::Friendly);
     }
     if creature_faction_template.is_hostile_by_default_like_cpp() {
+        return Some(ReputationRankLikeCpp::Hostile);
+    }
+    Some(ReputationRankLikeCpp::Neutral)
+}
+/// C++ `WorldObject::IsHostileTo` (`Entities/Object/Object.cpp:2902`).
+pub(in crate::session) fn legacy_creature_aggro_candidate_is_hostile_to_creature_like_cpp(
+    creature: &crate::map_manager::WorldCreature,
+    candidate: &LegacyCreatureAggroCandidateLikeCpp,
+    config: &LegacyCreatureAggroConfigLikeCpp,
+) -> Option<bool> {
+    legacy_creature_aggro_candidate_reaction_to_creature_like_cpp(creature, candidate, config)
+        .map(|reaction| reaction <= wow_data::reputation::ReputationRankLikeCpp::Hostile)
+}
+/// C++ `WorldObject::IsFriendlyTo` (`Entities/Object/Object.cpp:2907`).
+pub(in crate::session) fn legacy_creature_aggro_candidate_is_friendly_to_creature_like_cpp(
+    creature: &crate::map_manager::WorldCreature,
+    candidate: &LegacyCreatureAggroCandidateLikeCpp,
+    config: &LegacyCreatureAggroConfigLikeCpp,
+) -> Option<bool> {
+    legacy_creature_aggro_candidate_reaction_to_creature_like_cpp(creature, candidate, config)
+        .map(|reaction| reaction >= wow_data::reputation::ReputationRankLikeCpp::Friendly)
+}
+/// C++ `Creature::_IsTargetAcceptable`
+/// (`Entities/Creature/Creature.cpp:2697-2731`) for a player candidate.
+///
+/// The clause this exists for is line 2717: `IsEngagedBy(target) ||
+/// IsHostileTo(target)`. `Unit::IsEngagedBy` (`Entities/Unit/Unit.h:1025`) reads
+/// the threat list through `Unit::IsThreatenedBy` (`:1055`), which passes
+/// `includeOffline = true`, so a threat reference that already exists — online
+/// or offline — is acceptance on its own, with no hostility test. That is how a
+/// creature keeps fighting a neutral player who attacked it.
+///
+/// For a player target the remaining C++ tail is decided: line 2722 rejects a
+/// player whose own victim is this creature, and the assist clause at 2726 only
+/// applies to a non-player target's victim.
+pub(in crate::session) fn legacy_creature_candidate_is_acceptable_target_like_cpp(
+    creature: &crate::map_manager::WorldCreature,
+    candidate: &LegacyCreatureAggroCandidateLikeCpp,
+    config: &LegacyCreatureAggroConfigLikeCpp,
+) -> Option<bool> {
+    use wow_data::reputation::ReputationRankLikeCpp;
+
+    let reaction =
+        legacy_creature_aggro_candidate_reaction_to_creature_like_cpp(creature, candidate, config)?;
+    if reaction >= ReputationRankLikeCpp::Friendly
+        || !legacy_creature_aggro_candidate_is_targetable_for_attack_like_cpp(candidate)
+    {
+        return Some(false);
+    }
+    if creature
+        .creature
+        .unit()
+        .subsystems()
+        .combat
+        .threat_ref(candidate.player_guid)
+        .is_some()
+    {
         return Some(true);
     }
-    Some(false)
+    Some(reaction <= ReputationRankLikeCpp::Hostile)
 }
 pub(in crate::session) fn legacy_creature_aggro_candidate_is_accessible_for_creature_like_cpp(
     creature: &crate::map_manager::WorldCreature,
@@ -703,7 +775,12 @@ pub fn run_legacy_creature_aggro_tick_once_with_config_like_cpp(
                         continue;
                     }
                 }
-                match legacy_creature_aggro_candidate_is_hostile_to_creature_like_cpp(
+                // The same `Creature::_IsTargetAcceptable` the threat update
+                // applies. Admission is unchanged: a creature reaching
+                // `MoveInLineOfSight` is not engaged yet
+                // (`AI/CreatureAI.cpp` returns early for an engaged creature),
+                // so the acceptance reduces to this candidate's hostility here.
+                match legacy_creature_candidate_is_acceptable_target_like_cpp(
                     creature, candidate, &config,
                 ) {
                     Some(true) => {}

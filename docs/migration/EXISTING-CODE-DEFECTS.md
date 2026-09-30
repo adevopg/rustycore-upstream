@@ -44,8 +44,9 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## Later verified open findings
 
-- **2026-09-30, live: a creature a player attacks evades on the next aggro tick, and the
-  evade cancels the player's attack — so the player never swings.** Root cause traced
+- [x] **2026-09-30, live: a creature a player attacks evades on the next aggro tick, and the
+  evade cancels the player's attack — so the player never swings.** Both halves repaired;
+  closed 2026-10-01, and kept here with the evidence that produced it. Root cause traced
   end to end on a running server with a real client session (tools/wow-test-bot
   `--melee-smoke`), reproduced against a critter (entry 721) and a hostile creature
   (entry 299), and in **both** tick-owner configurations.
@@ -102,21 +103,59 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   the loop work live: `player_landed=1 (10 damage)`, `SMSG_ATTACK_STOP reports the target
   dead`, `--melee-smoke` exit 0 against entry 721.
 
-  **Still open, and exposed by that same fix:** a *hostile* creature aggroes the player
-  during the approach, enters combat legitimately, and then evades anyway — two
-  `creature_combat_stop_applied` commands were traced for one run (entries 299 and 525,
-  both with the player as victim), each cancelling the player's attack again, and the
-  creature never reached melee range to swing (`creature_landed=0`). That is the
-  aggro → chase → melee-range progression, not the attack handler: it belongs to the M2
-  "patrol/path/aggro/evade" exit and the #26/#28 runtime work. Reproduce with
-  `--melee-smoke --melee-creature-entry 299 --melee-timeout 90` and
-  `RUSTYCORE_PLAYER_MELEE_TRACE=1`.
+  **Repaired on 2026-10-01 — the second half of the same chain, and both remaining
+  symptoms with it.** The evade that kept cancelling the attack was traced to one
+  unfaithful clause, not to chase or to a missing damage hook. Order captured live with
+  `RUSTYCORE_PLAYER_MELEE_TRACE=1` plus a temporary backtrace on
+  `CombatSubsystem::set_attacking` and on `WorldCreature::enter_combat`:
 
-  **Also still open:** nothing engages a creature when *player* damage lands. C++
-  `Unit::DealDamage` gives the victim its threat and AI combat; the Rust equivalent exists
-  only for creature attackers (`legacy_runtime/creature_melee_threat.rs`), so a creature
-  killed by a player never fights back. The critter run shows the symptom benignly
-  (`creature_landed=0` against a rabbit, which would not fight back anyway).
+  1. `22:50:02.416 attack_accepted` — the player attacks creature 299.
+  2. `22:50:02.449` — `apply_player_melee_to_legacy_creature_like_cpp`
+     (`legacy_runtime/creature_melee_tick.rs:289`) engages the creature. So player damage
+     *does* engage its victim; the earlier "nothing engages a creature when player damage
+     lands" reading was wrong, and it is withdrawn here.
+  3. `22:50:02.492` — the aggro tick's threat update takes every reference offline and
+     evades. A per-participant diagnostic printed
+     `targetable=true accessible=true visibility=Allowed leash=Allowed` and
+     **`hostile=false`**: the only failing clause was hostility.
+  4. `22:50:02.494` — the evade's `CombatStop` clears the player's `attacking`, which is
+     faithful: C++ `CreatureAI::_EnterEvadeMode` (`AI/CreatureAI.cpp:315`) calls
+     `Unit::CombatStop` → `RemoveAllAttackers` (`Unit.cpp:6377`), and that calls
+     `AttackStop` on every attacker. The propagation was never the defect.
+
+  `ThreatReference::ShouldBeOffline` (`Combat/ThreatManager.cpp:99-108`) never re-asks
+  whether a participant is hostile. It asks `Creature::_IsTargetAcceptable`, whose decisive
+  clause is `IsEngagedBy(target) || IsHostileTo(target)` (`Creature.cpp:2717`), and
+  `Unit::IsEngagedBy` (`Unit.h:1025`) reads the threat list through `Unit::IsThreatenedBy`
+  (`:1055`) with **`includeOffline = true`** — so a reference that merely exists is
+  acceptance on its own. Hostility gates *starting* a fight, not keeping one. The Rust
+  eligibility set demanded hostility for every participant, so a creature a player attacked
+  dropped the player on the next tick unless the factions were hostile, evaded, and
+  cancelled the swing.
+
+  The repair adds `legacy_creature_candidate_is_acceptable_target_like_cpp` (and its
+  snapshot form) as the single port of `_IsTargetAcceptable`, used by both the threat update
+  and the aggro gate, and splits the old boolean into
+  `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2855`) so `IsHostileTo`
+  and `IsFriendlyTo` come from one reaction instead of one conflated predicate — the
+  friendly clause at `Creature.cpp:2702` needs the distinction. Live proof on the same
+  spawn, one run: `attack_start=true player_landed=4 (42 damage) creature_landed=4
+  (4 damage) death=true xp=50`, `SMSG_ATTACK_STOP reports the target dead`,
+  `SMSG_LOG_XP_GAIN 50 XP`, `--melee-smoke` exit 0. The creature now retaliates, dies, and
+  pays experience.
+
+- [x] **2026-10-01: the at-war reputation flag was treated as the hostility decision
+  instead of a cap.** Found while splitting the reaction above.
+  `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2880-2885`) reads the
+  player's rank for the creature's faction and caps it at `REP_NEUTRAL` **only when the
+  player is at war**. The Rust branch instead returned "not hostile" for every faction the
+  player was not at war with. For hostility alone the two read the same on standings
+  TrinityCore produces, because `ReputationMgr::SetReputation` declares war when a rank
+  drops to hostile, but the shortcut cannot express a friendly reaction at all, which
+  `Creature::_IsTargetAcceptable` needs. Corrected to the C++ shape, and the test that
+  asserted the shortcut (`..._rejects_reputation_without_at_war_like_cpp`) was rewritten
+  against the source as `..._caps_an_at_war_reaction_at_neutral_like_cpp`. Recorded
+  separately because it is a behaviour change, not part of the melee repair.
 
 - **2026-09-30, live: a player sees nothing until it acknowledges its active mover — this is
   C++ behaviour, recorded because it looks like a visibility defect.** While investigating the

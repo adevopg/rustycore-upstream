@@ -7,25 +7,77 @@ use super::*;
 use crate::session_rules::position_is_in_dist_strict_2d_like_cpp;
 use crate::session_rules::position_is_in_dist_strict_3d_like_cpp;
 
-pub(in crate::session) fn legacy_creature_snapshot_is_hostile_to_creature_like_cpp(
+/// The faction-template half of C++ `WorldObject::GetFactionReactionTo`
+/// (`Entities/Object/Object.cpp:2889-2899`), for a unit snapshot that carries no
+/// player reputation state.
+///
+/// `IsHostileTo` and `IsFriendlyTo` both come from this one reaction
+/// (`Object.cpp:2902-2911`), so the two callers below derive from it instead of
+/// asking the templates twice with different meanings.
+pub(in crate::session) fn legacy_creature_snapshot_reaction_to_creature_like_cpp(
     creature: &crate::map_manager::WorldCreature,
     target: &LegacyCreatureAggroOwnerSnapshotLikeCpp,
     config: &LegacyCreatureAggroConfigLikeCpp,
-) -> Option<bool> {
+) -> Option<wow_data::reputation::ReputationRankLikeCpp> {
+    use wow_data::reputation::ReputationRankLikeCpp;
+
     let faction_templates = config.faction_template_store.as_ref()?;
     let creature_faction = faction_templates
         .get(u32::try_from(creature.creature.unit().data().faction_template).ok()?)?;
     let target_faction = faction_templates.get(target.faction_template_id?)?;
 
     if creature_faction.is_hostile_to_like_cpp(target_faction) {
-        return Some(true);
+        return Some(ReputationRankLikeCpp::Hostile);
     }
     if creature_faction.is_friendly_to_like_cpp(target_faction)
         || target_faction.is_friendly_to_like_cpp(creature_faction)
     {
+        return Some(ReputationRankLikeCpp::Friendly);
+    }
+    if creature_faction.is_hostile_by_default_like_cpp() {
+        return Some(ReputationRankLikeCpp::Hostile);
+    }
+    Some(ReputationRankLikeCpp::Neutral)
+}
+/// C++ `WorldObject::IsHostileTo` (`Entities/Object/Object.cpp:2902`).
+pub(in crate::session) fn legacy_creature_snapshot_is_hostile_to_creature_like_cpp(
+    creature: &crate::map_manager::WorldCreature,
+    target: &LegacyCreatureAggroOwnerSnapshotLikeCpp,
+    config: &LegacyCreatureAggroConfigLikeCpp,
+) -> Option<bool> {
+    legacy_creature_snapshot_reaction_to_creature_like_cpp(creature, target, config)
+        .map(|reaction| reaction <= wow_data::reputation::ReputationRankLikeCpp::Hostile)
+}
+/// C++ `Creature::_IsTargetAcceptable`
+/// (`Entities/Creature/Creature.cpp:2697-2731`) for a unit snapshot.
+///
+/// Same acceptance as the candidate form: an existing threat reference is
+/// `Unit::IsEngagedBy` (`Entities/Unit/Unit.h:1025`, reading the list with
+/// `includeOffline = true` at `:1055`) and needs no hostility.
+pub(in crate::session) fn legacy_creature_snapshot_is_acceptable_target_like_cpp(
+    creature: &crate::map_manager::WorldCreature,
+    target_guid: ObjectGuid,
+    target: &LegacyCreatureAggroOwnerSnapshotLikeCpp,
+    config: &LegacyCreatureAggroConfigLikeCpp,
+) -> Option<bool> {
+    use wow_data::reputation::ReputationRankLikeCpp;
+
+    let reaction =
+        legacy_creature_snapshot_reaction_to_creature_like_cpp(creature, target, config)?;
+    if reaction >= ReputationRankLikeCpp::Friendly {
         return Some(false);
     }
-    Some(creature_faction.is_hostile_by_default_like_cpp())
+    if creature
+        .creature
+        .unit()
+        .subsystems()
+        .combat
+        .threat_ref(target_guid)
+        .is_some()
+    {
+        return Some(true);
+    }
+    Some(reaction <= ReputationRankLikeCpp::Hostile)
 }
 pub(in crate::session) fn legacy_creature_ai_selection_decision_like_cpp(
     creature: &crate::map_manager::WorldCreature,
