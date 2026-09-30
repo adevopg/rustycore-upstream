@@ -204,3 +204,42 @@ fn save_snapshot_cannot_read_replacement_or_fallback_after_owner_loss() {
         Some(999)
     );
 }
+
+#[test]
+fn save_request_carries_the_at_login_flags_the_first_login_cleared_like_cpp() {
+    // C++ `CharacterHandler.cpp:1271` clears AT_LOGIN_FIRST in memory only; the
+    // row is corrected when `Player::SaveToDB` binds `m_atLoginFlags`
+    // (`Player.cpp:19849`). If the projection did not carry the field, a created
+    // character would keep at_login = AT_LOGIN_FIRST for ever and every login
+    // would repeat the first-login path.
+    const AT_LOGIN_FIRST_LIKE_CPP: u16 = 0x020;
+    const AT_LOGIN_RENAME_LIKE_CPP: u16 = 0x001;
+
+    let (mut session, _, _) = make_session();
+    install_canonical_player_owner_for_test(&mut session, 571, 0);
+    session.current_map_id = 571;
+    session.set_represented_at_login_flags_like_cpp(
+        AT_LOGIN_FIRST_LIKE_CPP | AT_LOGIN_RENAME_LIKE_CPP,
+    );
+
+    let snapshot = session
+        .current_player_save_to_db_snapshot_like_cpp()
+        .unwrap();
+    let before = session
+        .current_player_character_save_request_like_cpp(&snapshot, 123)
+        .unwrap();
+    assert_eq!(
+        before.character.at_login_flags,
+        AT_LOGIN_FIRST_LIKE_CPP | AT_LOGIN_RENAME_LIKE_CPP
+    );
+
+    assert!(session.apply_represented_first_login_flag_if_needed_like_cpp());
+
+    let after = session
+        .current_player_character_save_request_like_cpp(&snapshot, 123)
+        .unwrap();
+    assert_eq!(
+        after.character.at_login_flags, AT_LOGIN_RENAME_LIKE_CPP,
+        "the save carries the cleared value, and only AT_LOGIN_FIRST is cleared"
+    );
+}

@@ -58,6 +58,7 @@ impl WorldSession {
             dungeon_difficulty,
             raid_difficulty,
             legacy_raid_difficulty,
+            at_login_flags: self.resolved_represented_at_login_flags_like_cpp()?,
         };
 
         let spell_runtime = self.player_spell_runtime_snapshot_like_cpp();

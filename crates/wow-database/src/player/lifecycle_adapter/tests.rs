@@ -47,6 +47,7 @@ fn minimal_character_request() -> PlayerCharacterSaveRequestLikeCpp {
             dungeon_difficulty: 0,
             raid_difficulty: 0,
             legacy_raid_difficulty: 0,
+            at_login_flags: 0,
         },
         spells: None,
         skills: None,

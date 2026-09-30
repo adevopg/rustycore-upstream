@@ -95,6 +95,10 @@ pub struct PlayerCharacterSnapshotSaveLikeCpp {
     pub dungeon_difficulty: u32,
     pub raid_difficulty: u32,
     pub legacy_raid_difficulty: u32,
+    /// C++ `Player::SaveToDB` binds `m_atLoginFlags` into `CHAR_UPD_CHARACTER`
+    /// (`Player.cpp:19849`), so a flag cleared in memory — `AT_LOGIN_FIRST` on
+    /// the first login — is persisted by the next full save.
+    pub at_login_flags: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
