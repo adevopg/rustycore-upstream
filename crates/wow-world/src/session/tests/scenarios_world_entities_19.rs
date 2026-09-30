@@ -672,15 +672,10 @@ fn legacy_creature_movement_tick_once_moves_once_syncs_canonical_and_plans_fanou
     assert_eq!(outcome.creatures_seen, 1);
     assert_eq!(outcome.movement_packets, 1);
     assert_eq!(outcome.canonical_syncs, 1);
-    // C++ `Unit::UpdatePosition` (`Entities/Unit/Unit.cpp:13796`) routes every
-    // creature position write through `Map::CreatureRelocation`
-    // (`Maps/Map.cpp:1042`). Before this was wired the tick advanced the
-    // coordinates and synced the entity but never re-evaluated cell/grid
-    // membership, so the canonical map kept the creature in its spawn cell for
-    // its whole life. The cell/grid move itself is covered by
-    // `relocate_map_object_like_cpp`'s own tests in `wow-map`
-    // (`map_tests/instance.rs:651,674`, `map_tests/persistence_2.rs:313`);
-    // this assertion locks in that the movement tick actually calls it.
+    // C++ `Unit::UpdatePosition` (`Unit.cpp:13796`) routes every creature
+    // position write through `Map::CreatureRelocation` (`Map.cpp:1042`); the
+    // cell/grid move itself is covered by `relocate_map_object_like_cpp`'s own
+    // `wow-map` tests, so this only locks in that the tick calls it.
     assert_eq!(outcome.canonical_cell_relocations, 1);
     assert_eq!(outcome.plan.events.len(), 1);
     let event = &outcome.plan.events[0];
