@@ -259,6 +259,12 @@ impl WorldSession {
         }
     }
     pub(in crate::session) fn combat_stop_like_cpp(&mut self) {
+        if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+            tracing::info!(
+                account = self.account_id,
+                "RUST_PLAYER_MELEE wiper=session_combat_stop"
+            );
+        }
         let Some(player_guid) = self.player_guid() else {
             self.set_combat_target_like_cpp(None);
             self.set_in_combat_like_cpp(false);

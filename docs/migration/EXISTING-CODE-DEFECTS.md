@@ -44,37 +44,46 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## Later verified open findings
 
-- **2026-09-30, live: the player's melee swing never happens — the canonical Player the
-  runtime phase reads has no attack state.** First **live reproduction** on this branch,
-  with a real client session (tools/wow-test-bot `--melee-smoke`) against a running
-  world-server on map 0. Sequence observed on the wire: CMSG_ATTACK_SWING is accepted and
-  the server publishes SMSG_ATTACK_START for (player → creature), then **no
-  SMSG_ATTACKER_STATE_UPDATE ever follows**, in either direction, for the whole window;
-  the creature never takes damage and never dies.
-  Server-side, with `RUSTYCORE_PLAYER_MELEE_TRACE=1`, the player auto-attack phase
-  (`world-server/src/runtime/delivery.rs:993`, Phase 0 of the legacy creature runtime tick)
-  reports every tick:
-  `attackers_seen=1 maps_seen=1 victims_resolved=0 swings_ready=0 attacker_unavailable=0`,
-  and the per-attacker line says the Player it reads is
-  `is_alive=true is_in_world=true has_combat=false in_combat_mirror=false` with
-  `attacking()` empty — *after* the accepted swing.
-  So the phase finds the map, finds the Player, and that Player carries none of the state
-  the handler just wrote: `handlers/combat.rs:210` → `start_player_attack_like_cpp`
-  (`session/combat/melee.rs:728`) returned `Accepted { send_attack_start: true }`, which
-  means `attack_with_context_like_cpp` accepted and `set_in_combat_like_cpp(true)` ran.
-  The write goes through `mutate_canonical_player_like_cpp` →
-  `mutate_canonical_player_by_guid_like_cpp` (`session/canonical_access/operations.rs:64`),
-  which prefers `manager.with_player_mut_like_cpp(handle, ..)`, while the phase reads
-  `managed.map().get_typed_player(guid)` (`session/legacy_runtime/player_tick.rs:94`).
-  The evidence says those two resolve **different Player instances**; C++ has exactly one
-  map-owned `Player`, and `Unit::Attack` writes the same object `Player::Update` later
-  swings from. This is an ownership/authority defect, not a combat-arithmetic one: the
-  melee table, the swing timer and the creature side are all exercised by unit tests, but
-  nothing in production connects the accepted request to the object that ticks.
-  Not yet repaired, and deliberately not repaired blind: the fix is a choice about which
-  Player the runtime phases must read, which belongs to the ownership plan
-  (`docs/architecture/ownership-and-boundaries.md`) and to #584's core work.
-  Reproduce with: `--melee-smoke --melee-creature-entry <entry>` and
+- **2026-09-30, live: the player's melee swing never happens, in either tick-owner
+  configuration.** First **live reproduction** on this branch, with a real client session
+  (tools/wow-test-bot `--melee-smoke`) against a running world-server on map 0, reproduced
+  against a critter (entry 721) and a hostile creature (entry 299). On the wire:
+  CMSG_ATTACK_SWING is accepted and the server publishes SMSG_ATTACK_START for
+  (player → creature), and then **no SMSG_ATTACKER_STATE_UPDATE ever follows**, in either
+  direction; the creature never takes damage and never dies.
+
+  The handler does its part. With `RUSTYCORE_PLAYER_MELEE_TRACE=1`, the end of
+  `start_player_attack_like_cpp` (`session/combat/melee.rs:728`) reports
+  `outcome=NewTarget{previous:None}`, `residence=MapKey{map_id:0,instance_id:0}` and the
+  target read back as present through **both** routes the code uses —
+  `attacking_via_handle=Some(Creature …)` and `attacking_via_map=Some(Creature …)`. An earlier
+  version of this entry claimed the session and the runtime hold two different Player
+  instances; that is **disproven** by this read-back and has been corrected.
+
+  What happens next depends on the tick owner, and both settings fail:
+
+  * `RustyCore.LegacyCreatureGlobalRuntime = 1` (default, owner `GlobalLegacy`): the player
+    auto-attack phase (`world-server/src/runtime/delivery.rs:993`, Phase 0) reports on every
+    10 ms tick `attackers_seen=1 maps_seen=1 victims_resolved=0 swings_ready=0
+    attacker_unavailable=0`, and its per-attacker line says the Player it reads — same map,
+    same instance, same guid — is `is_alive=true is_in_world=true has_combat=false` with
+    `attacking()` empty, 13-17 ms after the accepted swing. Nothing in the session clears it:
+    the three paths that could were traced and **none fires** — `run_combat_tick`'s
+    target-vanished branch (`spell_effects/ticks.rs`), `combat_stop_like_cpp`
+    (`session/combat/state.rs:261`) and `stop_player_attack_like_cpp`
+    (`session/combat/melee.rs`).
+  * `RustyCore.LegacyCreatureGlobalRuntime = 0` (owner `Session`): Phase 0 correctly does not
+    run, no path clears the target — and `tick_combat_sync` → `run_combat_tick`, the driver
+    that owns the swing in this configuration, still publishes no swing in a 60-second
+    engagement at 4 yards.
+
+  So there are two distinct failures behind one symptom: under `GlobalLegacy` the attack state
+  does not survive to the phase that would swing, and under `Session` the surviving state does
+  not produce a swing. Neither is combat arithmetic: the melee table, the swing timer and the
+  creature-attacker side are covered by unit tests. Not repaired here, and deliberately not
+  repaired blind — the first half is an authority/lifetime question that belongs to the
+  ownership plan (`docs/architecture/ownership-and-boundaries.md`) and #584's core work.
+  Reproduce with `--melee-smoke --melee-creature-entry <entry> --melee-timeout 90` and
   `RUSTYCORE_PLAYER_MELEE_TRACE=1` on the server.
 
 - **2026-09-30, live: a player sees nothing until it acknowledges its active mover — this is

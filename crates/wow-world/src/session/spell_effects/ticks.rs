@@ -343,6 +343,13 @@ impl WorldSession {
                 })
             });
         let Some(target_runtime) = target_runtime else {
+            if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+                tracing::info!(
+                    account = self.account_id,
+                    ?combat_target,
+                    "RUST_PLAYER_MELEE wiper=combat_tick_target_vanished"
+                );
+            }
             let _ = self.mutate_canonical_player_like_cpp(|player| {
                 let unit = player.unit_mut();
                 unit.attack_stop_like_cpp();

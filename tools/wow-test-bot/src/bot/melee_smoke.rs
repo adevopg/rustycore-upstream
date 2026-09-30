@@ -18,8 +18,11 @@ const MELEE_SMOKE_STEP_YARDS: f32 = 20.0;
 const MELEE_SMOKE_MAX_STEPS: u32 = 64;
 /// How far from its SQL position a runtime spawn is still the same creature.
 const MELEE_SMOKE_DISCOVERY_RADIUS_YARDS: f32 = 60.0;
+/// One heartbeat every this often, so the walk looks like a client moving rather
+/// than a burst of teleports.
+const MELEE_SMOKE_STEP_INTERVAL: Duration = Duration::from_millis(200);
 /// How long the approach may keep listening for the target's CREATE block.
-const MELEE_SMOKE_APPROACH_BUDGET: Duration = Duration::from_secs(20);
+const MELEE_SMOKE_APPROACH_BUDGET: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub(crate) struct MeleeSmokeOptions {
@@ -304,6 +307,7 @@ pub(crate) async fn run_melee_smoke(
     // as the walk brings new cells into visibility.
     let approach_deadline = deadline.min(std::time::Instant::now() + MELEE_SMOKE_APPROACH_BUDGET);
     let mut steps = 0u32;
+    let mut last_step = std::time::Instant::now() - MELEE_SMOKE_STEP_INTERVAL;
     loop {
         let read = tokio::time::timeout(
             Duration::from_millis(250),
@@ -315,39 +319,42 @@ pub(crate) async fn run_melee_smoke(
         )
         .await;
         match read {
-            Ok(Ok((opcode, payload))) => {
-                match opcode {
-                    SMSG_TIME_SYNC_REQUEST => {
-                        respond_to_detour_time_sync_like_cpp(
-                            bot_index,
-                            &mut connection.stream,
-                            &mut connection.crypt,
-                            &payload,
-                            clock_origin,
-                            "melee approach",
-                        )
-                        .await?;
-                    }
-                    SMSG_UPDATE_OBJECT if discovered.is_none() => {
-                        discovered = find_creature_guid_near_position_in_update_object(
-                            &payload,
-                            target.map_id,
-                            target.entry,
-                            target.x,
-                            target.y,
-                            target.z,
-                            MELEE_SMOKE_DISCOVERY_RADIUS_YARDS,
-                            None,
-                        );
-                    }
-                    _ => {}
+            Ok(Ok((opcode, payload))) => match opcode {
+                SMSG_TIME_SYNC_REQUEST => {
+                    respond_to_detour_time_sync_like_cpp(
+                        bot_index,
+                        &mut connection.stream,
+                        &mut connection.crypt,
+                        &payload,
+                        clock_origin,
+                        "melee approach",
+                    )
+                    .await?;
                 }
-                continue;
-            }
+                SMSG_UPDATE_OBJECT if discovered.is_none() => {
+                    discovered = find_creature_guid_near_position_in_update_object(
+                        &payload,
+                        target.map_id,
+                        target.entry,
+                        target.x,
+                        target.y,
+                        target.z,
+                        MELEE_SMOKE_DISCOVERY_RADIUS_YARDS,
+                        None,
+                    );
+                }
+                _ => {}
+            },
             Ok(Err(error)) => bail!("read error while approaching the target: {error}"),
             Err(_) => {}
         }
 
+        // Fall through on both arms. The stream is busy — time sync plus every
+        // creature's movement — so a `continue` here would keep reading packets
+        // and never walk; the step cadence is its own timer instead.
+        if last_step.elapsed() < MELEE_SMOKE_STEP_INTERVAL {
+            continue;
+        }
         let remaining = distance_between(position, (target.x, target.y, target.z));
         if discovered.is_some() && remaining <= NOMINAL_MELEE_RANGE_LIKE_CPP {
             break;
@@ -389,6 +396,7 @@ pub(crate) async fn run_melee_smoke(
         .await?;
         position = next;
         steps += 1;
+        last_step = std::time::Instant::now();
         outcome.walk_steps = steps;
     }
 
