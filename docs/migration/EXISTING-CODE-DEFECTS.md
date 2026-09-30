@@ -407,8 +407,8 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## CRIT — data loss / duplication / corruption (fix before trusting the server with real chars)
 
-- [ ] **2026-10-01, live: deleting a character leaks every dependent row, including its
-  items.** Reproduced over the wire with the server's own path
+- [x] **2026-10-01, live: deleting a character leaked every dependent row, including its
+  items. Repaired the same day.** Reproduced over the wire with the server's own path
   (tools/wow-test-bot `--delete-characters`, C++ `CharDelete` →
   `Player::DeleteFromDB`). The four QA characters deleted successfully — the server answered
   `CHAR_DELETE_SUCCESS` and the `characters` rows are gone — and they left behind, measured
@@ -425,8 +425,27 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   real characters" bar. The orphan rows from this reproduction were removed by hand
   (`character_inventory`, `item_instance`, `character_skills`, `character_glyphs`,
   `character_reputation`, `character_homebind` for guids 1-4); nothing else on the QA account
-  was touched. Owner: the A2 persistence lane and Part 2 **L24**; the repair is the full
-  statement set inside one transaction, not a longer list of independent deletes.
+  was touched. Owner: the A2 persistence lane and Part 2 **L24**.
+  - **Repaired at `character_administration_adapter.rs`:** the delete now commits the full
+    C++ `CHAR_DELETE_REMOVE` set — 49 CharacterDatabase statements in C++ append order —
+    inside one transaction. No new SQL was needed: all 49 identities already existed and
+    had no caller, and every one of their texts is byte-identical to the C++ statement it
+    ports (checked statement by statement against
+    `Database/Implementation/CharacterDatabase.cpp`).
+  - **Scope contract, recorded on the function:** three C++ steps are deliberately not
+    reproduced, because each needs a read or a second database this path does not have —
+    the COD-mail refund and per-mail-id item deletes driven by `CHAR_SEL_CHAR_COD_ITEM_MAIL`
+    and `CHAR_SEL_MAILITEMS`, the pet-id walk from `CHAR_SEL_CHAR_PET_IDS`, and the two
+    `LOGIN_DEL_BATTLE_PET*` LoginDatabase statements. The unconditional mail and pet
+    deletes still remove the character's own rows.
+  - **Live proof:** a freshly created character (guid 6) held 156 rows across seven tables —
+    1 `characters`, 5 `character_inventory`, 5 `item_instance`, 15 `character_skills`,
+    24 `character_glyphs`, 105 `character_reputation` and 1 `character_homebind`. After
+    `--delete-characters 6` every one of those counts reads **0**.
+  - `the_delete_transaction_follows_the_cpp_append_order_and_binds_only_the_guid` pins all
+    49 statements, their C++ order and their binds (only the guid, twice for
+    `guild_eventlog`); `every_family_the_live_reproduction_leaked_is_now_deleted` pins the
+    six families this reproduction measured.
 
 - [x] **D-C1 Item enchantments not loaded on relog.** `SEL_CHAR_EQUIPMENT`/`SEL_CHAR_BAG_CONTENTS`
   select enchantment cols but the load hardcodes 0 → equipped/bagged enchants vanish on
