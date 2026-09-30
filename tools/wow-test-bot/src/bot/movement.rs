@@ -13,6 +13,30 @@ pub(crate) fn monster_move_mover_guid_like_cpp(payload: &[u8]) -> Result<(u64, u
         parse_packed_guid(payload).context("SMSG_ON_MONSTER_MOVE missing MoverGUID")?;
     Ok((low, high))
 }
+/// The mover GUID and the position C++ `MonsterMove::Write` puts right after it.
+///
+/// `MoverGUID` is a packed GUID, `Pos` is a `TaggedPosition<Position::XYZ>` — the
+/// creature's position at the moment the spline starts
+/// (`Server/Packets/MovementPackets.cpp:589-594`). That is enough to follow a
+/// wandering target without decoding the spline itself.
+pub(crate) fn monster_move_mover_and_position_like_cpp(
+    payload: &[u8],
+) -> Result<((u64, u64), (f32, f32, f32))> {
+    let (guid_len, low, high) =
+        parse_packed_guid(payload).context("SMSG_ON_MONSTER_MOVE missing MoverGUID")?;
+    let position = payload
+        .get(guid_len..guid_len + 12)
+        .context("SMSG_ON_MONSTER_MOVE missing Pos")?;
+    let read = |index: usize| {
+        f32::from_le_bytes([
+            position[index],
+            position[index + 1],
+            position[index + 2],
+            position[index + 3],
+        ])
+    };
+    Ok(((low, high), (read(0), read(4), read(8))))
+}
 pub(crate) async fn verify_inventory_swap_invalid_position_gate(
     bot_index: usize,
     stream: &mut TcpStream,

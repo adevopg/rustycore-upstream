@@ -131,7 +131,22 @@ object from a player that has not set
 world looks empty and no target can be discovered.
 
 The walk is made of ordinary heartbeat steps of at most 20 yards that stop one
-yard inside melee reach; it does not teleport. The target is selected by
+yard inside melee reach; it does not teleport. It continues during the
+engagement: the mode follows the target's `SMSG_ON_MONSTER_MOVE` position
+(`MoverGUID` then `Pos`, `Server/Packets/MovementPackets.cpp:589-594`) and keeps
+republishing its facing, because C++ `Unit::DoMeleeAttackIfReady` needs both
+`IsWithinMeleeRange` and `HasInArc(2*pi/3, victim)` and answers a standing bot
+with `SMSG_ATTACKSWING_ERROR` instead of a swing.
+
+**This mode is not yet reliable against a wandering spawn.** The nearest hostile
+spawns to the QA start position (`creature` 280052/280053) both carry
+`MovementType = 1` with a 10-yard wander, and the follow only knows where the
+spline *started*, so most swing attempts still resolve out of reach: a 60-second
+run typically lands one or two swings and often none. A run that lands nothing is
+therefore not evidence of a server defect on its own — check the server's
+`RUSTYCORE_PLAYER_MELEE_TRACE=1` phase counters before concluding anything. Once
+one swing lands the creature engages and chases by itself, so the first connected
+swing is what the scenario is really waiting for. The target is selected by
 `creature_template.entry`, optionally pinned to one `world.creature.guid`, and its
 live ObjectGuid must be discovered within 60 yards of that SQL position — the mode
 fails closed rather than attacking a guessed GUID.

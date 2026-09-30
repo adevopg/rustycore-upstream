@@ -331,8 +331,15 @@ pub(crate) async fn run_melee_smoke(
                     )
                     .await?;
                 }
-                SMSG_UPDATE_OBJECT if discovered.is_none() => {
-                    discovered = find_creature_guid_near_position_in_update_object(
+                SMSG_UPDATE_OBJECT => {
+                    // Keep reading after the first sighting: the walk must close
+                    // on where the creature *is*, not on its SQL spawn row. A
+                    // wandering spawn can stand tens of yards away from that
+                    // row, and then the swings resolve out of melee range —
+                    // C++ `Unit::DoMeleeAttackIfReady` only swings inside
+                    // `IsWithinMeleeRange`, so the server published nothing and
+                    // the run reported an unexplained `player_landed=0`.
+                    if let Some(sighting) = find_creature_guid_near_position_in_update_object(
                         &payload,
                         target.map_id,
                         target.entry,
@@ -340,8 +347,10 @@ pub(crate) async fn run_melee_smoke(
                         target.y,
                         target.z,
                         MELEE_SMOKE_DISCOVERY_RADIUS_YARDS,
-                        None,
-                    );
+                        discovered.map(|found| found.low),
+                    ) {
+                        discovered = Some(sighting);
+                    }
                 }
                 _ => {}
             },
@@ -355,7 +364,10 @@ pub(crate) async fn run_melee_smoke(
         if last_step.elapsed() < MELEE_SMOKE_STEP_INTERVAL {
             continue;
         }
-        let remaining = distance_between(position, (target.x, target.y, target.z));
+        let aim = discovered
+            .map(|found| (found.x, found.y, found.z))
+            .unwrap_or((target.x, target.y, target.z));
+        let remaining = distance_between(position, aim);
         if discovered.is_some() && remaining <= NOMINAL_MELEE_RANGE_LIKE_CPP {
             break;
         }
@@ -374,11 +386,9 @@ pub(crate) async fn run_melee_smoke(
                  range is {NOMINAL_MELEE_RANGE_LIKE_CPP:.2}"
             );
         }
-        let Some((next, facing)) = next_walk_step_like_cpp(
-            position,
-            (target.x, target.y, target.z),
-            NOMINAL_MELEE_RANGE_LIKE_CPP - 1.0,
-        ) else {
+        let Some((next, facing)) =
+            next_walk_step_like_cpp(position, aim, NOMINAL_MELEE_RANGE_LIKE_CPP - 1.0)
+        else {
             // In reach already: keep listening for the spawn's CREATE block.
             continue;
         };
@@ -400,8 +410,8 @@ pub(crate) async fn run_melee_smoke(
         outcome.walk_steps = steps;
     }
 
-    let distance = distance_between(position, (target.x, target.y, target.z));
     let runtime = discovered.expect("the approach loop only exits with a discovered target");
+    let distance = distance_between(position, (runtime.x, runtime.y, runtime.z));
     info!(
         "[Bot {}] ✅ approached in {} steps, {:.2} yards from the target",
         bot_index, outcome.walk_steps, distance
@@ -424,10 +434,57 @@ pub(crate) async fn run_melee_smoke(
 
     // Observe the engagement. Nothing here is asserted: the report says what the
     // server published, and only the mandatory observations below fail the run.
+    //
+    // The walk continues here: a wandering spawn steps out of melee reach while
+    // the swing timer runs, and C++ `Unit::DoMeleeAttackIfReady` then publishes
+    // `SMSG_ATTACKSWING_ERROR` instead of a swing — the server is right and a
+    // standing bot simply never connects. Following the target is what a player
+    // does, and it is what the first landed swing needs: once damage lands the
+    // creature engages and chases by itself.
     let mut last_swing_seen = tokio::time::Instant::now();
+    let mut target_position = (runtime.x, runtime.y, runtime.z);
+    let mut last_follow_step = std::time::Instant::now();
     while std::time::Instant::now() < deadline {
         if outcome.target_death_seen && outcome.xp_gain_seen {
             break;
+        }
+        // In reach the walk stops but the turn does not: C++
+        // `Unit::DoMeleeAttackIfReady` also needs `HasInArc(2*pi/3, victim)`, and
+        // a target circling a standing bot leaves the last heartbeat's facing
+        // behind, which the server answers with `SMSG_ATTACKSWING_ERROR` and no
+        // swing. Keep publishing the facing at the current position.
+        let follow_step = (!outcome.target_death_seen
+            && last_follow_step.elapsed() >= MELEE_SMOKE_STEP_INTERVAL)
+            .then(|| {
+                next_walk_step_like_cpp(
+                    position,
+                    target_position,
+                    NOMINAL_MELEE_RANGE_LIKE_CPP - 1.0,
+                )
+                .unwrap_or((
+                    position,
+                    (target_position.1 - position.1).atan2(target_position.0 - position.0),
+                ))
+            });
+        if let Some((next, facing)) = follow_step {
+            let heartbeat = build_move_heartbeat_payload(
+                player_low,
+                player_high,
+                next.0,
+                next.1,
+                next.2,
+                facing,
+            );
+            send_encrypted_packet(
+                &mut connection.stream,
+                &mut connection.crypt,
+                CMSG_MOVE_HEARTBEAT,
+                &heartbeat,
+            )
+            .await?;
+            position = next;
+            outcome.walk_steps += 1;
+            last_follow_step = std::time::Instant::now();
         }
         // `SMSG_LOG_XP_GAIN` is `CONNECTION_TYPE_REALM` in C++
         // (`Server/Protocol/Opcodes.cpp:1662`), so the kill's XP never arrives on
@@ -544,6 +601,15 @@ pub(crate) async fn run_melee_smoke(
                                 "[Bot {}] ✅ SMSG_ATTACK_STOP reports the target dead",
                                 bot_index
                             );
+                        }
+                    }
+                }
+                SMSG_ON_MONSTER_MOVE => {
+                    if let Ok((mover, moved_to)) =
+                        monster_move_mover_and_position_like_cpp(&payload)
+                    {
+                        if mover == target_guid {
+                            target_position = moved_to;
                         }
                     }
                 }
