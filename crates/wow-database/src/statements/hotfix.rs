@@ -652,7 +652,16 @@ mod tests {
     #[test]
     fn generated_max_id_statements_cover_cpp_hotfix_tables() {
         let tables = cpp_max_id_tables();
-        assert_eq!(tables.len(), 325);
+        assert_eq!(
+            tables.len(),
+            325,
+            "{} MAX(ID) statements found in {}. This test contrasts against the pinned C++ \
+             checkout recorded in docs/README.md; another revision of the fork has a \
+             different statement inventory, which is a reference mismatch and not a \
+             RustyCore defect. Point RUSTYCORE_CPP_REFERENCE_ROOT at the pinned checkout.",
+            tables.len(),
+            cpp_hotfix_database_cpp().display()
+        );
 
         for table in tables {
             let table: &'static str = Box::leak(table.into_boxed_str());
@@ -666,7 +675,16 @@ mod tests {
     #[test]
     fn generated_base_statements_cover_cpp_hotfix_tables() {
         let statements = cpp_base_sql();
-        assert_eq!(statements.len(), 325);
+        assert_eq!(
+            statements.len(),
+            325,
+            "{} base SELECT statements found in {}. This test contrasts against the pinned C++ \
+             checkout recorded in docs/README.md; another revision of the fork has a \
+             different statement inventory, which is a reference mismatch and not a \
+             RustyCore defect. Point RUSTYCORE_CPP_REFERENCE_ROOT at the pinned checkout.",
+            statements.len(),
+            cpp_hotfix_database_cpp().display()
+        );
 
         for cpp_sql in statements {
             let sql: &'static str = Box::leak(cpp_sql.into_boxed_str());
@@ -678,7 +696,16 @@ mod tests {
     #[test]
     fn generated_locale_statements_cover_cpp_hotfix_tables() {
         let statements = cpp_locale_sql();
-        assert_eq!(statements.len(), 95);
+        assert_eq!(
+            statements.len(),
+            95,
+            "{} locale SELECT statements found in {}. This test contrasts against the pinned C++ \
+             checkout recorded in docs/README.md; another revision of the fork has a \
+             different statement inventory, which is a reference mismatch and not a \
+             RustyCore defect. Point RUSTYCORE_CPP_REFERENCE_ROOT at the pinned checkout.",
+            statements.len(),
+            cpp_hotfix_database_cpp().display()
+        );
 
         for cpp_sql in statements {
             let (table, columns) = locale_parts(&cpp_sql);

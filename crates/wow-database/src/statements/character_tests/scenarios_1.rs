@@ -7,7 +7,16 @@ use super::*;
 #[test]
 fn generated_cpp_statements_cover_character_database() {
     let statements = cpp_character_sql();
-    assert_eq!(statements.len(), 523);
+    assert_eq!(
+        statements.len(),
+        523,
+        "{} prepared statements found in {}. This test contrasts against the pinned C++ \
+         checkout recorded in docs/README.md; another revision of the fork has a different \
+         statement inventory, which is a reference mismatch and not a RustyCore defect. \
+         Point RUSTYCORE_CPP_REFERENCE_ROOT at the pinned checkout.",
+        statements.len(),
+        cpp_character_database_cpp().display()
+    );
 
     for cpp_sql in statements {
         let sql: &'static str = Box::leak(cpp_sql.into_boxed_str());
