@@ -429,15 +429,62 @@ pub(crate) async fn run_melee_smoke(
         if outcome.target_death_seen && outcome.xp_gain_seen {
             break;
         }
-        let read = tokio::time::timeout(
-            Duration::from_millis(500),
-            read_encrypted_packet(
+        // `SMSG_LOG_XP_GAIN` is `CONNECTION_TYPE_REALM` in C++
+        // (`Server/Protocol/Opcodes.cpp:1662`), so the kill's XP never arrives on
+        // the instance socket this mode attacks through. Reading only that socket
+        // reported `xp=0` for kills the server had already granted and persisted.
+        // `peek` waits for real bytes without consuming them, so losing the
+        // select is safe — the same shape the stand-state drain uses.
+        let ready = {
+            let quiet = tokio::time::sleep(Duration::from_millis(500));
+            tokio::pin!(quiet);
+            let mut instance_peek = [0u8; 1];
+            let mut realm_peek = [0u8; 1];
+            match realm_connection.as_ref() {
+                Some(realm) => tokio::select! {
+                    result = connection.stream.peek(&mut instance_peek) => {
+                        if result.context("instance melee engagement peek failed")? == 0 {
+                            bail!("instance connection closed during the engagement");
+                        }
+                        MeleeReadSource::Instance
+                    }
+                    result = realm.stream.peek(&mut realm_peek) => {
+                        if result.context("realm melee engagement peek failed")? == 0 {
+                            bail!("realm connection closed during the engagement");
+                        }
+                        MeleeReadSource::Realm
+                    }
+                    _ = &mut quiet => MeleeReadSource::Quiet,
+                },
+                None => tokio::select! {
+                    result = connection.stream.peek(&mut instance_peek) => {
+                        if result.context("instance melee engagement peek failed")? == 0 {
+                            bail!("instance connection closed during the engagement");
+                        }
+                        MeleeReadSource::Instance
+                    }
+                    _ = &mut quiet => MeleeReadSource::Quiet,
+                },
+            }
+        };
+        let read = match ready {
+            MeleeReadSource::Instance => Ok(read_encrypted_packet(
                 &mut connection.stream,
                 &mut connection.crypt,
                 &mut connection.inflater,
-            ),
-        )
-        .await;
+            )
+            .await),
+            MeleeReadSource::Realm => {
+                let realm = realm_connection
+                    .as_mut()
+                    .expect("the realm branch only runs with a realm connection");
+                Ok(
+                    read_encrypted_packet(&mut realm.stream, &mut realm.crypt, &mut realm.inflater)
+                        .await,
+                )
+            }
+            MeleeReadSource::Quiet => Err(()),
+        };
         match read {
             Ok(Ok((opcode, payload))) => match opcode {
                 SMSG_TIME_SYNC_REQUEST => {
@@ -563,6 +610,14 @@ pub(crate) async fn run_melee_smoke(
     Ok(outcome)
 }
 
+/// Which socket had bytes ready, or neither within the quiet window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MeleeReadSource {
+    Instance,
+    Realm,
+    Quiet,
+}
+
 fn parse_log_xp_gain_amount(payload: &[u8]) -> Option<u32> {
     // C++ `WorldPackets::Combat::LogXPGain::Write`: packed victim ObjectGuid,
     // then int32 Original, uint8 Reason, int32 Amount.
@@ -602,6 +657,23 @@ pub(crate) async fn run_melee_smoke_mode(
         creature_spawn_guid: cli.melee_creature_spawn_guid,
         timeout_secs: cli.melee_timeout_secs,
     };
+    // A creature that kills the QA character leaves it unable to swing, and the
+    // rejection is invisible on the wire, so this is checked and reported before
+    // the run rather than surfacing as a missing SMSG_ATTACK_START.
+    {
+        let characters_url = characters_db_url()?;
+        let opts = mysql::Opts::from_url(&characters_url)
+            .map_err(|error| anyhow!("Bad characters DB URL: {error}"))?;
+        let mut conn = mysql::Conn::new(opts)
+            .map_err(|error| anyhow!("Connect to characters DB failed: {error}"))?;
+        validate_local_bot_character_owner(&mut conn, &bot)?;
+        if revive_dead_bot_character_fixture(&mut conn, &bot)? {
+            info!(
+                "character {} ({}) was dead; restored its stored health as a fixture before the run",
+                bot.character_guid, bot.account
+            );
+        }
+    }
     let outcome = run_melee_smoke(&bot, &options).await?;
     if let Some(path) = &cli.report_path {
         std::fs::write(path, serde_json::to_string_pretty(&outcome)?)

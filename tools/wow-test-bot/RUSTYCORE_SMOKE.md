@@ -106,6 +106,24 @@ SMSG_ATTACKER_STATE_UPDATE both ways, SMSG_ATTACK_STOP (NowDead) and
 SMSG_LOG_XP_GAIN
 ```
 
+The engagement is observed on **both** sockets. `SMSG_LOG_XP_GAIN` is
+`CONNECTION_TYPE_REALM` in C++ (`Server/Protocol/Opcodes.cpp:1662`), so it never
+arrives on the instance socket the attack goes out on; reading only that socket
+reported `xp=0` for kills the server had already granted and written to
+`characters.xp`.
+
+It also restores a QA character that a creature killed, before logging in, and
+says so. A dead attacker is refused by C++ `Unit::Attack`
+(`Entities/Unit/Unit.cpp:6175`) and RustyCore answers `CMSG_ATTACK_SWING` with
+`InvalidDeadAttacker`, which on the wire is indistinguishable from "the server
+never published SMSG_ATTACK_START". The server's only implemented exit from death
+is `CMSG_REPOP_REQUEST`, and C++ `Player::RepopAtGraveyard` leaves the player a
+ghost, so there is no in-protocol way back to a live character yet. The restore
+writes `characters.health`, which is where the death state lives
+(`Player::LoadFromDB` reads a zero-health row as a corpse, `Player.cpp:18119`, and
+clamps the value at the computed maximum, `:18135`). It is a fixture reset, not a
+resurrection, and it exercises no server death-exit behaviour.
+
 `CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE` is not optional: C++
 `Player::CanNeverSee` (`Entities/Player/Player.cpp:23214-23218`) hides every
 object from a player that has not set
