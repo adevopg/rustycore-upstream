@@ -62,6 +62,28 @@ This mode writes: it creates an account fixture if missing, writes
 `account.session_key_bnet` and `account.os`, and creates a character. Use it only
 against authorized test identities.
 
+## Retiring QA characters — live and destructive
+
+`--delete-characters <guid,guid,…>` deletes characters through the server's own
+`CMSG_CHAR_DELETE` path rather than by SQL, so the deletion follows whatever
+`Player::DeleteFromDB` fan-out the server implements:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local --delete-characters 1,2,3
+```
+
+It runs alone, needs one enabled bot, refuses a non-local account without
+`WOW_BOT_ALLOW_NONLOCAL_ACCOUNT_BOOTSTRAP=1`, refuses the bot's own configured
+`character_guid`, and fails if the server refuses any of the requested deletes. It
+enumerates first because the server only accepts a delete for a character it has
+listed for that account.
+
+**Known server defect this mode exposes:** the delete currently removes only the
+`characters` row and leaves every dependent row behind — inventory, items, skills,
+glyphs, reputation, homebind. See the CRIT entry dated 2026-10-01 in
+docs/migration/EXISTING-CODE-DEFECTS.md before using it on anything you care about.
+
 ## Live melee engagement check — live and mutating
 
 `--melee-smoke` drives the MVP combat loop against a real spawn and reports what

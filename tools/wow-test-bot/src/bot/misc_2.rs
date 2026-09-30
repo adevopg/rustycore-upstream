@@ -650,6 +650,9 @@ pub(crate) fn print_help() {
         "  --melee-smoke            Walk to a creature spawn, attack it and report the published combat (used alone)"
     );
     println!("  --melee-creature-entry <id>     creature_template.entry of the target");
+    println!(
+        "  --delete-characters <g,g>       Delete these characters.guid over CMSG_CHAR_DELETE (used alone)"
+    );
     println!("  --melee-creature-guid <guid>    optional exact world.creature spawn");
     println!("  --melee-timeout <secs>          engagement budget (default: 60)");
     println!(

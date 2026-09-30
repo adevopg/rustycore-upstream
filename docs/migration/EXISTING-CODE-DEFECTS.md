@@ -407,6 +407,27 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## CRIT — data loss / duplication / corruption (fix before trusting the server with real chars)
 
+- [ ] **2026-10-01, live: deleting a character leaks every dependent row, including its
+  items.** Reproduced over the wire with the server's own path
+  (tools/wow-test-bot `--delete-characters`, C++ `CharDelete` →
+  `Player::DeleteFromDB`). The four QA characters deleted successfully — the server answered
+  `CHAR_DELETE_SUCCESS` and the `characters` rows are gone — and they left behind, measured
+  immediately afterwards: **20 `character_inventory` rows, 20 `item_instance` rows,
+  30 `character_skills`, 48 `character_glyphs`, 210 `character_reputation` and
+  2 `character_homebind`** rows, for four level-1 characters that had never played.
+  The cause is the adapter: `character_administration_adapter.rs:264` issues exactly one
+  statement, `CharStatements::DEL_CHARACTER` (`DELETE FROM characters WHERE guid = ?`),
+  while C++ `Player::DeleteFromDB`'s `CHAR_DELETE_REMOVE` branch issues **52** `CHAR_DEL_*`
+  statements in one transaction (`Entities/Player/Player.cpp`, `Player::DeleteFromDB`).
+  Severity is CRIT rather than cosmetic because the leaked `item_instance` rows keep their
+  item GUIDs allocated for ever, the orphan rows accumulate on every delete, and a future
+  character reusing a guid would inherit them: this is exactly the "trusting the server with
+  real characters" bar. The orphan rows from this reproduction were removed by hand
+  (`character_inventory`, `item_instance`, `character_skills`, `character_glyphs`,
+  `character_reputation`, `character_homebind` for guids 1-4); nothing else on the QA account
+  was touched. Owner: the A2 persistence lane and Part 2 **L24**; the repair is the full
+  statement set inside one transaction, not a longer list of independent deletes.
+
 - [x] **D-C1 Item enchantments not loaded on relog.** `SEL_CHAR_EQUIPMENT`/`SEL_CHAR_BAG_CONTENTS`
   select enchantment cols but the load hardcodes 0 → equipped/bagged enchants vanish on
   logout. `handlers/character.rs:4617-4618,4760-4761`. C++ `Player::_LoadInventory`.

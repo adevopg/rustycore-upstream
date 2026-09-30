@@ -28,6 +28,13 @@ pub(crate) const CMSG_PLAYER_LOGIN: u16 = 0x35EB;
 /// `SMSG_LOGIN_VERIFY_WORLD` (3.4.3 `0x2597`).
 pub(crate) const SMSG_LOGIN_VERIFY_WORLD: u16 = 0x2597;
 
+/// `CMSG_CHAR_DELETE` (3.4.3 `0x369D`).
+pub(crate) const CMSG_CHAR_DELETE: u16 = 0x369D;
+/// `SMSG_DELETE_CHAR` (3.4.3 `0x2702`).
+pub(crate) const SMSG_DELETE_CHAR: u16 = 0x2702;
+/// C++ `ResponseCodes::CHAR_DELETE_SUCCESS` (`SharedDefines.h`).
+pub(crate) const CHAR_DELETE_SUCCESS_LIKE_CPP: u8 = 63;
+
 /// C++ `ResponseCodes` (`SharedDefines.h`), character-creation range.
 pub(crate) const CHAR_CREATE_SUCCESS_LIKE_CPP: u8 = 24;
 /// C++ `AT_LOGIN_FIRST` (`Entities/Player/Player.h:535`). Character creation
@@ -486,6 +493,86 @@ pub(crate) async fn run_create_character(
     Ok(row.guid)
 }
 
+/// Delete one character over `CMSG_CHAR_DELETE`, the server's own path.
+///
+/// C++ `WorldPackets::Character::CharDelete::Read` is a single packed ObjectGuid
+/// (`Server/Packets/CharacterPackets.cpp:382`) and `DeleteChar::Write` answers
+/// with one `uint8` code (`:387`). Deleting over the wire keeps the server's
+/// `Player::DeleteFromDB` fan-out — inventory, mail, social, and the rest —
+/// instead of leaving orphan rows behind a hand-written SQL `DELETE`.
+pub(crate) async fn run_delete_characters(
+    bot: &config::BotConfig,
+    guids: &[u64],
+    timeout_secs: u64,
+) -> Result<Vec<u64>> {
+    let bot_index = bot.account_id as usize;
+    let (session_key, world_auth_context) = prepare_live_world_session_key_like_cpp(bot).await?;
+    let authenticated = establish_encrypted_world_session_like_cpp(
+        bot_index,
+        &session_key,
+        &world_auth_context.username,
+        &world_auth_context.win64_auth_seed,
+    )
+    .await?;
+    let mut connection = EncryptedWorldConnection {
+        stream: authenticated.stream,
+        crypt: authenticated.crypt,
+        inflater: ServerPacketInflater::default(),
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs);
+
+    // The server populates `_legitCharacters` from the enumeration, and refuses a
+    // delete for a character it has not listed for this account.
+    send_encrypted_packet(
+        &mut connection.stream,
+        &mut connection.crypt,
+        CMSG_ENUM_CHARACTERS,
+        &[],
+    )
+    .await?;
+    expect_encrypted_opcode(
+        &mut connection,
+        SMSG_ENUM_CHARACTERS_RESULT,
+        deadline,
+        "SMSG_ENUM_CHARACTERS_RESULT before deletion",
+    )
+    .await?;
+
+    let mut deleted = Vec::new();
+    for guid in guids {
+        let (low, high) = create_player_guid_raw(*guid, realm_id());
+        let packed = build_packed_guid(low, high);
+        send_encrypted_packet(
+            &mut connection.stream,
+            &mut connection.crypt,
+            CMSG_CHAR_DELETE,
+            &packed,
+        )
+        .await?;
+        let payload = expect_encrypted_opcode(
+            &mut connection,
+            SMSG_DELETE_CHAR,
+            deadline,
+            "SMSG_DELETE_CHAR",
+        )
+        .await?;
+        let code = *payload
+            .first()
+            .ok_or_else(|| anyhow!("SMSG_DELETE_CHAR carried no response code"))?;
+        if code == CHAR_DELETE_SUCCESS_LIKE_CPP {
+            info!("[Bot {}] ✅ character {} deleted", bot_index, guid);
+            deleted.push(*guid);
+        } else {
+            warn!(
+                "[Bot {}] character {} not deleted: code {}",
+                bot_index, guid, code
+            );
+        }
+    }
+    Ok(deleted)
+}
+
+/// The `--create-character` entry point: one exclusive mode, one bot, one
 /// The `--create-character` entry point: one exclusive mode, one bot, one
 /// character. Keeping the guards here rather than in `main` leaves the mode's
 /// preconditions next to the workflow they protect.
@@ -535,6 +622,61 @@ pub(crate) async fn run_create_character_mode(
     Ok(())
 }
 
+/// The `--delete-characters` entry point: the server's own delete path, used to
+/// retire QA characters without hand-written SQL.
+pub(crate) async fn run_delete_characters_mode(
+    cli: &CliOptions,
+    mut bots: Vec<config::BotConfig>,
+) -> Result<()> {
+    if any_exclusive_workflow_mode_selected(cli) || cli.create_character {
+        bail!("--delete-characters runs no other workflow");
+    }
+    if bots.len() != 1 {
+        bail!(
+            "--delete-characters needs exactly one enabled bot; select it with --single (got {})",
+            bots.len()
+        );
+    }
+    let bot = bots.remove(0);
+    if bot.password.trim().is_empty() {
+        bail!(
+            "No password for {}; export {}",
+            bot.account,
+            password_env_name(&bot.account)
+        );
+    }
+    if !bot.account.to_ascii_uppercase().ends_with("@BOT.LOCAL")
+        && !std::env::var("WOW_BOT_ALLOW_NONLOCAL_ACCOUNT_BOOTSTRAP").is_ok_and(|v| is_truthy(&v))
+    {
+        bail!(
+            "refusing to delete characters on non-local account {}",
+            bot.account
+        );
+    }
+    if cli.delete_character_guids.contains(&bot.character_guid) {
+        bail!(
+            "guid {} is this bot's configured character; change character_guid first",
+            bot.character_guid
+        );
+    }
+    let deleted = run_delete_characters(
+        &bot,
+        &cli.delete_character_guids,
+        cli.create_character_timeout_secs,
+    )
+    .await?;
+    info!(
+        "Deleted {} of {} requested characters on {}",
+        deleted.len(),
+        cli.delete_character_guids.len(),
+        bot.account
+    );
+    if deleted.len() != cli.delete_character_guids.len() {
+        bail!("the server refused at least one delete; see the codes above");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,6 +689,16 @@ mod tests {
             sex: 0,
             timeout_secs: 30,
         }
+    }
+
+    #[test]
+    fn a_guid_list_rejects_nothing_zero_and_junk_and_keeps_order() {
+        assert_eq!(parse_character_guid_list("1,2,3").unwrap(), vec![1, 2, 3]);
+        assert_eq!(parse_character_guid_list(" 4 , 4 ,5").unwrap(), vec![4, 5]);
+        assert!(parse_character_guid_list("").is_err());
+        assert!(parse_character_guid_list(" , ").is_err());
+        assert!(parse_character_guid_list("0").is_err());
+        assert!(parse_character_guid_list("1,nope").is_err());
     }
 
     #[test]
