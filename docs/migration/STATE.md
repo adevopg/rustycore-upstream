@@ -1,6 +1,23 @@
 # RustyCore — Honest Current State (single source of truth)
 
-**Integration head — 2026-09-19:** the current integration head on `3.4.3` is
+**Integration head — 2026-09-30:** `origin/3.4.3` is at `62f5c619` (2026-09-26). The
+`a82f4b2f` head stated below is an ancestor of it, 45 commits behind; there is no fork
+divergence, only a stale line. Those 45 commits are itemised, with their plan owners and
+their two gate consequences, in
+[PORT_PLAN.md §0](PORT_PLAN.md) — read them before treating anything below as pending.
+The part that matters for status: the #29 creature split/share/unkillable/damage-threat
+slice this document lists as a candidate **is integrated** (`2df57d6f`), and a large
+client-data extraction, Battle.net/account, social, login-transport and in-game-shop
+feature line landed in the same window without being recorded here.
+
+Live evidence added 2026-09-30, on this host and against a real client session: character
+creation, login, enumeration and clean logout work; creature visibility works once the
+client acknowledges its active mover; **the player's melee swing never happens**, in
+either tick-owner configuration. That last one is the Part 1 M3 exit failing with a
+reproduction, and it is recorded in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
+
+**Historical integration head — 2026-09-19:** the current integration head on `3.4.3` is
 `a82f4b2f` (PR #1226, following PR #1225's #29 creature-victim damage-immunity
 slice and PR #1224's school-absorb slice). The older #31
 diagnosis chain is retained below as historical evidence; its next entry is
