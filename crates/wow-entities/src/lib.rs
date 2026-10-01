@@ -315,6 +315,7 @@ pub use transport::{
     TransportMovementState, TransportPassengerSet, TransportPathEvent, TransportPathLeg,
     TransportPathSegment, TransportTemplate, TransportUpdateLikeCpp,
 };
+pub use unit::resistance_for_school_mask_like_cpp;
 pub use unit::{
     AUTO_SHOT_SPELL_ID, BASE_MAXDAMAGE, BASE_MINDAMAGE, BASE_MOVE_SPEED,
     DEFAULT_PLAYER_DISPLAY_SCALE, HealthStateRevisionAuthorityLikeCpp, MAX_ATTACK, MAX_MOVE_TYPE,

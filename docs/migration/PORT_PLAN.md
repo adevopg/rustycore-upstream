@@ -313,9 +313,25 @@ useful before the one above it, which is why they are not all one commit:
    `/opt/wow-3.4.3/gt/` and `wow-data::game_tables` already read several, which a first look at
    `dbc/<locale>/` alone had missed. What remains unrepresented is only the combo-point term and the
    spellmods, neither of which has an owner.
-2. **The player-victim hit chain as a map-owned stage.** Crit, resist, absorb and mana shield
-   against the canonical player, committed in the same phase as the health write, mirroring the
-   melee stage rather than duplicating its arithmetic.
+2. **The player-victim hit chain as a map-owned stage — done 2026-10-02.**
+   `apply_creature_spell_damage_to_canonical_player_like_cpp`
+   (`session/legacy_runtime/creature_spell_damage.rs`) runs C++'s order for one creature spell hit on
+   a player: the critical arm, `CalcSpellResistedDamage` against the player's own resistance, both
+   shield loops, then the health write, all inside the map phase that owns that write. It returns what
+   the victim session must publish and publishes nothing itself.
+
+   Two pieces of duplication were removed rather than added. C++ has **one** `CalcAbsorbResist`, so
+   the melee tick's private player-victim absorb stage moved to
+   `legacy_runtime/player_victim_absorb.rs` and both callers share it; the melee delivery command maps
+   the consumptions into its own shape. And `Unit::GetResistance`'s smallest-in-mask rule, which the
+   creature had and the player needed, is now one `wow_entities::resistance_for_school_mask_like_cpp`
+   over the seven-school array that both kinds call.
+
+   C++'s own rule removes work here rather than adding it: a mob's spell cannot crit
+   (`Unit.cpp:7709-7711`, `!GetSpellModOwner()`), and the stage encodes that as the fact it is instead
+   of an `if`, so a player-controlled creature gets the arm. A player victim also never resists holy
+   (`:1977-1978`). Four scenarios pin the composition, including that a hit on a victim who is already
+   dead is refused the way `DealSpellDamage` refuses it.
 3. **Delivery and publication.** A spell-damage delivery command for the victim session, the
    `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` in C++'s order after the absorb logs, and the death cascade
    the existing player-damage owner already has.
@@ -324,8 +340,8 @@ useful before the one above it, which is why they are not all one commit:
 5. **Live acceptance**, which this macro finally makes reachable: a creature casting a damage spell
    at the QA character, and the same run proves the absorb stage that D-H3 left owed.
 
-Slice 1 is in. Slices 2 to 5 remain, and slice 2 — the player-victim hit chain as a map-owned stage
-— is the next cut.
+Slices 1 and 2 are in. Slice 3 — the delivery command and the publication order — is the next cut,
+and it is what turns this stage into something a client can see.
 
 One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
 a previous run can leave the nearest spawn of that entry dead.

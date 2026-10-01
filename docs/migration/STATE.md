@@ -157,6 +157,33 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**The player-victim spell hit chain is in as a map-owned stage, and it removed two duplications
+instead of adding any (slice 2, 2026-10-02).**
+`apply_creature_spell_damage_to_canonical_player_like_cpp` runs C++'s order for one creature spell hit
+on a player — the critical arm, `CalcSpellResistedDamage` against the player's own resistance, both
+shield loops, then the health write — inside the map phase that owns that write, and returns what the
+victim session must publish without publishing anything itself.
+
+C++ has one `CalcAbsorbResist`, so the melee tick's private player-victim absorb stage moved into
+`legacy_runtime/player_victim_absorb.rs` and both hits share it, with the melee delivery command
+mapping the consumptions into its own shape. `Unit::GetResistance`'s smallest-in-mask rule, which the
+creature had and the player needed, became one `wow_entities::resistance_for_school_mask_like_cpp`
+over the seven-school array that both entity kinds call.
+
+Two of C++'s own rules remove work here rather than adding it, and both are encoded as the facts they
+are rather than as special cases: a mob's spell cannot crit at all unless it is player-controlled
+(`Unit.cpp:7709-7711`), and a player victim never resists holy (`:1977-1978`). Four scenarios pin the
+composition — the resist landing before the shields, the holy exception, the shield spending only what
+the resist left with its remainder reported for the victim session, and a hit on an already-dead
+victim being refused the way `DealSpellDamage` refuses it. `cargo test -p wow-world --lib` 4284
+passed, `-p wow-entities --lib` 957 passed.
+
+Nothing is published yet: that is slice 3, the delivery command and the publication order, which is
+what will make this visible to a client and finally give the absorb stage its live run. Until then the
+stage's only callers are its scenarios, so every item in it carries an explicit `#[allow(dead_code)]`
+naming the tick as its coming consumer, rather than leaving five dead-code warnings in the production
+build for a reader to wonder about.
+
 **Sizing the creature-spell macro found a bigger defect than the macro itself: no spell ever rolled
 its damage range (D-H26).** The plan's next responsibility is creature spell effect execution, whose
 tick refuses to deliver damage with the comment "raw EffectBasePoints is not CalcValue". Reading

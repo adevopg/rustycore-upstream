@@ -662,3 +662,365 @@ fn white_swing_publishes_an_evade_like_cpp() {
     );
     assert_eq!(swings[0].victim_state, VICTIM_STATE_EVADES);
 }
+
+/// A canonical map with one player victim at full health, for the creature spell
+/// damage stage.
+///
+/// `resistances` seeds what C++ `Unit::GetResistance` reads, `school_mask` is the
+/// damage spell's school, and `shield` is `(spell id, amount, MiscValue school
+/// mask)` of a `SPELL_AURA_SCHOOL_ABSORB` to apply to the victim.
+fn creature_spell_victim_scenario_like_cpp(
+    player_low: i64,
+    max_health: u64,
+    resistances: [i32; 7],
+    school_mask: u8,
+    shield: Option<(i32, i32, i32)>,
+) -> (
+    WorldSession,
+    SharedCanonicalMapManager,
+    ObjectGuid,
+    Arc<wow_data::SpellStore>,
+) {
+    let canonical = shared_canonical_map_manager();
+    canonical.lock().unwrap().create_world_map(0, 0);
+    let player = ObjectGuid::create_player(1, player_low);
+    let (mut session, _, _send_rx) = make_session();
+    session.set_canonical_map_manager(Arc::clone(&canonical));
+    session.set_map_store(Arc::new(wow_data::MapStore::from_entries([
+        wow_data::MapEntry {
+            id: 0,
+            instance_type: wow_data::map::MAP_COMMON,
+            expansion_id: 0,
+            parent_map_id: -1,
+            cosmetic_parent_map_id: -1,
+            flags1: 0,
+            flags2: 0,
+        },
+    ])));
+    session.attach_player_controller_like_cpp(SessionPlayerController::new(
+        player,
+        "Victim".to_string(),
+        Position::new(10.0, 10.0, 0.0, 0.0),
+        0,
+        1,
+        1,
+        20,
+        0,
+    ));
+    let _ = session.ensure_canonical_world_map_for_current_player_like_cpp();
+    session
+        .mutate_canonical_player_like_cpp(|player| {
+            player.unit_mut().set_max_health(max_health);
+            player.unit_mut().set_health(max_health);
+            player.unit_mut().set_level(20);
+            let mut stats = *player.effective_combat_stats_like_cpp();
+            stats.resistances = resistances;
+            player.replace_effective_combat_stats_like_cpp(stats);
+        })
+        .expect("the canonical player owns the victim state");
+
+    // One fire damage spell, plus the shield spell the absorb cases apply.
+    let spell_id = 92_600_i32;
+    let mut spell_store = wow_data::SpellStore::new();
+    spell_store.insert(
+        spell_id,
+        wow_data::SpellInfo {
+            spell_id,
+            cast_time_ms: 0,
+            cooldown_ms: 0,
+            recovery_time_ms: 0,
+            effect_type: wow_data::spell::spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+            effect_base_points: 0,
+            effect_bonus_coefficient: 0.0,
+            aura_type: None,
+            display_flags: 0,
+            requires_spell_focus: 0,
+            power_costs: Vec::new(),
+            effects: vec![wow_data::SpellEffectInfo {
+                effect_index: 0,
+                effect: wow_data::spell::spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+                ..Default::default()
+            }],
+        },
+    );
+    // `DefenseType` 1 is `SPELL_DAMAGE_CLASS_MAGIC`; the school is fire.
+    spell_store.insert_spell_hit_metadata_for_difficulty_like_cpp(
+        spell_id,
+        0,
+        wow_data::SpellHitMetadataLikeCpp {
+            category_id: 0,
+            charge_category_id: 0,
+            defense_type: 1,
+            spell_mechanic: 0,
+            school_mask,
+            effect_mechanics: BTreeMap::from([(0, 0)]),
+        },
+    );
+    if let Some((shield_spell_id, amount, shield_school_mask)) = shield {
+        spell_store.insert(
+            shield_spell_id,
+            wow_data::SpellInfo {
+                spell_id: shield_spell_id,
+                cast_time_ms: 0,
+                cooldown_ms: 0,
+                recovery_time_ms: 0,
+                effect_type: wow_data::spell::spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+                effect_base_points: amount,
+                effect_bonus_coefficient: 0.0,
+                aura_type: Some(wow_data::spell::aura_types::SPELL_AURA_SCHOOL_ABSORB),
+                display_flags: 0,
+                requires_spell_focus: 0,
+                power_costs: Vec::new(),
+                effects: vec![wow_data::SpellEffectInfo {
+                    effect_index: 0,
+                    effect: wow_data::spell::spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+                    effect_aura: wow_data::spell::aura_types::SPELL_AURA_SCHOOL_ABSORB,
+                    effect_base_points: amount,
+                    effect_misc_value_1: shield_school_mask,
+                    ..Default::default()
+                }],
+            },
+        );
+    }
+    let spell_store = Arc::new(spell_store);
+    session.set_spell_store(Arc::clone(&spell_store));
+    if let Some((shield_spell_id, _, _)) = shield {
+        session
+            .apply_aura(shield_spell_id, player, 60_000, 1)
+            .expect("the victim's shield must apply");
+    }
+    (session, canonical, player, spell_store)
+}
+
+fn creature_spell_attacker_like_cpp(
+    guid: ObjectGuid,
+    is_player_controlled: bool,
+) -> crate::session::legacy_runtime::CreatureSpellAttackerFactsLikeCpp {
+    crate::session::legacy_runtime::CreatureSpellAttackerFactsLikeCpp {
+        guid,
+        level: 20,
+        is_player_controlled,
+    }
+}
+
+/// C++ `Unit::CalculateSpellDamageTaken` then `CalcAbsorbResist` then
+/// `DealSpellDamage`, for a creature's spell against a player victim
+/// (`Spells/Spell.cpp:2960-2985`).
+///
+/// A mob's spell cannot crit (`Unit.cpp:7709-7711`), the player's own resistance
+/// takes its share, and the health write lands in the same map phase.
+#[test]
+fn a_creature_spell_hit_resists_and_lands_on_the_player_like_cpp() {
+    let (_session, canonical, player, spell_store) =
+        creature_spell_victim_scenario_like_cpp(92_601, 500, [0, 0, 100, 0, 0, 0, 0], 0x04, None);
+    let attacker = creature_spell_attacker_like_cpp(test_creature_guid(92_602), false);
+
+    let outcome = {
+        let mut manager = canonical.lock().unwrap();
+        crate::session::legacy_runtime::apply_creature_spell_damage_to_canonical_player_like_cpp(
+            &mut manager,
+            0,
+            0,
+            attacker,
+            player,
+            92_600,
+            200,
+            &spell_store,
+            0,
+            None,
+            // A critical draw that would crit if the caster could, and a resist
+            // draw inside the half-damage bucket.
+            crate::session::legacy_runtime::CreatureSpellDamageRollsLikeCpp {
+                critical: 0.0,
+                resist: 0.5,
+            },
+        )
+    }
+    .expect("the stage must resolve the hit");
+
+    assert_eq!(
+        outcome.hit_info & crate::session_rules::SPELL_HIT_TYPE_CRIT_LIKE_CPP,
+        0,
+        "a mob's spell cannot crit, so no SPELL_HIT_TYPE_CRIT even on a zero draw"
+    );
+    assert_eq!(
+        outcome.hit_info,
+        crate::session_rules::HITINFO_PARTIAL_RESIST_LIKE_CPP,
+        "the partial resist C++ sets server-side, which its seven-bit Flags field          then truncates off this packet"
+    );
+    assert_eq!(
+        outcome.original_damage, 200,
+        "originalDamage is assigned before CalcAbsorbResist"
+    );
+    assert_eq!(outcome.resisted, 100, "100 resistance at level 20 is half");
+    assert_eq!(outcome.damage, 100);
+    assert_eq!(outcome.absorbed, 0);
+    assert_eq!(outcome.victim_health_before, 500);
+    assert_eq!(outcome.victim_health_after, 400);
+    assert!(!outcome.killed);
+
+    let health = canonical
+        .lock()
+        .unwrap()
+        .find_map(0, 0)
+        .unwrap()
+        .map()
+        .get_typed_player(player)
+        .unwrap()
+        .unit()
+        .data()
+        .health;
+    assert_eq!(health, 400, "the stage commits the health write itself");
+}
+
+/// A player victim never resists holy, because C++ returns before the roll for a
+/// victim that is not a unit (`Unit.cpp:1977-1978`).
+#[test]
+fn a_creature_holy_spell_is_never_resisted_by_a_player_like_cpp() {
+    // `SPELL_SCHOOL_MASK_HOLY` is `0x02`, and the victim's holy resistance is
+    // real, so only C++'s player-victim rule can be what stops the resist.
+    let (_session, canonical, player, spell_store) =
+        creature_spell_victim_scenario_like_cpp(92_603, 500, [0, 100, 0, 0, 0, 0, 0], 0x02, None);
+    let attacker = creature_spell_attacker_like_cpp(test_creature_guid(92_604), false);
+
+    let outcome = {
+        let mut manager = canonical.lock().unwrap();
+        crate::session::legacy_runtime::apply_creature_spell_damage_to_canonical_player_like_cpp(
+            &mut manager,
+            0,
+            0,
+            attacker,
+            player,
+            92_600,
+            200,
+            &spell_store,
+            0,
+            None,
+            crate::session::legacy_runtime::CreatureSpellDamageRollsLikeCpp {
+                critical: 100.0,
+                resist: 0.5,
+            },
+        )
+    }
+    .expect("the stage must resolve the hit");
+
+    assert_eq!(outcome.resisted, 0, "a player cannot resist holy");
+    assert_eq!(outcome.damage, 200);
+    assert_eq!(outcome.victim_health_after, 300);
+}
+
+/// A hit that empties the victim's health reports the kill and sets the death
+/// state, and a hit on a victim who is already dead is refused, because C++
+/// `DealSpellDamage` returns before `DealDamage` for one (`Unit.cpp:1371-1372`).
+#[test]
+fn a_creature_spell_hit_kills_the_player_and_then_refuses_to_hit_a_corpse_like_cpp() {
+    let (_session, canonical, player, spell_store) =
+        creature_spell_victim_scenario_like_cpp(92_605, 50, [0; 7], 0x04, None);
+    let attacker = creature_spell_attacker_like_cpp(test_creature_guid(92_606), false);
+    let rolls = crate::session::legacy_runtime::CreatureSpellDamageRollsLikeCpp {
+        critical: 100.0,
+        resist: 0.99,
+    };
+
+    let outcome = {
+        let mut manager = canonical.lock().unwrap();
+        crate::session::legacy_runtime::apply_creature_spell_damage_to_canonical_player_like_cpp(
+            &mut manager,
+            0,
+            0,
+            attacker,
+            player,
+            92_600,
+            200,
+            &spell_store,
+            0,
+            None,
+            rolls,
+        )
+    }
+    .expect("the stage must resolve the hit");
+    assert_eq!(outcome.damage, 200);
+    assert_eq!(outcome.victim_health_after, 0);
+    assert!(outcome.killed);
+
+    let second = {
+        let mut manager = canonical.lock().unwrap();
+        crate::session::legacy_runtime::apply_creature_spell_damage_to_canonical_player_like_cpp(
+            &mut manager,
+            0,
+            0,
+            attacker,
+            player,
+            92_600,
+            200,
+            &spell_store,
+            0,
+            None,
+            rolls,
+        )
+    };
+    assert!(
+        second.is_none(),
+        "C++ refuses a hit on a victim that is not alive"
+    );
+}
+
+/// C++ runs `CalcSpellResistedDamage` before the shield loops inside the one
+/// `CalcAbsorbResist` (`Unit.cpp:2084` then `:2114`), so a shield only ever sees
+/// what the resist left, and the stage hands the victim session each shield it
+/// spent.
+#[test]
+fn a_creature_spell_hit_absorbs_only_what_the_resist_left_on_the_player_like_cpp() {
+    let (_session, canonical, player, spell_store) = creature_spell_victim_scenario_like_cpp(
+        92_607,
+        500,
+        [0, 0, 100, 0, 0, 0, 0],
+        0x04,
+        Some((92_610, 300, 0x04)),
+    );
+    let spell_id = 92_600_i32;
+    let attacker = creature_spell_attacker_like_cpp(test_creature_guid(92_608), false);
+
+    let outcome = {
+        let mut manager = canonical.lock().unwrap();
+        crate::session::legacy_runtime::apply_creature_spell_damage_to_canonical_player_like_cpp(
+            &mut manager,
+            0,
+            0,
+            attacker,
+            player,
+            spell_id,
+            200,
+            &spell_store,
+            0,
+            None,
+            crate::session::legacy_runtime::CreatureSpellDamageRollsLikeCpp {
+                critical: 100.0,
+                resist: 0.5,
+            },
+        )
+    }
+    .expect("the stage must resolve the hit");
+
+    assert_eq!(outcome.resisted, 100, "half of the 200 was resisted");
+    assert_eq!(
+        outcome.absorbed, 100,
+        "the shield only ever saw the post-resist half"
+    );
+    assert_eq!(outcome.damage, 0);
+    assert_eq!(
+        outcome.victim_health_after, 500,
+        "nothing reached the health"
+    );
+    assert_eq!(
+        outcome.absorb_consumptions.len(),
+        1,
+        "one shield, reported for the victim session to publish"
+    );
+    assert_eq!(outcome.absorb_consumptions[0].consumed, 100);
+    assert_eq!(
+        outcome.absorb_consumptions[0].remaining, 200,
+        "C++ ChangeAmount leaves the shield what the hit did not spend"
+    );
+    assert!(!outcome.absorb_consumptions[0].removed);
+}

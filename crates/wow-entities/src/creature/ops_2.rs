@@ -874,13 +874,7 @@ impl Creature {
     /// the **smallest** resistance among the schools in the mask, because a spell
     /// of several schools is resisted by the weakest one.
     pub fn resistance_for_school_mask_like_cpp(&self, school_mask: u8) -> i32 {
-        let mut resist: Option<i32> = None;
-        for (school, value) in self.resistances_like_cpp.iter().enumerate() {
-            if school_mask & (1 << school) != 0 && resist.is_none_or(|current| current > *value) {
-                resist = Some(*value);
-            }
-        }
-        resist.unwrap_or(0)
+        crate::unit::resistance_for_school_mask_like_cpp(&self.resistances_like_cpp, school_mask)
     }
 
     pub const fn resistances_like_cpp(&self) -> [i32; 7] {

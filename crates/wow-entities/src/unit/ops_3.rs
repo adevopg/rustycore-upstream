@@ -5,6 +5,23 @@
 
 use super::*;
 
+/// C++ `Unit::GetResistance(SpellSchoolMask)` (`Entities/Unit/Unit.cpp:13982-13993`):
+/// the **smallest** resistance among the schools in the mask, because a spell of
+/// several schools is resisted by the weakest one.
+///
+/// It takes the seven-school array rather than a unit, because a creature keeps
+/// its resistances on the `Creature` and a player on its effective combat stats,
+/// and C++ reads one `UNIT_MOD_RESISTANCE_*` family for both.
+pub fn resistance_for_school_mask_like_cpp(resistances: &[i32; 7], school_mask: u8) -> i32 {
+    let mut resist: Option<i32> = None;
+    for (school, value) in resistances.iter().enumerate() {
+        if school_mask & (1 << school) != 0 && resist.is_none_or(|current| current > *value) {
+            resist = Some(*value);
+        }
+    }
+    resist.unwrap_or(0)
+}
+
 impl Unit {
     pub(super) fn set_f32_field(
         &mut self,

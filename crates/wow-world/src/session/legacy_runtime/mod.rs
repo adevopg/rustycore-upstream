@@ -12,11 +12,18 @@ mod creature_melee_sync;
 mod creature_melee_threat;
 mod creature_melee_tick;
 mod creature_movement_tick;
+mod creature_spell_damage;
+#[cfg(test)]
+pub(in crate::session) use creature_spell_damage::{
+    CreatureSpellAttackerFactsLikeCpp, CreatureSpellDamageRollsLikeCpp,
+    apply_creature_spell_damage_to_canonical_player_like_cpp,
+};
 mod creature_spell_tick;
 mod creature_spell_validation;
 mod creature_threat;
 mod creature_tick;
 mod player_tick;
+mod player_victim_absorb;
 
 // These re-exports look unused inside this module: they are consumed through
 // the Session root glob, so removing them breaks the callers.
