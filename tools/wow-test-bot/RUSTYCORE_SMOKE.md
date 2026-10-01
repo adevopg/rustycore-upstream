@@ -93,6 +93,64 @@ Pick the target by what it drops. `creature_template_difficulty` holds `GoldMin`
 `coins=0` there is correct data and not a defect, while entry 94 (Defias Cutpurse,
 1-12 copper, spawns 25 yards from the QA start) exercises the money half.
 
+## Area-trigger quest credit — live and mutating
+
+`--area-trigger` drives C++ `WorldSession::HandleAreaTriggerOpcode`'s quest block
+(`Handlers/MiscHandler.cpp:530-574`) and reports only what the server published.
+
+The trigger's geometry is **client data**: `AreaTrigger.db2`, not SQL, and
+`hotfixes.area_trigger` is empty on this installation. Guessing the coordinates
+would be inventing data, so ask the server for the ones it loaded:
+
+```bash
+RUSTYCORE_AREA_TRIGGER_TRACE=87,88 ./target/debug/world-server
+# RUST_AREA_TRIGGER geometry id=87 continent_id=0 x=-9077.34 y=-552.92 z=60.35 radius=30
+```
+
+Then stand in it and send the packet:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --area-trigger 87 --area-trigger-quest 76 \
+  --area-trigger-at -9077.34,-552.92,60.35 --area-trigger-map 0
+```
+
+The sequence is `login -> CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE -> CMSG_AREA_TRIGGER
+(Entered) -> observe SMSG_QUEST_UPDATE_ADD_CREDIT_SIMPLE and
+SMSG_QUEST_UPDATE_COMPLETE on both sockets -> clean logout -> read
+character_queststatus and character_queststatus_objectives back`. A run fails if
+the server published neither a credit nor a completion.
+
+`CMSG_AREA_TRIGGER`'s two bits are written most-significant first, matching the
+server's `WorldPacket::write_bit`: `Entered` is bit 7 and `FromClient` bit 6 of the
+single flushed byte.
+
+Exactly one `SMSG_QUEST_UPDATE_COMPLETE` is correct for a quest that carries both
+`QUEST_FLAGS_COMPLETION_AREA_TRIGGER` and a `QUEST_OBJECTIVE_AREATRIGGER`:
+`Player::CompleteQuest` (`Entities/Player/Player.cpp:14947-14971`) publishes
+nothing, and the one packet comes from `AreaExploredOrEventHappens`'s own
+`SendQuestComplete` (`:16507`). Two meant the objective path was sending a second
+copy, which is how that divergence was found.
+
+Reference run on quest 76 "The Jasperlode Mine", trigger 87:
+`simple_credits=1 quest_completes=1 objective_data=Some(1) explored=Some(1)
+status=Some(1)`.
+
+It also restores a character a previous run left dead, and says so with
+`revived=true`. That is not optional: C++ gates the whole quest block on
+`player->IsAlive()` (`Handlers/MiscHandler.cpp:530`), the refusal is invisible on
+the wire — a dead character just produces zero credits, which reads exactly like a
+broken server — and a trigger position is *where the quest's mobs are*, so parking
+a level-2 character at the Jasperlode Mine for ten seconds is usually fatal. One run
+failed that way before the fixture existed, and the server was right to refuse it.
+
+This mode writes: it seeds the quest as incomplete, restores the character's health
+if it is zero, and moves the character into the trigger — all fixtures to columns
+`Player::SaveToDB` owns. The original map and position are restored whether the run
+passes or fails; the quest rows are left as the server wrote them, because they are
+the evidence.
+
 ## The death exit — live and mutating
 
 `--death-smoke` drives the whole corpse circuit and reports what the server

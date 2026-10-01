@@ -5,6 +5,7 @@
 
 use super::*;
 
+mod area_trigger_smoke;
 mod character;
 mod cli;
 mod create_character;
@@ -38,12 +39,13 @@ mod void_storage_4;
 mod world_handshake;
 
 #[allow(unused_imports)]
+pub(crate) use area_trigger_smoke::*;
+#[allow(unused_imports)]
 pub(crate) use character::*;
 #[allow(unused_imports)]
 pub(crate) use cli::*;
 #[allow(unused_imports)]
 pub(crate) use create_character::*;
-#[allow(unused_imports)]
 pub(crate) use death_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use items_1::*;

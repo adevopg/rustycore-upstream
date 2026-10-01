@@ -791,13 +791,28 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `Loaded 82 C++ quest area triggers (57 rows seen, 49 from relations, 35 from objectives;
   0 skipped missing AreaTrigger.db2, 0 skipped missing quest, 8 skipped obsolete quest)`.
 
-  **Not proven live on the wire yet,** and named rather than implied: walking a real trigger
-  needs a `CMSG_AREA_TRIGGER` mode in tools/wow-test-bot, which does not exist, plus the
-  trigger's geometry, which lives in the client `AreaTrigger.db2` and not in SQL
-  (`hotfixes.area_trigger` is empty). Quest 76 "The Jasperlode Mine" on trigger 87 and
-  quest 62 "The Fargodeep Mine" on trigger 88 are both in Elwynn and both carry
-  `QUEST_FLAGS_COMPLETION_AREA_TRIGGER` plus one `QUEST_OBJECTIVE_AREATRIGGER`, so either is
-  the scenario to run once the bot can send the packet from inside the radius.
+  **Proven live the same day.** tools/wow-test-bot gained an `--area-trigger` mode and the
+  server an operator trace for the geometry `AreaTrigger.db2` holds and SQL does not, so the
+  position comes from the server rather than from a guess: trigger 87 is map 0,
+  `(-9077.34, -552.92, 60.35)`, radius 30. Standing there with quest 76 "The Jasperlode
+  Mine" incomplete and sending `CMSG_AREA_TRIGGER` published
+  `SMSG_QUEST_UPDATE_ADD_CREDIT_SIMPLE` (9 bytes: quest, object, type) and one
+  `SMSG_QUEST_UPDATE_COMPLETE`, and after the clean logout
+  `character_queststatus_objectives.data = 1` with `character_queststatus.status = 1`
+  (complete) and `explored = 1`.
+
+  The mode needed one thing the scenario tests never show: C++ gates the block on
+  `player->IsAlive()` (`MiscHandler.cpp:530`), and a trigger position is where the quest's
+  mobs are, so a level-2 character parked at the mine dies there. One run produced zero
+  credits for exactly that reason and the server was right to refuse it, so the mode now
+  restores a character a previous run left dead and reports `revived=true`.
+
+  The live run also caught a wire divergence the tests could not: the first run sent **two**
+  `SMSG_QUEST_UPDATE_COMPLETE`, one from the objective path and one from the explore path.
+  C++ sends one. `Player::CompleteQuest` (`Entities/Player/Player.cpp:14947-14971`) sets the
+  status and the quest-log slot state and publishes nothing at all; the only packet is
+  `AreaExploredOrEventHappens`'s own `SendQuestComplete` (`:16507`), which fires once, when
+  `Explored` flips. The objective path no longer sends its copy.
 
   **Also left open:** `IsQuestObjectiveComplete`'s live-state branches.
   `QUEST_OBJECTIVE_MIN_REPUTATION` / `MAX_REPUTATION` ask `GetReputationMgr`, `MONEY` asks

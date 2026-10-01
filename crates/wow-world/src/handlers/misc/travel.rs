@@ -678,16 +678,19 @@ impl crate::session::WorldSession {
 
     /// C++ `if (player->CanCompleteQuest(questId)) player->CompleteQuest(questId);`
     /// after each area-trigger credit (`Handlers/MiscHandler.cpp:566-567`).
+    ///
+    /// Sends nothing: `Player::CompleteQuest` (`Entities/Player/Player.cpp:14947-14971`)
+    /// sets the status and the quest-log slot state and publishes no packet. The
+    /// one `SMSG_QUEST_UPDATE_COMPLETE` this operation emits is
+    /// `AreaExploredOrEventHappens`'s own `SendQuestComplete` (`:16507`), which
+    /// fires once, when `Explored` flips.
     async fn complete_represented_area_trigger_quest_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
         quest: &wow_data::quest::QuestTemplate,
         objective_id: Option<u32>,
     ) {
-        use wow_packet::packets::quest::QuestUpdateComplete;
-
-        let quest_id = quest.id;
-        let completed = match objective_id {
+        match objective_id {
             Some(objective_id) => {
                 self.complete_represented_quest_after_objective_with_generator_like_cpp(
                     item_guid_generator,
@@ -704,12 +707,6 @@ impl crate::session::WorldSession {
                 .await
             }
         };
-        if completed
-            && self.represented_player_quest_status_like_cpp(quest_id)
-                == Some(Some(crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP))
-        {
-            self.send_packet(&QuestUpdateComplete { quest_id });
-        }
     }
 
     fn area_trigger_client_conditions_meet_like_cpp(&mut self, trigger_id: u32) -> bool {
