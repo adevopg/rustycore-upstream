@@ -172,20 +172,36 @@ measurement cleared it: the coordinator gives each session the map tick interval
 — to run its world pass and report, so any pass that touches the database exceeds it and the step
 just waits for the completion boundary.
 
-**A player gets one spell cast per session (D-H23), and that is what blocks the remaining spell
-evidence.** Trying to take D-H20's critical from a sampling run made it visible, which a
-single-cast scenario never does: four `CMSG_CAST_SPELL` six seconds apart, on a freshly started
-server with one caster and a live target, gave `casts_sent=4 refusals=0 logs=1`, and the server's
-own trace shows exactly one execution for the whole session. The other three requests produced no
-`SMSG_SPELL_START`, no damage log and no refusal — accepted off the socket and dropped. The reading
-points at the cast gate: `remaining(spell)` zips the global cooldown with
-`remaining_active_spell_cast_ms`, so an active-cast state that is never cleared defers every later
-request. C++ reports `SPELL_FAILED_SPELL_IN_PROGRESS` instead of dropping one.
+**The spell critical is proven live (D-H20), which closes the last of the three spell entries.** A
+twenty-cast sampling run published two damage logs, and the second reads
+`damage=14 original=19 resisted=5 school=0x04 flags=0x02`. Every number is the C++ arithmetic:
+`flags = 0x02` is `SPELL_HIT_TYPE_CRIT` on the wire, `original_damage` is 19 where an ordinary hit
+of the same spell is 13 — `13 + 13/2` truncated, which is `SpellCriticalDamageBonus`'s magical arm —
+and the resist then took 5 of that 19, leaving the 14 the creature received. That is C++'s order,
+critical first and `CalcAbsorbResist` after, so the same row is evidence for D-H21's composition as
+well as for D-H20's roll.
 
-The world-pass deadline warning this host logs continuously was the first suspect and the
-measurement cleared it: the coordinator gives each session the map tick interval — ten
-milliseconds — to run its world pass and report, so any pass that touches the database exceeds it
-and the step just waits for the completion boundary.
+The run also dissolved the last of D-H23's story. With mana filled there were no refusals at all;
+the server executed 16 of the 20 casts and only 4 reached the damage step, for 10, 14, 11 and 11 —
+46 in total, about a Kobold Tunneler's health. The target died and the rest hit a corpse, which C++
+refuses too. One harness residue stays recorded: the bot captured 2 of the 4 published logs.
+
+**D-H23 was raised and withdrawn the same day: the mage was out of mana.** The draft said a player
+gets one spell cast per session, from four requests producing one execution and no refusals. Three
+measurements took it apart: the handler receives every `CMSG_CAST_SPELL`; the cast gate reports
+`remaining=Some((0, 0))` for all of them, so neither the global cooldown nor a retained active cast
+holds them; and once the harness reported the real `SpellCastResult` — it had been printing every
+refusal as `SPELL_CAST_OK` through a packed-field slip — the refusals came back `[108, 108, 108]`,
+which is `SPELL_FAILED_NO_POWER`. A session starts with the mana saved at the previous logout, the
+previous run had spent it, so the caster gets about one cast and the server correctly refuses the
+rest.
+
+The world-pass deadline warning was never the cause either, and now there are numbers: 19 waits in
+that session, median 11 ms, maximum 192 ms, with 53 synchronous database queries inside world
+ticks — the ten-millisecond budget exceeded by milliseconds, not a pass taking seconds. What is left
+is a harness gap: a sampling run needs a mana fixture, the way the mode already revives a dead
+character. Three traces added while measuring stay behind: the cast-admission pair, the two reasons
+a pending request is held, and the residence-revision drop.
 
 **There is a caster on the QA account now, and the spell resist is proven live.** The plan's step
 was to provision a caster-class character because neither a spell critical nor a spell resist can

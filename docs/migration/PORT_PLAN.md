@@ -189,15 +189,36 @@ other three — accepted off the socket and dropped. Fixing the harness's refusa
 getting there: it had been reporting every `SMSG_CAST_FAILED` as `SPELL_CAST_OK`, because
 `SpellCastVisual` is one `uint32` on this branch rather than two.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** D-H23 itself.
-The cast path gates on `remaining(spell)`, which zips the global cooldown with
-`remaining_active_spell_cast_ms` (`session/player_cast.rs:107-110`,
-`player_cast/state.rs:154-158`); an active-cast state that is never cleared when a cast with a cast
-time completes defers every later request, which is exactly the observed shape. The work is to
-trace that state across one complete cast against C++'s `Spell::finish` and the
-`m_currentSpells[CURRENT_GENERIC_SPELL]` clear, make a second request either execute or be refused
-with `SPELL_FAILED_SPELL_IN_PROGRESS` as C++ does, and prove it with a multi-cast live run. It
-unblocks D-H20's critical and every other multi-action scenario, which is why it comes first.
+**D-H23 was taken next and withdrawn the same day: the mage was out of mana, and the server was
+right.** Three measurements, in order: the handler receives every `CMSG_CAST_SPELL`; the cast gate
+reports `remaining=Some((0, 0))` for all of them, which killed the retained-active-cast theory; and
+once the harness reported the real `SpellCastResult` the refusals read `[108, 108, 108]`, which is
+`SPELL_FAILED_NO_POWER` (`SharedDefines.h:1574`). A session starts with the mana saved at the
+previous logout, so a caster whose last run drained it gets about one cast. The world-pass warning
+was cleared with numbers too: 19 waits, median 11 ms, maximum 192 ms, 53 synchronous queries inside
+world ticks.
+
+**The mana fixture is in and the sampling run is done, so all three spell entries now have their
+live evidence.** Twenty casts, no refusals, and the second published row reads
+`damage=14 original=19 resisted=5 school=0x04 flags=0x02`: `SPELL_HIT_TYPE_CRIT` on the wire, the
+magical critical arm turning 13 into 19, and the resist composed after it in C++'s order. D-H20 is
+closed with that, and D-H21 gains the composition evidence its single-cast capture could not give.
+
+The run also ended D-H23's story: the server executed 16 of the 20 casts, 4 reached the damage step
+for 10, 14, 11 and 11 — 46 in total, about the target's health — and the rest hit a corpse, which C++
+refuses too. Recorded residue: the bot captured 2 of the 4 published logs, so its drain loop still
+misses some.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** the absorb
+stage, which is all that remains of D-H3 and the only spell-hit field still hardcoded to zero.
+`Unit::CalcAbsorbResist`'s shield loop (`Entities/Unit/Unit.cpp:2113-2200`) spends each
+`SPELL_AURA_SCHOOL_ABSORB` effect in `AbsorbAuraOrderPred` order, publishes
+`SMSG_SPELL_ABSORB_LOG` per consuming shield and removes a spent one. This port represents those
+amounts as mutable state only for the session's own player — the heal-absorb path already does it
+(`apply_owned_player_heal_absorb_like_cpp`) — so the damage side can follow that owner for a player
+victim, and a creature victim stays a named boundary until creature aura amounts are mutable. The
+live shape is the reverse of every run so far: a creature casting at the shielded player, which the
+creature-spell tick already drives.
 
 One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
 a previous run can leave the nearest spawn of that entry dead.

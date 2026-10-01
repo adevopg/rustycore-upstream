@@ -247,14 +247,15 @@ Two things to know before reading a zero-log run as a defect:
   spawn of that entry dead, and `--spell-damage-entry` then resolves to a corpse:
   the casts complete and deal nothing. Pass a different entry or wait for the
   respawn.
-* **a player gets only one spell cast per session** (D-H23). Four requests six
-  seconds apart produce one execution and nothing at all for the other three — no
-  `SMSG_SPELL_START`, no damage log, and usually no refusal. So prefer
-  `--spell-damage-casts 1` on a freshly started server for exact evidence, and
-  read a longer sequence as a measurement of that defect rather than as a sampling
-  run. The world-pass deadline warning this host logs continuously is unrelated:
+* **a drained caster is refused, correctly.** A session starts with the mana saved
+  at the previous logout, so a sequence that looks like "the server dropped my
+  casts" is usually `SPELL_FAILED_NO_POWER` — which this mode now reports by name.
+  The fixture therefore fills `characters.power1` before login, in the same place
+  it revives a dead character; the stored value is clamped to the character's real
+  maximum when `InitStatsForLevel` runs, so it means "full" rather than an invented
+  pool. The world-pass deadline warning this host logs continuously is unrelated:
   the coordinator allows each session one map tick interval to report, which any
-  pass touching the database exceeds.
+  pass touching the database exceeds by a few milliseconds.
 
 A refusal is reported with its `SpellCastResult`, not just its opcode. `SpellCastVisual`
 serialises **one** `uint32` on this branch, so the reason sits four bytes earlier than a

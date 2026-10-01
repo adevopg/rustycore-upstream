@@ -752,14 +752,25 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `getPhysicalCritChance` (`:7729-7736`). A patched region is not parity evidence for this build,
   so the unpatched shape is what was ported, and the exclusion is recorded at the rule.
 
-  **No live critical has been observed yet, and that is stated rather than implied.** The
-  caster-class QA character now exists and its casts are proven live — see D-H21 — but the one
-  captured cast published `flags = 0x00`, which is a non-critical hit at a level-20 mage's few
-  percent. Seeing one needs a sampling run, which the `--spell-damage` mode supports and this host
-  does not sustain yet: only the first cast of a session reliably completes while the world pass
-  runs past its deadline, a condition that predates this work. The deterministic scenario pins
-  C++'s draw instead and asserts both outcomes of the same hit: 100 damage becomes 150 with
-  `flags = 0x02`, and stays 100 with `flags = 0` when the draw is above the chance.
+  **Proven live on 2026-10-01, from a twenty-cast sampling run.** The run published two damage logs
+  and the second is the critical:
+
+  * `cast 1: damage=10 original=13 resisted=3 absorbed=0 school=0x04 flags=0x00`
+  * `cast 2: damage=14 original=19 resisted=5 absorbed=0 school=0x04 flags=0x02`
+
+  Every number in the second row is the C++ arithmetic. `flags = 0x02` is `SPELL_HIT_TYPE_CRIT` on
+  the wire. `original_damage` is **19** where an ordinary hit of the same spell is 13, which is
+  `SpellCriticalDamageBonus`'s magical arm exactly — `13 + 13/2` truncated to 19
+  (`Entities/Unit/Unit.cpp:7962-8003`). And the resist composed with it in C++'s order, not before
+  it: the critical raised the damage, `originalDamage` was assigned from that, and the resist then
+  took 5 of the 19, leaving the 14 the creature received. That ordering is
+  `CalculateSpellDamageTaken` followed by `CalcAbsorbResist` (`:1319-1347`), so the run is evidence
+  for D-H21's composition as much as for this entry's roll.
+
+  Reproduce with `--spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6
+  --spell-damage-casts 20` on a freshly started server. The mode fills the caster's mana first,
+  because a drained caster is refused with `SPELL_FAILED_NO_POWER` — correctly, see the withdrawn
+  D-H23. The deterministic scenarios keep both pinned outcomes beside this.
 - [x] **D-H4 Quest kill-credit — verified working on a live kill, 2026-10-01.** The contested
   reading is settled in favour of "monster kills advance". Quest 14106 was seeded as
   incomplete for the QA character (a fixture: the bot cannot take a quest from an NPC yet),
@@ -1182,38 +1193,49 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   inserting a row there for a dependent spell writes one the target build never writes; the row
   earlier runs of this session created was removed.
 
-- [ ] **D-H23 A player gets one spell cast per session: later requests are swallowed with no
-  execution and no refusal.** Found 2026-10-01 while trying to take D-H20's critical from a
-  sampling run, which is what made it visible — a single-cast scenario never shows it.
+- [x] **D-H23 withdrawn: the mage was out of mana, and the server said so once the harness could
+  read it.** Raised and withdrawn 2026-10-01, the same day, with nothing changed in the server.
 
-  Measured, not inferred. Four `CMSG_CAST_SPELL` requests for Fireball, six seconds apart, on a
-  freshly started server with one logged-in caster and a live target twelve yards away:
-  `casts_sent=4 refusals=0 logs=1`. The server's own trace agrees — exactly **one**
-  `Executing spell effect ... spell_id=133` and one `Dealt damage to creature` for the whole
-  session. The other three requests produced no `SMSG_SPELL_START`, no damage log and no
-  `SMSG_CAST_FAILED`: they were accepted off the socket and dropped. An earlier run of the same
-  shape produced four `SMSG_CAST_FAILED` instead, so the two outcomes differ by timing.
+  The draft claimed a player gets one spell cast per session, from four requests producing one
+  execution and no refusals. Three measurements took that apart, in this order:
 
-  **Where to look, from reading rather than from the runs.** The cast path gates on
-  `remaining(spell)` (`session/player_cast.rs:107-110`), which is
-  `remaining_global_cooldown_ms_like_cpp(spell).zip(remaining_active_spell_cast_ms_like_cpp())` —
-  a value that exists only while *both* are known. The second reads
-  `CastExecutionStateLikeCpp::remaining_cast_ms` (`player_cast/state.rs:154-158`). If that state
-  is not cleared when a cast with a cast time completes, every later request sees an active cast
-  and is deferred, which is exactly the observed shape: the first cast lands, the rest vanish.
-  C++ clears `m_currentSpells[CURRENT_GENERIC_SPELL]` in `Spell::finish`/`SendSpellGo`'s wake, and
-  `Spell::CheckCast` reports `SPELL_FAILED_SPELL_IN_PROGRESS` rather than dropping a request, so
-  neither the silence nor the retained state matches it.
+  1. **The handler receives every request.** With
+     `RUST_LOG=wow_world::handlers::spell=debug`, all three `CMSG_CAST_SPELL` appear with their
+     own `cast_id`, so nothing is lost in transport or dispatch.
+  2. **Admission accepts every request.** A trace on the cast gate reports
+     `remaining=Some((0, 0))` for all three, so neither the global cooldown nor an active cast
+     holds them, and the retained-active-cast theory in the draft was wrong.
+  3. **The refusals were `SPELL_FAILED_NO_POWER`.** Once the harness reported the real
+     `SpellCastResult` — it had been printing every refusal as `SPELL_CAST_OK` because of a
+     packed-field slip — a three-cast run came back `[108, 108, 108]`, and 108 is
+     `SPELL_FAILED_NO_POWER` (`Miscellaneous/SharedDefines.h:1574`).
 
-  **Not the world-pass warning.** This host logs `A world-phase pass is past its deadline and
-  still running` continuously, and that is a separate, benign thing: the coordinator gives each
-  session the map tick interval — ten milliseconds here — to run its world pass and report
-  (`runtime/map/update_loop.rs:116`), so any pass that touches the database exceeds it and the
-  step simply waits for the completion boundary. It was the first suspect and the measurement
-  cleared it.
+  The mage simply runs out of mana. A session starts with the mana saved at the previous logout,
+  the previous run had spent it, so it gets about one cast and the server correctly refuses the
+  rest. The runs that looked silent were the harness's read window plus the queued-request path,
+  not a dropped request.
 
-  It blocks every multi-action live scenario, D-H20's critical among them: a few-percent chance
-  needs tens of casts in one session and this allows one.
+  **The world-pass warning was never the cause either, and the measurement says so with numbers.**
+  In the session that produced the three casts the coordinator waited past its deadline 19 times,
+  median 11 ms and maximum 192 ms, with 53 synchronous database queries inside world ticks. That is
+  the ten-millisecond budget being exceeded by milliseconds, not a pass taking seconds.
+
+  **What this leaves is a harness gap, not a server defect:** a sampling run needs a mana fixture
+  (`characters.power1`) in the same place the mode already revives a dead character, since C++'s own
+  `SPELL_FAILED_NO_POWER` is what stops a drained caster. That fixture now exists.
+
+  **The last piece of the draft's story also dissolved, with the fixture in place.** A twenty-cast
+  run produced `casts_sent=20 refusals=0`, and the server executed **16** of them
+  (`Executing spell effect ... spell_id=133` ×16) while only **4** reached
+  `Dealt damage to creature`, for 10, 14, 11 and 11 damage. Those four add to 46, which is about a
+  Kobold Tunneler's health: the target died and the rest of the casts hit a corpse, which C++ also
+  refuses (`EffectSchoolDMG` requires a living target). So "the casts vanish" was a dead creature,
+  not a dropped request. One real harness residue remains, recorded rather than rounded off: the bot
+  captured 2 of the 4 published damage logs, so its drain loop still misses some.
+
+  The three traces added while measuring this are kept: the cast-admission pair, the two reasons a
+  pending request is held, and the residence-revision drop. Each one turns a silent branch into a line, which is what made the
+  difference here.
 
 - [x] **A harness defect worth recording beside it: the refusal reader reported every
   `SMSG_CAST_FAILED` as success.** `SpellCastVisual` serialises **one** `uint32` on this branch —

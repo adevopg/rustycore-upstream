@@ -29,6 +29,10 @@ pub(crate) const DEFAULT_SPELL_DAMAGE_SMOKE_TIMEOUT_SECS: u64 = 240;
 const SPELL_DAMAGE_STAND_OFF_YARDS: f32 = 12.0;
 /// How wide a radius the creature's CREATE block is accepted within.
 const SPELL_DAMAGE_DISCOVERY_RADIUS_YARDS: f32 = 60.0;
+/// The mana the fixture stores before login. C++ `Player::InitStatsForLevel`
+/// clamps the loaded power to the character's real maximum, so a value above it
+/// simply means "full" rather than an invented pool.
+const SPELL_DAMAGE_MANA_FIXTURE: u32 = 100_000;
 
 /// One cast's published combat-log row, with nothing inferred.
 #[derive(Debug, Clone, Copy, Default, serde::Serialize)]
@@ -131,8 +135,9 @@ pub(crate) async fn run_spell_damage_smoke_mode(
     Ok(())
 }
 
-/// Seed the spellbook row and stand the character off from the spawn. Both are
-/// writes to columns `Player::SaveToDB` owns; no server path is exercised by them.
+/// Fill the caster's mana, stand it off from the spawn, and seed a spellbook row
+/// only when asked. All three are writes to columns `Player::SaveToDB` owns; no
+/// server path is exercised by them.
 /// Returns `(revived, spellbook row seeded, original map, original position)`.
 fn seed_spell_damage_scenario_like_cpp(
     bot: &config::BotConfig,
@@ -159,6 +164,18 @@ fn seed_spell_damage_scenario_like_cpp(
     let mut revive_bot = bot.clone();
     revive_bot.character_guid = character_guid;
     let revived = revive_dead_bot_character_fixture(&mut conn, &revive_bot)?;
+
+    // A session starts with the mana saved at the previous logout, so a caster
+    // whose last run drained it gets about one cast and the server then refuses
+    // the rest with `SPELL_FAILED_NO_POWER` — correctly, which is why this is a
+    // fixture here rather than something to change in the server. The stored
+    // value is clamped to the real maximum when `InitStatsForLevel` runs at
+    // login, so asking for more than the character can hold is harmless.
+    conn.exec_drop(
+        "UPDATE characters SET power1 = ? WHERE guid = ?",
+        (SPELL_DAMAGE_MANA_FIXTURE, character_guid),
+    )
+    .map_err(|error| anyhow!("Mana fixture for {character_guid}: {error}"))?;
 
     // Only when asked. `character_spell` holds no dependent skill-rewarded spell,
     // so its emptiness says nothing about what the character knows, and inserting
@@ -359,7 +376,8 @@ async fn run_spell_damage_smoke(
     outcome.revived_by_fixture = revived;
     outcome.spellbook_row_seeded = seeded;
     info!(
-        "[Bot {}] fixture: character {} standing {} yards from the spawn, spell {} {}{}",
+        "[Bot {}] fixture: character {} standing {} yards from the spawn with its mana filled, \
+         spell {} {}{}",
         bot_index,
         character_guid,
         SPELL_DAMAGE_STAND_OFF_YARDS,
