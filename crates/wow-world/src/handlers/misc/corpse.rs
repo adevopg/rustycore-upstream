@@ -662,6 +662,12 @@ impl crate::session::WorldSession {
             // became bones is deliberately unreachable through
             // `Map::GetCorpseByPlayer`, so this is also the "already reclaimed"
             // answer.
+            if std::env::var_os("RUSTYCORE_CORPSE_RECLAIM_TRACE").is_some() {
+                tracing::info!(
+                    account = self.account_id,
+                    "RUST_CORPSE_RECLAIM refused=no_corpse"
+                );
+            }
             return;
         };
 
@@ -675,7 +681,25 @@ impl crate::session::WorldSession {
             now_secs,
             self.death_expire_time_secs_like_cpp(),
         );
-        if ghost_time.saturating_add(i64::from(delay_secs)) > now_secs {
+        let delay_remaining = ghost_time
+            .saturating_add(i64::from(delay_secs))
+            .saturating_sub(now_secs);
+        // `RUSTYCORE_CORPSE_RECLAIM_TRACE=1` names the gate that refused. The
+        // refusals are silent on the wire by design — C++ returns without a
+        // packet — so without this a refused reclaim is indistinguishable from a
+        // handler that never ran.
+        let trace = std::env::var_os("RUSTYCORE_CORPSE_RECLAIM_TRACE").is_some();
+        if delay_remaining > 0 {
+            if trace {
+                tracing::info!(
+                    account = self.account_id,
+                    ghost_time,
+                    now_secs,
+                    delay_secs,
+                    delay_remaining,
+                    "RUST_CORPSE_RECLAIM refused=delay"
+                );
+            }
             return;
         }
 
@@ -697,7 +721,20 @@ impl crate::session::WorldSession {
             &corpse_position,
             wow_entities::CORPSE_RECLAIM_RADIUS_LIKE_CPP + reach,
         ) {
+            if trace {
+                tracing::info!(
+                    account = self.account_id,
+                    player = ?(player_position.x, player_position.y, player_position.z),
+                    corpse = ?(corpse_position.x, corpse_position.y, corpse_position.z),
+                    distance = player_position.distance(&corpse_position),
+                    reach,
+                    "RUST_CORPSE_RECLAIM refused=distance"
+                );
+            }
             return;
+        }
+        if trace {
+            tracing::info!(account = self.account_id, "RUST_CORPSE_RECLAIM accepted");
         }
 
         // C++ `:460`: resurrect at half health outside a battleground.

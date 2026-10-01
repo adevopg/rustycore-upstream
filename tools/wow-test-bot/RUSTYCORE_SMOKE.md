@@ -62,6 +62,45 @@ This mode writes: it creates an account fixture if missing, writes
 `account.session_key_bnet` and `account.os`, and creates a character. Use it only
 against authorized test identities.
 
+## The death exit — live and mutating
+
+`--death-smoke` drives the whole corpse circuit and reports what the server
+recorded:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --death-smoke --death-timeout 120
+```
+
+```text
+fixture: health = 0 and PLAYER_FLAGS_GHOST cleared, stale corpse rows dropped
+login -> CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE -> CMSG_REPOP_REQUEST
+      -> SMSG_MOVE_TELEPORT to the graveyard, acknowledged
+      -> run back to the position the `corpse` row itself carries
+      -> CMSG_RECLAIM_CORPSE every 5 s until it takes
+      -> clean logout, then read health and playerFlags back
+```
+
+The acceptance signal is the `corpse` row, not a decoded update block. C++
+`Corpse::SaveToDB` writes it inside `CreateCorpse` and
+`Map::ConvertCorpseToBones` deletes it inside the reclaim
+(`Maps/Map.cpp:3748-3750`), both committed immediately rather than at the next
+player save, so the row appearing and then disappearing is the server's own
+record of the two transitions. The logout then confirms the player came back:
+half health and no ghost flag.
+
+The fixture writes `characters.health = 0` and clears `PLAYER_FLAGS_GHOST`,
+because a fresh death is a corpse and not a ghost — C++
+`WorldSession::HandleRepopRequest` (`Handlers/MiscHandler.cpp:62-63`) refuses to
+release a spirit that already carries that flag, and the flag is persisted. Like
+the `--melee-smoke` revive, it is a fixture reset and exercises no server death
+path.
+
+Every refusal is silent on the wire by design: C++ returns without a packet. Set
+`RUSTYCORE_CORPSE_RECLAIM_TRACE=1` on the server to see which gate refused and,
+for the delay, how many seconds are left.
+
 ## Retiring QA characters — live and destructive
 
 `--delete-characters <guid,guid,…>` deletes characters through the server's own

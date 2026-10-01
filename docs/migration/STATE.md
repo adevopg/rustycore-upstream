@@ -25,6 +25,15 @@ clause that demanded hostility from a participant the creature was already engag
 Both, with their C++ anchors and the traced ordering, are in
 [EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
 
+**The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
+`--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to
+the Elwynn graveyard, the corpse run brings it back, the reclaim is refused while the C++
+30-second delay runs — the server's own trace counts it down 27, 22, 17, 11, 6, 1 — and then
+takes, after which the `corpse` row is gone and a clean logout saves `health = 20` of 40
+with no ghost flag, which is the half health C++ `ResurrectPlayer(0.5f)` restores. Before
+this, `CMSG_RECLAIM_CORPSE` resurrected with no corpse, no delay and no distance check, and
+the corpse the release left behind carried no owner at all.
+
 This is the Part 1 M3 exit reached for a single solo melee kill on one spawn. It is not
 a claim about group credit, loot, quest kill credit, ranged or spell combat, chase over
 distance, or any other creature family; those remain unproven here.

@@ -144,6 +144,31 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `SMSG_LOG_XP_GAIN 50 XP`, `--melee-smoke` exit 0. The creature now retaliates, dies, and
   pays experience.
 
+- [x] **2026-10-01, live: a released spirit could resurrect instantly, anywhere, with no
+  corpse at all — and the corpse it left behind had no owner.** Found because combat now
+  kills the QA character routinely. `CMSG_RECLAIM_CORPSE` was a represented slice: it
+  cleared the ghost flag and restored half health after checking only alive/ghost, skipping
+  the four gates C++ `WorldSession::HandleReclaimCorpse`
+  (`Handlers/MiscHandler.cpp:435-464`) applies — arena, a live corpse (`:449-450`), the
+  reclaim delay (`:452-454`) and `CORPSE_RECLAIM_RADIUS` (`:456-457`) — and never reaching
+  `SpawnCorpseBones` (`:463`), so the same corpse stayed reclaimable forever. Underneath,
+  `create_player_corpse_on_map_like_cpp` never called `set_owner_guid`, where C++
+  `Corpse::Create(guidlow, owner)` stamps it (`Entities/Corpse/Corpse.cpp:84-89`) and
+  `Map::GetCorpseByPlayer` keys `_corpsesByPlayer` on exactly that field
+  (`Maps/Map.cpp:3714`): the corpse existed and nothing starting from the dead player could
+  find it. Repaired with the map-owned `corpse_by_player_like_cpp` and
+  `convert_corpse_to_bones_like_cpp`, a `delete_corpse_like_cpp` on the corpse persistence
+  port for the `Corpse::DeleteFromDB` transaction C++ commits inside the conversion, and the
+  delay arithmetic of `Player::GetCorpseReclaimDelay` (`Player.cpp:25297-25312`). Live proof,
+  six consecutive `--death-smoke` runs: release writes the corpse row and teleports the
+  ghost, the corpse run returns, the reclaim is refused while the delay counts down
+  27/22/17/11/6/1 and then takes, the row is gone, and a clean logout saves `health = 20`
+  of 40 with no ghost flag. Known boundary, written on the code: the arena refusal is not
+  ported because arenas are not represented and the battleground flag must not stand in for
+  it, and `m_deathExpireTime` is reported unset because its only C++ writer lives in
+  `Player::KillPlayer` (`:4327`), which has no Rust equivalent — unset is what C++ computes
+  for a death older than five minutes, the first 30-second step.
+
 - [x] **2026-10-01: the at-war reputation flag was treated as the hostility decision
   instead of a cap.** Found while splitting the reaction above.
   `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2880-2885`) reads the

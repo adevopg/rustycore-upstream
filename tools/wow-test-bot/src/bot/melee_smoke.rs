@@ -20,7 +20,7 @@ const MELEE_SMOKE_MAX_STEPS: u32 = 64;
 const MELEE_SMOKE_DISCOVERY_RADIUS_YARDS: f32 = 60.0;
 /// One heartbeat every this often, so the walk looks like a client moving rather
 /// than a burst of teleports.
-const MELEE_SMOKE_STEP_INTERVAL: Duration = Duration::from_millis(200);
+pub(crate) const MELEE_SMOKE_STEP_INTERVAL: Duration = Duration::from_millis(200);
 /// How long the approach may keep listening for the target's CREATE block.
 const MELEE_SMOKE_APPROACH_BUDGET: Duration = Duration::from_secs(60);
 
@@ -122,7 +122,7 @@ pub(crate) fn resolve_melee_smoke_target(options: &MeleeSmokeOptions) -> Result<
     })
 }
 
-fn distance_between(from: (f32, f32, f32), to: (f32, f32, f32)) -> f32 {
+pub(crate) fn distance_between(from: (f32, f32, f32), to: (f32, f32, f32)) -> f32 {
     ((to.0 - from.0).powi(2) + (to.1 - from.1).powi(2) + (to.2 - from.2).powi(2)).sqrt()
 }
 
@@ -309,17 +309,21 @@ pub(crate) async fn run_melee_smoke(
     let mut steps = 0u32;
     let mut last_step = std::time::Instant::now() - MELEE_SMOKE_STEP_INTERVAL;
     loop {
-        let read = tokio::time::timeout(
+        // The frame read must not be cancellable: a timeout that fires mid-frame
+        // leaves the stream and the cipher out of step, which the next read
+        // reports as "Invalid encrypted packet size". `read_encrypted_packet_if_ready`
+        // peeks for readiness first, which is cancellation-safe.
+        let read = read_encrypted_packet_if_ready(
+            &mut connection.stream,
+            &mut connection.crypt,
+            &mut connection.inflater,
             Duration::from_millis(250),
-            read_encrypted_packet(
-                &mut connection.stream,
-                &mut connection.crypt,
-                &mut connection.inflater,
-            ),
+            Duration::from_secs(5),
+            "melee approach",
         )
         .await;
         match read {
-            Ok(Ok((opcode, payload))) => match opcode {
+            Ok(Some((opcode, payload))) => match opcode {
                 SMSG_TIME_SYNC_REQUEST => {
                     respond_to_detour_time_sync_like_cpp(
                         bot_index,
@@ -354,8 +358,8 @@ pub(crate) async fn run_melee_smoke(
                 }
                 _ => {}
             },
-            Ok(Err(error)) => bail!("read error while approaching the target: {error}"),
-            Err(_) => {}
+            Ok(None) => {}
+            Err(error) => bail!("read error while approaching the target: {error}"),
         }
 
         // Fall through on both arms. The stream is busy — time sync plus every

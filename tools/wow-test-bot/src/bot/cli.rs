@@ -116,6 +116,8 @@ pub(crate) struct CliOptions {
     pub(crate) melee_creature_entry: Option<u32>,
     pub(crate) melee_creature_spawn_guid: Option<u64>,
     pub(crate) melee_timeout_secs: u64,
+    pub(crate) death_smoke: bool,
+    pub(crate) death_smoke_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
 }
 /// The post-login workflow modes that are exclusive with each other and with
@@ -150,6 +152,7 @@ pub(crate) fn parse_character_guid_list(raw: &str) -> Result<Vec<u64>> {
 pub(crate) fn any_exclusive_workflow_mode_selected(cli: &CliOptions) -> bool {
     cli.login_only
         || cli.melee_smoke
+        || cli.death_smoke
         || cli.stand_state_smoke
         || cli.bank_smoke
         || cli.void_storage_smoke
@@ -588,6 +591,15 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(DEFAULT_MELEE_SMOKE_TIMEOUT_SECS),
+        death_smoke: std::env::var("WOW_BOT_DEATH_SMOKE")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        death_smoke_timeout_secs: std::env::var("WOW_BOT_DEATH_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_DEATH_SMOKE_TIMEOUT_SECS),
         report_path: std::env::var("WOW_BOT_REPORT").ok(),
     };
 
@@ -900,6 +912,10 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             "--delete-characters" => {
                 opts.delete_character_guids =
                     parse_character_guid_list(&next_arg(&mut args, "--delete-characters")?)?;
+            }
+            "--death-smoke" => opts.death_smoke = true,
+            "--death-timeout" => {
+                opts.death_smoke_timeout_secs = next_arg(&mut args, "--death-timeout")?.parse()?;
             }
             "--melee-smoke" => opts.melee_smoke = true,
             "--melee-creature-entry" => {
