@@ -52,7 +52,20 @@ pub(crate) struct SpellDamageSmokeOutcome {
     pub spellbook_row_seeded: bool,
     pub casts_sent: u32,
     pub cast_failures: u32,
+    /// The `SpellCastResult` values the server sent, in order.
+    pub cast_failure_reasons: Vec<i32>,
     pub rows: Vec<SpellDamageCastRow>,
+}
+
+/// The `SpellCastResult` values this mode has actually seen, named so a run report
+/// reads as a reason rather than a number. C++ `SharedDefines.h`'s enum is long;
+/// anything unseen prints as its number.
+fn spell_cast_result_name_like_cpp(reason: i32) -> &'static str {
+    match reason {
+        0 => "SPELL_CAST_OK — C++ never sends CastFailed with this",
+        32 => "SPELL_FAILED_DONT_REPORT (`SharedDefines.h:1498`)",
+        _ => "see SpellCastResult in SharedDefines.h",
+    }
 }
 
 impl SpellDamageSmokeOutcome {
@@ -238,6 +251,22 @@ fn parse_spell_non_melee_damage_log(payload: &[u8]) -> Option<SpellDamageCastRow
     })
 }
 
+/// C++ `WorldPackets::Spells::CastFailed::Write`: a packed `CastID`, the spell id,
+/// the `SpellCastVisual`, then the `SpellCastResult` reason and its two arguments.
+///
+/// `SpellCastVisual` serialises **one** `uint32` here, not two: `ScriptVisualID`
+/// is commented out in this C++ branch, and the port's writer matches
+/// (`crates/wow-packet/src/packets/spell.rs:227-229`). Reading two made the reason
+/// come back as `FailedArg1`, which is zero — a refusal that looked like success.
+fn parse_cast_failed_reason(payload: &[u8]) -> Option<(i32, i32)> {
+    let mut cursor = 0usize;
+    read_packed_guid_at(payload, &mut cursor)?;
+    let spell_id = read_i32_at(payload, &mut cursor)?;
+    let _spell_visual_id = read_i32_at(payload, &mut cursor)?;
+    let reason = read_i32_at(payload, &mut cursor)?;
+    Some((spell_id, reason))
+}
+
 fn read_i32_at(payload: &[u8], cursor: &mut usize) -> Option<i32> {
     let bytes = payload.get(*cursor..*cursor + 4)?;
     *cursor += 4;
@@ -383,6 +412,12 @@ async fn run_spell_damage_smoke(
         outcome.criticals(),
         outcome.resisted_casts()
     );
+    if !outcome.cast_failure_reasons.is_empty() {
+        info!(
+            "[Bot {}] refusal reasons (SpellCastResult): {:?}",
+            bot_index, outcome.cast_failure_reasons
+        );
+    }
     for (index, row) in outcome.rows.iter().enumerate() {
         info!(
             "[Bot {}] cast {}: damage={} original={} resisted={} absorbed={} school=0x{:02X} flags=0x{:02X}",
@@ -649,12 +684,27 @@ async fn drive_spell_damage_scenario_like_cpp(
                     }
                 } else if opcode == SMSG_CAST_FAILED || opcode == SMSG_SPELL_FAILURE {
                     outcome.cast_failures += 1;
-                    warn!(
-                        "[Bot {}] a cast was refused: opcode 0x{:04X} ({} bytes)",
-                        bot_index,
-                        opcode,
-                        payload.len()
-                    );
+                    match (opcode == SMSG_CAST_FAILED)
+                        .then(|| parse_cast_failed_reason(&payload))
+                        .flatten()
+                    {
+                        Some((failed_spell_id, reason)) => {
+                            outcome.cast_failure_reasons.push(reason);
+                            warn!(
+                                "[Bot {}] cast refused: spell {} SpellCastResult {} ({})",
+                                bot_index,
+                                failed_spell_id,
+                                reason,
+                                spell_cast_result_name_like_cpp(reason)
+                            );
+                        }
+                        None => warn!(
+                            "[Bot {}] a cast was refused: opcode 0x{:04X} ({} bytes)",
+                            bot_index,
+                            opcode,
+                            payload.len()
+                        ),
+                    }
                 }
             }
         }
@@ -761,5 +811,23 @@ mod tests {
     #[test]
     fn a_truncated_damage_log_is_refused() {
         assert!(parse_spell_non_melee_damage_log(&[0u8; 8]).is_none());
+    }
+
+    /// `SpellCastVisual` is one `uint32` on this branch, so the reason sits four
+    /// bytes earlier than a two-field reading would put it. Getting that wrong
+    /// reported every refusal as `SPELL_CAST_OK`.
+    #[test]
+    fn the_cast_failed_reader_places_the_reason_after_one_visual_field() {
+        let mut payload = Vec::new();
+        payload.extend([0x01u8, 0x00u8]); // packed CastID: low byte 0 set, high empty
+        payload.push(0x07);
+        payload.extend(133i32.to_le_bytes()); // SpellID
+        payload.extend(0i32.to_le_bytes()); // SpellCastVisual::SpellXSpellVisualID
+        payload.extend(32i32.to_le_bytes()); // Reason: SPELL_FAILED_DONT_REPORT
+        payload.extend(0i32.to_le_bytes()); // FailedArg1
+        payload.extend(0i32.to_le_bytes()); // FailedArg2
+
+        assert_eq!(parse_cast_failed_reason(&payload), Some((133, 32)));
+        assert!(parse_cast_failed_reason(&payload[..6]).is_none());
     }
 }

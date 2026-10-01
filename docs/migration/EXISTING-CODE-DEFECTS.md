@@ -1182,6 +1182,48 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   inserting a row there for a dependent spell writes one the target build never writes; the row
   earlier runs of this session created was removed.
 
+- [ ] **D-H23 A player gets one spell cast per session: later requests are swallowed with no
+  execution and no refusal.** Found 2026-10-01 while trying to take D-H20's critical from a
+  sampling run, which is what made it visible — a single-cast scenario never shows it.
+
+  Measured, not inferred. Four `CMSG_CAST_SPELL` requests for Fireball, six seconds apart, on a
+  freshly started server with one logged-in caster and a live target twelve yards away:
+  `casts_sent=4 refusals=0 logs=1`. The server's own trace agrees — exactly **one**
+  `Executing spell effect ... spell_id=133` and one `Dealt damage to creature` for the whole
+  session. The other three requests produced no `SMSG_SPELL_START`, no damage log and no
+  `SMSG_CAST_FAILED`: they were accepted off the socket and dropped. An earlier run of the same
+  shape produced four `SMSG_CAST_FAILED` instead, so the two outcomes differ by timing.
+
+  **Where to look, from reading rather than from the runs.** The cast path gates on
+  `remaining(spell)` (`session/player_cast.rs:107-110`), which is
+  `remaining_global_cooldown_ms_like_cpp(spell).zip(remaining_active_spell_cast_ms_like_cpp())` —
+  a value that exists only while *both* are known. The second reads
+  `CastExecutionStateLikeCpp::remaining_cast_ms` (`player_cast/state.rs:154-158`). If that state
+  is not cleared when a cast with a cast time completes, every later request sees an active cast
+  and is deferred, which is exactly the observed shape: the first cast lands, the rest vanish.
+  C++ clears `m_currentSpells[CURRENT_GENERIC_SPELL]` in `Spell::finish`/`SendSpellGo`'s wake, and
+  `Spell::CheckCast` reports `SPELL_FAILED_SPELL_IN_PROGRESS` rather than dropping a request, so
+  neither the silence nor the retained state matches it.
+
+  **Not the world-pass warning.** This host logs `A world-phase pass is past its deadline and
+  still running` continuously, and that is a separate, benign thing: the coordinator gives each
+  session the map tick interval — ten milliseconds here — to run its world pass and report
+  (`runtime/map/update_loop.rs:116`), so any pass that touches the database exceeds it and the
+  step simply waits for the completion boundary. It was the first suspect and the measurement
+  cleared it.
+
+  It blocks every multi-action live scenario, D-H20's critical among them: a few-percent chance
+  needs tens of casts in one session and this allows one.
+
+- [x] **A harness defect worth recording beside it: the refusal reader reported every
+  `SMSG_CAST_FAILED` as success.** `SpellCastVisual` serialises **one** `uint32` on this branch —
+  `ScriptVisualID` is commented out in the C++ and the port's writer matches
+  (`wow-packet/src/packets/spell.rs:227-229`) — so reading two put the `SpellCastResult` four
+  bytes late and returned `FailedArg1`, which is zero, i.e. `SPELL_CAST_OK`. A refusal that reads
+  as success is worse than one that reads as garbage, so the fix is pinned by a test that places
+  the reason after exactly one visual field. This is the second packed-field slip in this harness
+  this session; both were caught by reading the server's own writer rather than by guessing.
+
 ## MED — wrong values / loose checks / minor loss
 
 - [ ] **D-M1 Silent gold-save error.** `let _ = char_db.execute(stmt).await` swallows failures. `session.rs:21495`.

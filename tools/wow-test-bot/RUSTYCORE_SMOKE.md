@@ -247,10 +247,19 @@ Two things to know before reading a zero-log run as a defect:
   spawn of that entry dead, and `--spell-damage-entry` then resolves to a corpse:
   the casts complete and deal nothing. Pass a different entry or wait for the
   respawn.
-* **only the first cast of a session reliably completes** while the world pass is
-  past its deadline, which this host logs continuously and did before this mode
-  existed. Prefer `--spell-damage-casts 1` on a freshly started server for exact
-  evidence, and treat a longer sequence as a sampling run.
+* **a player gets only one spell cast per session** (D-H23). Four requests six
+  seconds apart produce one execution and nothing at all for the other three — no
+  `SMSG_SPELL_START`, no damage log, and usually no refusal. So prefer
+  `--spell-damage-casts 1` on a freshly started server for exact evidence, and
+  read a longer sequence as a measurement of that defect rather than as a sampling
+  run. The world-pass deadline warning this host logs continuously is unrelated:
+  the coordinator allows each session one map tick interval to report, which any
+  pass touching the database exceeds.
+
+A refusal is reported with its `SpellCastResult`, not just its opcode. `SpellCastVisual`
+serialises **one** `uint32` on this branch, so the reason sits four bytes earlier than a
+two-field reading puts it — getting that wrong reported every refusal as
+`SPELL_CAST_OK`, and a test now pins the offset.
 
 `WOW_BOT_SPELL_DAMAGE_TRACE=1` logs every opcode on both sockets, which is how the
 `SMSG_SPELL_START` / `SMSG_SPELL_GO` / `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` order above

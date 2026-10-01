@@ -157,6 +157,36 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**A player gets one spell cast per session (D-H23), and that is what blocks the remaining spell
+evidence.** Trying to take D-H20's critical from a sampling run made it visible, which a
+single-cast scenario never does: four `CMSG_CAST_SPELL` six seconds apart, on a freshly started
+server with one caster and a live target, gave `casts_sent=4 refusals=0 logs=1`, and the server's own
+trace shows exactly one execution for the whole session. The other three requests produced no
+`SMSG_SPELL_START`, no damage log and no refusal — accepted off the socket and dropped. The reading
+points at the cast gate: `remaining(spell)` zips the global cooldown with
+`remaining_active_spell_cast_ms`, so an active-cast state that is never cleared defers every later
+request. C++ reports `SPELL_FAILED_SPELL_IN_PROGRESS` instead of dropping one.
+
+The world-pass deadline warning this host logs continuously was the first suspect and the
+measurement cleared it: the coordinator gives each session the map tick interval — ten milliseconds
+— to run its world pass and report, so any pass that touches the database exceeds it and the step
+just waits for the completion boundary.
+
+**A player gets one spell cast per session (D-H23), and that is what blocks the remaining spell
+evidence.** Trying to take D-H20's critical from a sampling run made it visible, which a
+single-cast scenario never does: four `CMSG_CAST_SPELL` six seconds apart, on a freshly started
+server with one caster and a live target, gave `casts_sent=4 refusals=0 logs=1`, and the server's
+own trace shows exactly one execution for the whole session. The other three requests produced no
+`SMSG_SPELL_START`, no damage log and no refusal — accepted off the socket and dropped. The reading
+points at the cast gate: `remaining(spell)` zips the global cooldown with
+`remaining_active_spell_cast_ms`, so an active-cast state that is never cleared defers every later
+request. C++ reports `SPELL_FAILED_SPELL_IN_PROGRESS` instead of dropping one.
+
+The world-pass deadline warning this host logs continuously was the first suspect and the
+measurement cleared it: the coordinator gives each session the map tick interval — ten
+milliseconds — to run its world pass and report, so any pass that touches the database exceeds it
+and the step just waits for the completion boundary.
+
 **There is a caster on the QA account now, and the spell resist is proven live.** The plan's step
 was to provision a caster-class character because neither a spell critical nor a spell resist can
 be reached with a warrior — the first needs a caster-side percentage it does not have, the second a

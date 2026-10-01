@@ -179,21 +179,28 @@ With `character_spell` emptied to zero rows and the bot's seeding turned off, th
 and the server published `damage=12 original=13 resisted=1 school=0x04`. A fixture-free caster
 scenario therefore exists now, and the mode's spellbook seeding is opt-in.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** D-H20's spell
-critical is the only one of the three spell entries still without live evidence, and the thing
-standing in its way is no longer a missing character — it is that **only the first cast of a session
-reliably completes**. Two captures, both single casts, both normal hits; a few-percent chance needs
-tens of casts in one session. That makes the runtime condition the work: the world pass runs past
-its deadline continuously on this host, which the log has shown since before any of this lane, and a
-cast with a cast time completes on that pass. Measure where the pass spends its time, fix or bound
-it, then take the critical from a sampling run — the `--spell-damage` mode already supports one. The
-same fix is what every other multi-action live scenario needs, so it is worth more than another
-single-shot workaround.
+**That measurement is done and it moved the target.** The world-pass deadline warning is benign:
+the coordinator gives each session the map tick interval — ten milliseconds on this host — to run
+its world pass and report (`runtime/map/update_loop.rs:116`), so any pass touching the database
+exceeds it and the step waits for the completion boundary. What actually blocks a sampling run is
+narrower and is now recorded as **D-H23**: a player gets **one** spell cast per session. Four
+requests six seconds apart produced one execution, no refusals and no `SMSG_SPELL_START` for the
+other three — accepted off the socket and dropped. Fixing the harness's refusal reader was part of
+getting there: it had been reporting every `SMSG_CAST_FAILED` as `SPELL_CAST_OK`, because
+`SpellCastVisual` is one `uint32` on this branch rather than two.
 
-Two conditions found during that run belong with it rather than inside it: **only the first cast of
-a session reliably completes** while the world pass runs past its deadline, which this host has
-logged continuously since before this work and which the runtime track owns; and a live cast needs
-an **alive** target, because a previous run can leave the nearest spawn of that entry dead.
+**Next prepared responsibility, selected by evidence rather than by document order:** D-H23 itself.
+The cast path gates on `remaining(spell)`, which zips the global cooldown with
+`remaining_active_spell_cast_ms` (`session/player_cast.rs:107-110`,
+`player_cast/state.rs:154-158`); an active-cast state that is never cleared when a cast with a cast
+time completes defers every later request, which is exactly the observed shape. The work is to
+trace that state across one complete cast against C++'s `Spell::finish` and the
+`m_currentSpells[CURRENT_GENERIC_SPELL]` clear, make a second request either execute or be refused
+with `SPELL_FAILED_SPELL_IN_PROGRESS` as C++ does, and prove it with a multi-cast live run. It
+unblocks D-H20's critical and every other multi-action scenario, which is why it comes first.
+
+One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
+a previous run can leave the nearest spawn of that entry dead.
 
 ## 1. Direction from here
 
