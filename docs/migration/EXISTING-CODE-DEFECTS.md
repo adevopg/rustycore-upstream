@@ -1168,13 +1168,19 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   would have been an extra favourite-row delete per spell per save. A behaviour change in the save
   path needs a case where it matters, and this evidence does not supply one.
 
-  **What is genuinely unverified, stated as a question rather than a defect:** whether the 43
-  spells the server grants a level-20 human mage include its class attack spells. The cast that
-  produced D-H21's evidence used a seeded Fireball row, so it proves nothing either way, and
-  `playercreateinfo_action` says a human mage's first action button is spell 116 (Frostbolt) — so
-  the client expects to have it. The next step is mechanical: dump the ids from
-  `SMSG_SEND_KNOWN_SPELLS` and compare them against the `SkillLineAbility` rows for skills 6 and 8
-  at rank 100, which is what `LearnSkillRewardedSpells` walks.
+  **The remaining question is answered, 2026-10-01: the grant is correct.** A new
+  `RUSTYCORE_KNOWN_SPELLS_TRACE` logs the ids on `SMSG_SEND_KNOWN_SPELLS`, and a level-20 human
+  mage is granted 43 spells including **116 (Frostbolt)** and **133 (Fireball)** — the two the
+  class needs and the first of which `playercreateinfo_action` puts on action button 0. So nothing
+  about the caster lane was broken.
+
+  **Proven by removing the fixture rather than by reading a log.** With `character_spell` emptied
+  to zero rows and the bot's spellbook seeding turned off, the mage cast Fireball and the server
+  published `damage=12 original=13 resisted=1 absorbed=0 school=0x04 flags=0x00`. A character with
+  no rows in that table casts its class spells, which is the whole point of the dependent-spell
+  rule. The `--spell-damage` mode's seeding is now opt-in (`--spell-damage-seed-spell`), because
+  inserting a row there for a dependent spell writes one the target build never writes; the row
+  earlier runs of this session created was removed.
 
 ## MED — wrong values / loose checks / minor loss
 

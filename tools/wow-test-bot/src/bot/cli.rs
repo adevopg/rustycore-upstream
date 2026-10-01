@@ -133,6 +133,7 @@ pub(crate) struct CliOptions {
     pub(crate) spell_damage_creature_entry: Option<u32>,
     pub(crate) spell_damage_character_guid: Option<u64>,
     pub(crate) spell_damage_casts: u32,
+    pub(crate) spell_damage_seed_spell: bool,
     pub(crate) spell_damage_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
 }
@@ -675,6 +676,10 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .ok()
             .map(|value| value.parse::<u64>())
             .transpose()?,
+        spell_damage_seed_spell: std::env::var("WOW_BOT_SPELL_DAMAGE_SEED_SPELL")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
         spell_damage_casts: std::env::var("WOW_BOT_SPELL_DAMAGE_CASTS")
             .ok()
             .map(|value| value.parse::<u32>())
@@ -1029,6 +1034,7 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
                 opts.spell_damage_character_guid =
                     Some(next_arg(&mut args, "--spell-damage-character")?.parse()?);
             }
+            "--spell-damage-seed-spell" => opts.spell_damage_seed_spell = true,
             "--spell-damage-casts" => {
                 opts.spell_damage_casts = next_arg(&mut args, "--spell-damage-casts")?.parse()?;
             }

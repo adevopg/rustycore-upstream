@@ -174,9 +174,13 @@ write them either — they are recomputed from `character_skills` at every login
 does, with the mage's 11 default skills persisted. The first draft also read `default_skill_count=0`
 on a later login as the walk being absent; on the character's first login the same line reads
 `default_skill_count=11`. The code change that diagnosis motivated was reverted before publication.
-What stays open is a question rather than a defect: whether the 43 spells a human mage is granted
-include its class attack spells, which a dump of `SMSG_SEND_KNOWN_SPELLS` against the
-`SkillLineAbility` rows for skills 6 and 8 settles mechanically.
+That question is now answered too: a new `RUSTYCORE_KNOWN_SPELLS_TRACE` logs the ids the login
+grants, and a human mage gets 43 spells **including 116 (Frostbolt) and 133 (Fireball)**. It was
+proven by removing the fixture rather than by reading a log — with `character_spell` emptied to zero
+rows and the bot's seeding off, the mage cast Fireball and the server published
+`damage=12 original=13 resisted=1 school=0x04`. A character with no rows in that table casts its
+class spells, which is exactly what the dependent-spell rule means. The mode's seeding is now
+opt-in, and the row earlier runs created was removed.
 
 And **only the first cast of a session reliably completes** while
 the world pass runs past its deadline — a condition this host logs continuously and did before any

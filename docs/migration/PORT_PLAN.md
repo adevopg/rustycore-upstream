@@ -173,15 +173,22 @@ absent; on the first login that line reads `default_skill_count=11`. The change 
 reverted before publication, because C++'s `learning`-based state is unfaithful here only in a case
 this evidence does not supply.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** settle the one
-question that investigation left, then pick up the class lane from a verified base. The question is
-mechanical and small: **does the spell set a human mage is granted include its class attack
-spells?** Dump the ids from `SMSG_SEND_KNOWN_SPELLS` — the bot already reads that packet at login —
-and compare them against the `SkillLineAbility` rows for skills 6 and 8 at rank 100, which is what
-`LearnSkillRewardedSpells` walks. `playercreateinfo_action` says the client expects spell 116
-(Frostbolt) on the first action button, so that comparison either closes the caster lane or names
-exactly which rows the walk is dropping. Only after that does a fixture-free caster scenario exist,
-which is what D-H20's critical still needs.
+**That question is settled and the caster lane is clean.** `RUSTYCORE_KNOWN_SPELLS_TRACE` reports
+the ids the login grants: a human mage gets 43 spells including 116 (Frostbolt) and 133 (Fireball).
+With `character_spell` emptied to zero rows and the bot's seeding turned off, the mage cast Fireball
+and the server published `damage=12 original=13 resisted=1 school=0x04`. A fixture-free caster
+scenario therefore exists now, and the mode's spellbook seeding is opt-in.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** D-H20's spell
+critical is the only one of the three spell entries still without live evidence, and the thing
+standing in its way is no longer a missing character — it is that **only the first cast of a session
+reliably completes**. Two captures, both single casts, both normal hits; a few-percent chance needs
+tens of casts in one session. That makes the runtime condition the work: the world pass runs past
+its deadline continuously on this host, which the log has shown since before any of this lane, and a
+cast with a cast time completes on that pass. Measure where the pass spends its time, fix or bound
+it, then take the critical from a sampling run — the `--spell-damage` mode already supports one. The
+same fix is what every other multi-action live scenario needs, so it is worth more than another
+single-shot workaround.
 
 Two conditions found during that run belong with it rather than inside it: **only the first cast of
 a session reliably completes** while the world pass runs past its deadline, which this host has

@@ -204,13 +204,19 @@ cargo run -- --config config.json --single TESTBOT1@bot.local \
   --create-character-name Rustymage --create-character-race 1 --create-character-class 8
 ```
 
-That character starts with an **empty spellbook**: this port does not yet grant
-starting spells on creation, which C++ `Player::LearnDefaultSkills` does from
-`SkillLineAbility`. The mode therefore seeds the one spell row it needs, the same
-class of fixture the quest and aura modes use, and says whether it seeded it or
-found it already known. A level-1 caster also has the mana for only a couple of
-casts, so a `characters.level` fixture is worth applying by hand for a longer
-sequence.
+That character needs **no spellbook fixture** for a class spell. Its
+`character_spell` rows are zero and it still knows 43 spells, Fireball and
+Frostbolt among them: C++ `_SaveSpells` writes only **non-dependent** rows
+(`Entities/Player/Player.cpp:20664-20666`) and `LearnSkillRewardedSpells` learns
+dependent ones, so that table is the wrong place to look for what a character
+knows. Start the server with `RUSTYCORE_KNOWN_SPELLS_TRACE=1` to see the granted
+set on `SMSG_SEND_KNOWN_SPELLS`.
+
+Seeding is therefore opt-in through `--spell-damage-seed-spell`, for a spell the
+login genuinely does not grant; inserting a row for a dependent one would write
+something the target build never writes. A level-1 caster has the mana for only a
+couple of casts, so a `characters.level` fixture is worth applying by hand for a
+longer sequence.
 
 ```bash
 cargo run -- --config config.json --single TESTBOT1@bot.local \
@@ -223,9 +229,11 @@ CREATE block for the runtime ObjectGuid -> CMSG_CAST_SPELL -> record every
 SMSG_SPELL_NON_MELEE_DAMAGE_LOG -> clean logout -> restore the position`. A run
 fails if the server published no damage log at all.
 
-Reference run, Fireball (133) at a Kobold Tunneler (entry 475, 21 fire resistance
-in `creature_template_resistance`):
-`cast 1: damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00`.
+Reference runs, Fireball (133) at a Kobold Tunneler (entry 475, 21 fire resistance
+in `creature_template_resistance`), the second with `character_spell` emptied to
+zero rows and no seeding at all:
+`cast 1: damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00` and
+`cast 1: damage=12 original=13 resisted=1 absorbed=0 school=0x04 flags=0x00`.
 The average reduction is `21 / (21 + 100) = 0.17`, whose discrete table puts the
 weight on the one- and two-tenth buckets, and `13 * 2/10` truncates to the 2 the
 server published. `flags` stays zero for a non-critical hit, and it stays zero for

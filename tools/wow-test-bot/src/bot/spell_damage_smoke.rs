@@ -9,10 +9,15 @@
 //! character and reports every published field of every cast, with no conclusion
 //! drawn in the harness.
 //!
-//! The port does not yet grant starting spells on character creation — C++
-//! `Player::LearnDefaultSkills` reads them from `SkillLineAbility` — so the
-//! spellbook row is a fixture here, like the quest and aura rows in the other
-//! live modes.
+//! The character needs no spellbook fixture for a class spell. A freshly created
+//! human mage is granted 43 spells at login, Fireball and Frostbolt among them,
+//! and none of them is in `character_spell`: C++ `_SaveSpells`
+//! (`Entities/Player/Player.cpp:20664-20666`) writes only **non-dependent** rows
+//! and `LearnSkillRewardedSpells` learns dependent ones, so that table is the
+//! wrong oracle for what a character knows. Seeding a row there for such a spell
+//! would write one the target build never writes, so it is opt-in through
+//! `--spell-damage-seed-spell` for the case where the spell genuinely is not
+//! granted.
 
 use super::*;
 
@@ -94,6 +99,7 @@ pub(crate) async fn run_spell_damage_smoke_mode(
         spell_id,
         creature_entry,
         cli.spell_damage_casts.max(1),
+        cli.spell_damage_seed_spell,
         cli.spell_damage_timeout_secs,
     )
     .await?;
@@ -119,6 +125,7 @@ fn seed_spell_damage_scenario_like_cpp(
     bot: &config::BotConfig,
     character_guid: u64,
     spell_id: i32,
+    seed_spellbook_row: bool,
     target: (u16, f32, f32, f32),
 ) -> Result<(bool, bool, u16, (f32, f32, f32))> {
     use mysql::prelude::Queryable;
@@ -140,22 +147,25 @@ fn seed_spell_damage_scenario_like_cpp(
     revive_bot.character_guid = character_guid;
     let revived = revive_dead_bot_character_fixture(&mut conn, &revive_bot)?;
 
-    // C++ `Spell::CheckCast` requires the caster to know the spell
-    // (`Spells/Spell.cpp`, `SPELL_FAILED_NOT_KNOWN`), and this port does not grant
-    // starting spells on creation yet.
-    let known: Option<u32> = conn
-        .exec_first(
-            "SELECT spell FROM character_spell WHERE guid = ? AND spell = ?",
-            (character_guid, spell_id),
-        )
-        .map_err(|error| anyhow!("Read character_spell: {error}"))?;
-    let seeded = known.is_none();
-    if seeded {
-        conn.exec_drop(
-            "INSERT INTO character_spell (guid, spell, active, disabled) VALUES (?, ?, 1, 0)",
-            (character_guid, spell_id),
-        )
-        .map_err(|error| anyhow!("Spellbook fixture for {character_guid}: {error}"))?;
+    // Only when asked. `character_spell` holds no dependent skill-rewarded spell,
+    // so its emptiness says nothing about what the character knows, and inserting
+    // a row for such a spell writes one C++ never writes.
+    let mut seeded = false;
+    if seed_spellbook_row {
+        let known: Option<u32> = conn
+            .exec_first(
+                "SELECT spell FROM character_spell WHERE guid = ? AND spell = ?",
+                (character_guid, spell_id),
+            )
+            .map_err(|error| anyhow!("Read character_spell: {error}"))?;
+        if known.is_none() {
+            conn.exec_drop(
+                "INSERT INTO character_spell (guid, spell, active, disabled) VALUES (?, ?, 1, 0)",
+                (character_guid, spell_id),
+            )
+            .map_err(|error| anyhow!("Spellbook fixture for {character_guid}: {error}"))?;
+            seeded = true;
+        }
     }
 
     // Stand off along +x so the cast starts outside melee reach.
@@ -256,12 +266,14 @@ fn read_packed_guid_at(payload: &[u8], cursor: &mut usize) -> Option<(u64, u64)>
     Some((halves[0], halves[1]))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_spell_damage_smoke(
     bot: &config::BotConfig,
     character_guid: u64,
     spell_id: i32,
     creature_entry: u32,
     casts: u32,
+    seed_spellbook_row: bool,
     timeout_secs: u64,
 ) -> Result<SpellDamageSmokeOutcome> {
     let bot_index = bot.account_id as usize;
@@ -303,7 +315,15 @@ async fn run_spell_damage_smoke(
     let fixture_bot = bot.clone();
     let (revived, seeded, original_map, original_position) = tokio::task::spawn_blocking({
         let target = (target.map_id, target.x, target.y, target.z);
-        move || seed_spell_damage_scenario_like_cpp(&fixture_bot, character_guid, spell_id, target)
+        move || {
+            seed_spell_damage_scenario_like_cpp(
+                &fixture_bot,
+                character_guid,
+                spell_id,
+                seed_spellbook_row,
+                target,
+            )
+        }
     })
     .await
     .map_err(|error| anyhow!("Spell-damage fixture worker failed: {error}"))??;
@@ -316,9 +336,9 @@ async fn run_spell_damage_smoke(
         SPELL_DAMAGE_STAND_OFF_YARDS,
         spell_id,
         if seeded {
-            "seeded into the spellbook"
+            "seeded into character_spell on request"
         } else {
-            "already known"
+            "left to the login's own grant"
         },
         if revived {
             ", restored from a death a previous run left behind"
