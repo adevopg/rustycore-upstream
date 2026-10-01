@@ -25,6 +25,17 @@ clause that demanded hostility from a participant the creature was already engag
 Both, with their C++ anchors and the traced ordering, are in
 [EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
 
+**Quest kill credit is proven live on 2026-10-01**, which settles the contested D-H4 finding:
+killing a Rabbit with quest 14106 active published `SMSG_QUEST_UPDATE_ADD_CREDIT` and moved
+`character_queststatus_objectives.data` from 0 to 1, persisted. Verifying it exposed one real
+gap, now repaired: C++ `Player::KilledMonster` credits the creature's entry **and** each
+`CreatureTemplate::KillCredit` proxy, where RustyCore credited only the entry, so an objective
+naming a proxy could never advance. A kill by spell damage still passes no proxies, because
+that path has no ObjectMgr catalog in scope and the composition root keeps those out of
+`WorldSession` by design; it is named at the call site. Also observed and **not** concluded: a
+critter swung back at the player 47 times, recorded as a ⚠VERIFY entry with the three C++
+places to check.
+
 **Creature loot is proven live on 2026-10-01, in both halves.** `--loot-after-kill` kills a
 creature and loots it: against entry 299 the window offered `item_id 4865 x1` with
 `loot_list_id 0`, and after the clean logout `item_instance` carries that entry with a fresh

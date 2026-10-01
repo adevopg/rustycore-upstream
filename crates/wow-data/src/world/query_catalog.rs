@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 pub const WORLD_QUERY_GAMEOBJECT_DATA_COUNT_LIKE_CPP: usize = 35;
 pub const PAGE_TEXT_QUERY_CHAIN_DEFENSIVE_LIMIT_LIKE_CPP: usize = 100;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CreatureQueryTemplateLikeCpp {
     pub entry: u32,
     pub name: String,
@@ -93,6 +93,16 @@ impl CreatureQueryCatalogLikeCpp {
             }
         }
         Some(row)
+    }
+
+    /// C++ `CreatureTemplate::KillCredit`, read by `Player::KilledMonster`
+    /// (`Entities/Player/Player.cpp:16568-16570`) to credit the quest objectives
+    /// of the entries a kill proxies for.
+    ///
+    /// A borrow rather than `resolve_like_cpp`: the credit path wants two ints
+    /// and no locale, and cloning a whole template per kill would be waste.
+    pub fn kill_credits_like_cpp(&self, entry: u32) -> Option<[i32; 2]> {
+        Some(self.templates.get(&entry)?.kill_credits)
     }
 
     pub fn len(&self) -> usize {

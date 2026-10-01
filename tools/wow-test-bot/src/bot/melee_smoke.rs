@@ -52,6 +52,7 @@ pub(crate) struct MeleeSmokeOutcome {
     pub(crate) target_death_seen: bool,
     pub(crate) xp_gain_seen: bool,
     pub(crate) xp_gained: u32,
+    pub(crate) quest_credit_packets: u32,
     pub(crate) loot_response_seen: bool,
     pub(crate) loot_coins: u32,
     pub(crate) loot_items_offered: u32,
@@ -73,9 +74,24 @@ pub(crate) struct MeleeSmokeTarget {
     pub(crate) x: f32,
     pub(crate) y: f32,
     pub(crate) z: f32,
+    /// Whether `creature_loot_template` has any row for this entry. Without one
+    /// C++ generates no loot at all, so `CMSG_LOOT_UNIT` is answered with
+    /// nothing and the loot phase has nothing to verify.
+    pub(crate) has_loot_template: bool,
 }
 
-pub(crate) fn resolve_melee_smoke_target(options: &MeleeSmokeOptions) -> Result<MeleeSmokeTarget> {
+/// Resolve the spawn to attack.
+///
+/// Without a pinned guid this takes the spawn **nearest to the character on the
+/// character's own map**. Taking the lowest guid instead picked a Rabbit on map
+/// 530 for a character standing in Elwynn, and the walk then failed with "did not
+/// reach the target" because the destination was on another continent.
+pub(crate) fn resolve_melee_smoke_target(
+    options: &MeleeSmokeOptions,
+    player_map_id: u16,
+    player_x: f32,
+    player_y: f32,
+) -> Result<MeleeSmokeTarget> {
     use mysql::prelude::Queryable;
 
     let world_url = world_db_url()?;
@@ -97,9 +113,14 @@ pub(crate) fn resolve_melee_smoke_target(options: &MeleeSmokeOptions) -> Result<
             .exec_first(
                 "SELECT c.guid, c.id, ct.name, ct.faction, c.map, c.position_x, c.position_y, \
                  c.position_z FROM creature c JOIN creature_template ct ON ct.entry = c.id \
-                 WHERE c.id = ? AND c.phaseid = 0 AND c.phasegroup = 0 \
-                 ORDER BY c.guid LIMIT 1",
-                (options.creature_entry,),
+                 WHERE c.id = ? AND c.map = ? AND c.phaseid = 0 AND c.phasegroup = 0 \
+                 ORDER BY POW(c.position_x - ?, 2) + POW(c.position_y - ?, 2) LIMIT 1",
+                (
+                    options.creature_entry,
+                    u32::from(player_map_id),
+                    player_x,
+                    player_y,
+                ),
             )
             .map_err(|error| {
                 anyhow!(
@@ -118,6 +139,13 @@ pub(crate) fn resolve_melee_smoke_target(options: &MeleeSmokeOptions) -> Result<
                 .unwrap_or_default()
         );
     };
+    let has_loot_template: Option<u32> = world
+        .exec_first(
+            "SELECT COUNT(*) FROM creature_loot_template WHERE Entry = ?",
+            (entry,),
+        )
+        .map_err(|error| anyhow!("Count loot template rows for entry {entry}: {error}"))?;
+    let has_loot_template = has_loot_template.unwrap_or(0) != 0;
     let map_id =
         u16::try_from(map).map_err(|_| anyhow!("target map id does not fit protocol: {map}"))?;
     Ok(MeleeSmokeTarget {
@@ -129,6 +157,7 @@ pub(crate) fn resolve_melee_smoke_target(options: &MeleeSmokeOptions) -> Result<
         x: x as f32,
         y: y as f32,
         z: z as f32,
+        has_loot_template,
     })
 }
 
@@ -166,9 +195,33 @@ pub(crate) async fn run_melee_smoke(
     options: &MeleeSmokeOptions,
 ) -> Result<MeleeSmokeOutcome> {
     let bot_index = bot.account_id as usize;
+    // Where the character stands decides which spawn to attack, so read it before
+    // resolving the target rather than after.
+    let character_guid_for_position = bot.character_guid;
+    let (start_map_id, start_position) =
+        tokio::task::spawn_blocking(move || -> Result<(u16, (f32, f32, f32))> {
+            use mysql::prelude::Queryable;
+            let url = characters_db_url()?;
+            let mut conn = mysql::Conn::new(qa_mysql_opts(&url, "characters")?)
+                .map_err(|error| anyhow!("Connect to characters DB failed: {error}"))?;
+            let row: Option<(f32, f32, f32, u16)> = conn
+                .exec_first(
+                    "SELECT position_x, position_y, position_z, map FROM characters WHERE guid = ?",
+                    (character_guid_for_position,),
+                )
+                .map_err(|error| anyhow!("Read character position: {error}"))?;
+            let (x, y, z, map) = row.ok_or_else(|| {
+                anyhow!("No characters row for guid {character_guid_for_position}")
+            })?;
+            Ok((map, (x, y, z)))
+        })
+        .await
+        .map_err(|error| anyhow!("Character position worker failed: {error}"))??;
     let target = tokio::task::spawn_blocking({
         let options = options.clone();
-        move || resolve_melee_smoke_target(&options)
+        move || {
+            resolve_melee_smoke_target(&options, start_map_id, start_position.0, start_position.1)
+        }
     })
     .await
     .map_err(|error| anyhow!("Melee target resolution worker failed: {error}"))??;
@@ -269,27 +322,6 @@ pub(crate) async fn run_melee_smoke(
     );
 
     let (player_low, player_high) = create_player_guid_raw(bot.character_guid, realm_id());
-
-    // The walk starts where the character actually is. Reading the stored
-    // position is read-only and avoids guessing from the login stream.
-    let character_guid = bot.character_guid;
-    let start_position = tokio::task::spawn_blocking(move || -> Result<(f32, f32, f32)> {
-        use mysql::prelude::Queryable;
-        let url = characters_db_url()?;
-        let mut conn = mysql::Conn::new(qa_mysql_opts(&url, "characters")?)
-            .map_err(|error| anyhow!("Connect to characters DB failed: {error}"))?;
-        let row: Option<(f32, f32, f32, u16)> = conn
-            .exec_first(
-                "SELECT position_x, position_y, position_z, map FROM characters WHERE guid = ?",
-                (character_guid,),
-            )
-            .map_err(|error| anyhow!("Read character position: {error}"))?;
-        let (x, y, z, map) =
-            row.ok_or_else(|| anyhow!("No characters row for guid {character_guid}"))?;
-        Ok((x, y, z, map)).map(|(x, y, z, _)| (x, y, z))
-    })
-    .await
-    .map_err(|error| anyhow!("Character position worker failed: {error}"))??;
 
     // Walk to the target with ordinary heartbeats, reading the stream as we go:
     // the runtime ObjectGuid only appears once the creature enters visibility,
@@ -627,6 +659,17 @@ pub(crate) async fn run_melee_smoke(
                         }
                     }
                 }
+                SMSG_QUEST_UPDATE_ADD_CREDIT => {
+                    // C++ `Player::KilledMonsterCredit` ends in
+                    // `UpdateQuestObjectiveProgress`, which publishes this for a
+                    // MONSTER objective. Counted, not decoded: the persisted
+                    // objective row is what the report verifies.
+                    outcome.quest_credit_packets += 1;
+                    info!(
+                        "[Bot {}] ✅ SMSG_QUEST_UPDATE_ADD_CREDIT #{}",
+                        bot_index, outcome.quest_credit_packets
+                    );
+                }
                 SMSG_LOG_XP_GAIN => {
                     outcome.xp_gain_seen = true;
                     outcome.xp_gained = parse_log_xp_gain_amount(&payload).unwrap_or(0);
@@ -661,7 +704,14 @@ pub(crate) async fn run_melee_smoke(
         }
     }
 
-    if options.loot_after_kill && outcome.target_death_seen {
+    if options.loot_after_kill && outcome.target_death_seen && !target.has_loot_template {
+        info!(
+            "[Bot {}] loot phase skipped: creature_loot_template has no row for entry {}, so C++ \
+             generates no loot and CMSG_LOOT_UNIT is answered with nothing",
+            bot_index, target.entry
+        );
+    }
+    if options.loot_after_kill && outcome.target_death_seen && target.has_loot_template {
         let (money, items) = character_money_and_item_count_like_cpp(bot.character_guid)?;
         outcome.money_before = Some(money);
         outcome.inventory_items_before = Some(items);
@@ -711,7 +761,7 @@ pub(crate) async fn run_melee_smoke(
     info!(
         "[Bot {}] melee summary: attack_start={} player_landed={} ({} damage) avoided={} \
          creature_landed={} ({} damage) avoided={} resent={} death={} xp={} \
-         loot_coins={} loot_items={} money={:?}->{:?} inv={:?}->{:?}",
+         loot_coins={} loot_items={} money={:?}->{:?} inv={:?}->{:?} quest_credits={}",
         bot_index,
         outcome.attack_start_seen,
         outcome.player_swings_landed,
@@ -728,7 +778,8 @@ pub(crate) async fn run_melee_smoke(
         outcome.money_before,
         outcome.money_after,
         outcome.inventory_items_before,
-        outcome.inventory_items_after
+        outcome.inventory_items_after,
+        outcome.quest_credit_packets
     );
 
     if !outcome.attack_start_seen {
@@ -762,6 +813,8 @@ const CMSG_LOOT_ITEM: u16 = 0x3211;
 const CMSG_LOOT_RELEASE: u16 = 0x3213;
 /// SMSG_LOOT_RESPONSE.
 const SMSG_LOOT_RESPONSE: u16 = 0x2614;
+/// SMSG_QUEST_UPDATE_ADD_CREDIT.
+const SMSG_QUEST_UPDATE_ADD_CREDIT: u16 = 0x2A8C;
 
 /// One entry of a loot window: the id the client must quote back, and what it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

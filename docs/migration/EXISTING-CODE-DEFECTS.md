@@ -698,9 +698,40 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `Unit::MeleeSpellHitResult`.
 - [ ] **D-H3 Spell damage/heal uses raw base points.** No coefficient, crit, or resist.
   `session.rs:49014-49026`.
-- [ ] **D-H4 ⚠VERIFY Quest kill-credit (MONSTER objective) not wired.** No
-  `KilledMonster`→objective path found; "kill X" may be uncompletable. **Contested:** a
-  separate pass said monster/GO kills advance. Must verify on a live kill. `handlers/quest.rs`.
+- [x] **D-H4 Quest kill-credit — verified working on a live kill, 2026-10-01.** The contested
+  reading is settled in favour of "monster kills advance". Quest 14106 was seeded as
+  incomplete for the QA character (a fixture: the bot cannot take a quest from an NPC yet),
+  its MONSTER objective names entry 721, and killing a Rabbit published
+  `SMSG_QUEST_UPDATE_ADD_CREDIT` and moved `character_queststatus_objectives.data` from 0 to
+  1, persisted. Reproduce with `--loot-after-kill --melee-creature-entry 721`.
+
+  **One real gap was found and repaired while verifying it.** C++ `Player::KilledMonster`
+  (`Entities/Player/Player.cpp:16561-16571`) credits the creature's own entry **and** each
+  non-zero `CreatureTemplate::KillCredit`, each through `KilledMonsterCredit` with an empty
+  guid. RustyCore credited only the entry, so a "kill X" objective naming a credit proxy —
+  the usual shape when several creatures count for one objective — could never advance;
+  `creature_template.KillCredit1/2` was loaded for the client's creature query and read by
+  nothing else. The proxies are now expanded on the kill-reward path, which is C++'s single
+  `KilledMonster` caller (`Entities/Player/KillRewarder.cpp:181`), and the kill-credit spell
+  effect was corrected to the single-entry `KilledMonsterCredit` C++ uses there
+  (`Spells/SpellEffects.cpp:5437`).
+
+  **Named boundary:** a kill by spell damage passes no credit proxies, because the composition
+  root deliberately keeps the ObjectMgr query catalogs out of `WorldSession` — pinned by
+  `session_resources_requires_named_capability_bundles` — and that path has no catalog in
+  scope. Written on the call site rather than left silent.
+
+- [ ] **⚠VERIFY 2026-10-01, live: a critter melees the player back.** Observed while verifying
+  the kill credit: a Rabbit (entry 721, `creature_template.type = 8`
+  `CREATURE_TYPE_CRITTER`, faction 31) published 47 `SMSG_ATTACKER_STATE_UPDATE` against the
+  player over 120 seconds, 50 damage in total, after the player attacked it. **Not yet a
+  defect:** in this reference `ThreatManager::CanHaveThreatList`
+  (`Combat/ThreatManager.cpp:172-190`) does **not** exclude critters, and
+  `Creature::SelectVictim` reads the threat manager on that branch, so what is supposed to
+  keep a critter from swinging is its `REACT_PASSIVE` from
+  `Creature::InitializeReactState` plus whichever AI `FactorySelector::SelectAI` gives an
+  empty `AIName`. Check those three before concluding, and contrast with a capture: a critter
+  that fights back is wrong in the game, but the mechanism matters for the repair.
 - [ ] **D-H5 Quest area-trigger (explore) objectives not wired.** Type 10 falls to `_=>false`;
   "explore Y" uncompletable. `handlers/quest.rs:653`.
 - [ ] **D-H6 Quest item-loot objectives not credited.** Loot path doesn't advance "collect X"

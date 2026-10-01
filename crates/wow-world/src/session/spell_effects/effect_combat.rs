@@ -1519,8 +1519,18 @@ impl WorldSession {
                     mob_level,
                     reputation_rate,
                 );
-                self.on_creature_killed_with_generator_like_cpp(item_guid_generator, entry, guid)
-                    .await;
+                // C++ `KillRewarder` reaches `Player::KilledMonster`, which also
+                // credits the template's `KillCredit` proxies. This path has no
+                // ObjectMgr catalog in scope — the composition root keeps those
+                // out of `WorldSession` on purpose — so the proxies are not
+                // resolved for a spell-damage kill. Named, not silent.
+                self.on_creature_killed_with_generator_like_cpp(
+                    item_guid_generator,
+                    entry,
+                    guid,
+                    [0, 0],
+                )
+                .await;
                 #[cfg(test)]
                 self.record_represented_creature_kill_hooks_like_cpp(player_guid, guid);
             }
