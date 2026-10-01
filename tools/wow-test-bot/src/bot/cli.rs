@@ -119,6 +119,12 @@ pub(crate) struct CliOptions {
     pub(crate) loot_after_kill: bool,
     pub(crate) death_smoke: bool,
     pub(crate) death_smoke_timeout_secs: u64,
+    pub(crate) area_trigger_smoke: bool,
+    pub(crate) area_trigger_id: Option<u32>,
+    pub(crate) area_trigger_quest_id: Option<u32>,
+    pub(crate) area_trigger_map_id: u16,
+    pub(crate) area_trigger_at: Option<String>,
+    pub(crate) area_trigger_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
 }
 /// The post-login workflow modes that are exclusive with each other and with
@@ -170,6 +176,7 @@ pub(crate) fn any_exclusive_workflow_mode_selected(cli: &CliOptions) -> bool {
         || cli.loot_item_capture
         || cli.group_capacity_race_smoke
         || cli.quest_smoke
+        || cli.area_trigger_smoke
 }
 pub(crate) fn parse_cli() -> Result<CliOptions> {
     let stand_state = std::env::var("WOW_BOT_STAND_STATE")
@@ -605,6 +612,29 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(DEFAULT_DEATH_SMOKE_TIMEOUT_SECS),
+        area_trigger_smoke: std::env::var("WOW_BOT_AREA_TRIGGER_SMOKE")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        area_trigger_id: std::env::var("WOW_BOT_AREA_TRIGGER_ID")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?,
+        area_trigger_quest_id: std::env::var("WOW_BOT_AREA_TRIGGER_QUEST")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?,
+        area_trigger_map_id: std::env::var("WOW_BOT_AREA_TRIGGER_MAP")
+            .ok()
+            .map(|value| value.parse::<u16>())
+            .transpose()?
+            .unwrap_or(0),
+        area_trigger_at: std::env::var("WOW_BOT_AREA_TRIGGER_AT").ok(),
+        area_trigger_timeout_secs: std::env::var("WOW_BOT_AREA_TRIGGER_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_AREA_TRIGGER_SMOKE_TIMEOUT_SECS),
         report_path: std::env::var("WOW_BOT_REPORT").ok(),
     };
 
@@ -923,6 +953,24 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
                 opts.loot_after_kill = true;
             }
             "--death-smoke" => opts.death_smoke = true,
+            "--area-trigger" => {
+                opts.area_trigger_smoke = true;
+                opts.area_trigger_id = Some(next_arg(&mut args, "--area-trigger")?.parse()?);
+            }
+            "--area-trigger-quest" => {
+                opts.area_trigger_quest_id =
+                    Some(next_arg(&mut args, "--area-trigger-quest")?.parse()?);
+            }
+            "--area-trigger-at" => {
+                opts.area_trigger_at = Some(next_arg(&mut args, "--area-trigger-at")?);
+            }
+            "--area-trigger-map" => {
+                opts.area_trigger_map_id = next_arg(&mut args, "--area-trigger-map")?.parse()?;
+            }
+            "--area-trigger-timeout" => {
+                opts.area_trigger_timeout_secs =
+                    next_arg(&mut args, "--area-trigger-timeout")?.parse()?;
+            }
             "--death-timeout" => {
                 opts.death_smoke_timeout_secs = next_arg(&mut args, "--death-timeout")?.parse()?;
             }

@@ -72,6 +72,7 @@ pub(crate) async fn load_quest_area_trigger_store_like_cpp(
     area_trigger_db2_store: &wow_data::AreaTriggerDb2Store,
     quest_store: &wow_data::quest::QuestStore,
 ) -> Result<Arc<wow_data::QuestAreaTriggerStoreLikeCpp>> {
+    trace_requested_area_trigger_geometry_like_cpp(area_trigger_db2_store);
     let quest_rows = loaded_rows_like_cpp(persistence.load_quest_rows_like_cpp().await)
         .context("Failed to load C++ quest area triggers")?;
     let outcome = wow_data::QuestAreaTriggerStoreLikeCpp::from_rows_like_cpp(
@@ -96,6 +97,42 @@ pub(crate) async fn load_quest_area_trigger_store_like_cpp(
         report.skipped_obsolete_quest.len(),
     );
     Ok(Arc::new(outcome.store))
+}
+
+/// Report the loaded geometry of the area triggers named in
+/// `RUSTYCORE_AREA_TRIGGER_TRACE`, as a comma-separated list of ids.
+///
+/// `AreaTrigger.db2` is client data: it is not in any SQL table, and
+/// `hotfixes.area_trigger` is empty on this installation. QA therefore has no way
+/// to stand inside a trigger without asking the server where it loaded one, and
+/// guessing the coordinates would be inventing data. This is the operator seam
+/// that answers it, in the same spirit as `RUSTYCORE_LFG_TRACE`.
+fn trace_requested_area_trigger_geometry_like_cpp(store: &wow_data::AreaTriggerDb2Store) {
+    let Some(requested) = std::env::var_os("RUSTYCORE_AREA_TRIGGER_TRACE") else {
+        return;
+    };
+    for id in requested
+        .to_string_lossy()
+        .split(',')
+        .filter_map(|token| token.trim().parse::<u32>().ok())
+    {
+        match store.get(id) {
+            Some(entry) => tracing::info!(
+                id,
+                continent_id = entry.continent_id,
+                x = entry.pos.x,
+                y = entry.pos.y,
+                z = entry.pos.z,
+                radius = entry.radius,
+                box_length = entry.box_length,
+                box_width = entry.box_width,
+                box_height = entry.box_height,
+                box_yaw = entry.box_yaw,
+                "RUST_AREA_TRIGGER geometry"
+            ),
+            None => tracing::warn!(id, "RUST_AREA_TRIGGER geometry: not in AreaTrigger.db2"),
+        }
+    }
 }
 
 fn loaded_rows_like_cpp<T>(outcome: AreaTriggerWorldLoadOutcomeLikeCpp<T>) -> Result<Vec<T>> {

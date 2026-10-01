@@ -101,16 +101,20 @@ entry for why neither the wire nor the one masking consumer could show it.
 store was never composed, the handler had no quest block, and no flag-storing objective
 could read as complete. See the closed entry for each anchor.
 
+**The `CMSG_AREA_TRIGGER` mode is done too**, and quest 76 "The Jasperlode Mine" on trigger
+87 is proven live; it caught a wire divergence the scenario tests could not. Every objective
+type the M3/M4 exit needs — kill, item and explore — now has wire evidence.
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-give tools/wow-test-bot a `CMSG_AREA_TRIGGER` mode, then run quest 76 "The Jasperlode Mine"
-on trigger 87 live. It is the smallest remaining step that converts today's largest body of
-unproven work into wire evidence, and it unblocks the same acceptance for every other
-explore quest. It needs the trigger geometry, which lives in the client `AreaTrigger.db2`
-rather than in SQL, so the mode has to read the position the server already loaded. After
-that, the quest-objective lane's open items in evidence order are D-H17 (four objective
-types that cannot complete because the completion rule carries no live player state), D-M15
-(`QuestLogItemId` credited and put on the wire where the target build does neither) and the
-`NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
+**D-H17** — four objective types cannot complete because
+`represented_quest_objective_complete_like_cpp` is pure and C++
+`Player::IsQuestObjectiveComplete` asks the player for reputation, money, spells and
+currency (`Entities/Player/Player.cpp:16970-16998`). It is the last structural hole in the
+objective `match` after today's two repairs to it, the state it needs already has owners in
+the session, and the live acceptance has a shape that now works three times over: seed the
+objective, satisfy it, read `character_queststatus_objectives` back after a clean logout.
+After it, the lane's remaining items are D-M15 (`QuestLogItemId` credited and put on the wire
+where the target build does neither) and the `NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
 
 ## 1. Direction from here
 
