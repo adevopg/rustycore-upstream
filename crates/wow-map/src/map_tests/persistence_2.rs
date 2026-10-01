@@ -751,3 +751,148 @@ fn grid_id_loaded_uses_cpp_public_grid_id_decomposition() {
 
     assert!(is_grid_id_loaded(&map, 3 * MAX_NUMBER_OF_GRIDS + 2));
 }
+#[test]
+fn corpse_by_player_finds_the_live_corpse_and_never_bones_like_cpp() {
+    // C++ `Map::AddCorpse` (`Maps/Map.cpp:3713-3716`) enters a non-bones corpse
+    // in `_corpsesByPlayer` and sends bones to `_corpseBones` instead, so
+    // `Map::GetCorpseByPlayer` (`Maps/Map.h:437`) answers only for a corpse that
+    // can still be reclaimed.
+    let mut map = Map::new(571, 0, 0, 60_000);
+    let owner = ObjectGuid::create_player(1, 7);
+    let position = Position::new(10.0, 20.0, 30.0, 1.5);
+    let cell = Cell::from_world(position.x, position.y);
+    assert!(map.ensure_grid_loaded(&cell));
+
+    let mut bones = Corpse::new_at(CorpseType::Bones, 1_000);
+    bones
+        .world_mut()
+        .object_mut()
+        .create(ObjectGuid::create_world_object(
+            HighGuid::Corpse,
+            0,
+            1,
+            571,
+            0,
+            0,
+            1,
+        ));
+    bones.world_mut().set_map(571, 0).unwrap();
+    bones.world_mut().relocate(position);
+    bones.set_owner_guid(owner);
+    map.register_loaded_corpse_like_cpp(bones).unwrap();
+    assert!(
+        map.corpse_by_player_like_cpp(owner).is_none(),
+        "bones are deliberately unreachable through this lookup"
+    );
+
+    let live_guid = ObjectGuid::create_world_object(HighGuid::Corpse, 0, 1, 571, 0, 0, 2);
+    let mut live = Corpse::new_at(CorpseType::ResurrectablePve, 2_000);
+    live.world_mut().object_mut().create(live_guid);
+    live.world_mut().set_map(571, 0).unwrap();
+    live.world_mut().relocate(position);
+    live.set_owner_guid(owner);
+    map.register_loaded_corpse_like_cpp(live).unwrap();
+
+    let found = map
+        .corpse_by_player_like_cpp(owner)
+        .expect("the live corpse must be reachable by its owner");
+    assert_eq!(found.world().object().guid(), live_guid);
+    assert_eq!(found.ghost_time(), 2_000);
+
+    // An owner with nothing on this map gets no answer.
+    assert!(
+        map.corpse_by_player_like_cpp(ObjectGuid::create_player(1, 8))
+            .is_none()
+    );
+}
+
+#[test]
+fn convert_corpse_to_bones_copies_the_cpp_fields_and_retires_the_corpse_like_cpp() {
+    // C++ `Map::ConvertCorpseToBones` (`Maps/Map.cpp:3739-3794`).
+    let mut map = Map::new(571, 0, 0, 60_000);
+    let owner = ObjectGuid::create_player(1, 11);
+    let party = ObjectGuid::create_player(1, 12);
+    let guild = ObjectGuid::create_player(1, 13);
+    let position = Position::new(10.0, 20.0, 30.0, 1.5);
+    let cell = Cell::from_world(position.x, position.y);
+    assert!(map.ensure_grid_loaded(&cell));
+
+    let corpse_guid = ObjectGuid::create_world_object(HighGuid::Corpse, 0, 1, 571, 0, 0, 21);
+    let mut corpse = Corpse::new_at(CorpseType::ResurrectablePve, 3_000);
+    corpse.world_mut().object_mut().create(corpse_guid);
+    corpse.world_mut().set_map(571, 0).unwrap();
+    corpse.world_mut().relocate(position);
+    corpse.set_owner_guid(owner);
+    corpse.set_party_guid(party);
+    corpse.set_guild_guid(guild);
+    corpse.set_display_id(4321);
+    corpse.set_race(1);
+    corpse.set_class(2);
+    corpse.set_sex(1);
+    corpse.set_faction_template(35);
+    corpse.replace_all_corpse_dynamic_flags(wow_entities::CORPSE_DYNFLAG_LOOTABLE);
+    corpse.set_cell_coord(cell.cell_x(), cell.cell_y());
+    assert!(map.register_loaded_corpse_like_cpp(corpse).unwrap());
+
+    let outcome = map
+        .convert_corpse_to_bones_like_cpp(owner, true)
+        .expect("a live corpse must convert");
+    assert_eq!(outcome.removed_corpse_guid, corpse_guid);
+    let bones_guid = outcome.bones_guid.expect("bones must be created");
+    assert_eq!(
+        bones_guid, corpse_guid,
+        "C++ builds the bones on the removed corpse's own counter (`Maps/Map.cpp:3762`)"
+    );
+
+    // What stands there is bones now, so the owner has no reclaimable corpse.
+    assert!(map.corpse_by_player_like_cpp(owner).is_none());
+
+    let bones = map
+        .get_typed_corpse(bones_guid)
+        .expect("the bones must be registered on the map");
+    assert_eq!(bones.corpse_type(), CorpseType::Bones);
+    assert_eq!(bones.data().owner, owner);
+    assert_eq!(bones.data().party_guid, party);
+    assert_eq!(bones.data().guild_guid, guild);
+    assert_eq!(bones.data().display_id, 4321);
+    assert_eq!(bones.data().race_id, 1);
+    assert_eq!(bones.data().class, 2);
+    assert_eq!(bones.data().sex, 1);
+    assert_eq!(bones.data().faction_template, 35);
+    assert_eq!(
+        bones.data().dynamic_flags,
+        wow_entities::CORPSE_DYNFLAG_LOOTABLE
+    );
+    assert_eq!(bones.data().flags, wow_entities::CORPSE_FLAG_BONES_LIKE_CPP);
+    assert_eq!(bones.world().position(), position);
+    assert_eq!(bones.cell_coord(), Some((cell.cell_x(), cell.cell_y())));
+
+    // A second conversion has nothing left to convert.
+    assert!(map.convert_corpse_to_bones_like_cpp(owner, true).is_none());
+}
+
+#[test]
+fn convert_corpse_to_bones_without_the_config_leaves_no_bones_like_cpp() {
+    // C++ `:3756-3758` creates bones only when the configuration allows them;
+    // the corpse is removed either way.
+    let mut map = Map::new(571, 0, 0, 60_000);
+    let owner = ObjectGuid::create_player(1, 14);
+    let position = Position::new(10.0, 20.0, 30.0, 1.5);
+    let cell = Cell::from_world(position.x, position.y);
+    assert!(map.ensure_grid_loaded(&cell));
+
+    let corpse_guid = ObjectGuid::create_world_object(HighGuid::Corpse, 0, 1, 571, 0, 0, 31);
+    let mut corpse = Corpse::new_at(CorpseType::ResurrectablePve, 4_000);
+    corpse.world_mut().object_mut().create(corpse_guid);
+    corpse.world_mut().set_map(571, 0).unwrap();
+    corpse.world_mut().relocate(position);
+    corpse.set_owner_guid(owner);
+    assert!(map.register_loaded_corpse_like_cpp(corpse).unwrap());
+
+    let outcome = map
+        .convert_corpse_to_bones_like_cpp(owner, false)
+        .expect("a live corpse must still be removed");
+    assert_eq!(outcome.removed_corpse_guid, corpse_guid);
+    assert!(outcome.bones_guid.is_none());
+    assert!(map.corpse_by_player_like_cpp(owner).is_none());
+}

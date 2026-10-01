@@ -5204,6 +5204,7 @@ async fn run_inner(
                 "CONFIG_INTERVAL_SAVE",
                 15 * 60 * 1000,
             ),
+            death_corpse_config: death_corpse_config_like_cpp(&world_configs),
         },
         realm: SessionRealmCapabilitiesLikeCpp {
             realm_id,

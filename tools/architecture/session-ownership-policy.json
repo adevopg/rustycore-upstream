@@ -5446,6 +5446,13 @@
           "visibility": "private",
           "cfg": [],
           "source_class": "production"
+        },
+        {
+          "name": "death_corpse_config_like_cpp",
+          "type": "combat :: DeathCorpseConfigLikeCpp",
+          "visibility": "private",
+          "cfg": [],
+          "source_class": "production"
         }
       ],
       "impls": [
@@ -59712,6 +59719,85 @@
           "cfg": [],
           "source_class": "production",
           "guards": []
+        },
+        {
+          "module": "crate::handlers::misc",
+          "trait_path": null,
+          "kind": "method",
+          "name": "canonical_player_live_corpse_like_cpp",
+          "visibility": "private",
+          "signature": "fn canonical_player_live_corpse_like_cpp (& self ,) -> Option < (wow_core :: ObjectGuid , wow_core :: Position , i64 , wow_entities :: CorpseType ,) >",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl"
+          ]
+        },
+        {
+          "module": "crate::handlers::misc",
+          "trait_path": null,
+          "kind": "method",
+          "name": "death_expire_time_secs_like_cpp",
+          "visibility": "private",
+          "signature": "const fn death_expire_time_secs_like_cpp (& self) -> i64",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl"
+          ]
+        },
+        {
+          "module": "crate::handlers::misc",
+          "trait_path": null,
+          "kind": "method",
+          "name": "spawn_corpse_bones_like_cpp",
+          "visibility": "private",
+          "signature": "async fn spawn_corpse_bones_like_cpp (& mut self) -> bool",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "external_impl"
+          ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "canonical_player_position_snapshot_like_cpp",
+          "visibility": "pub (crate)",
+          "signature": "fn canonical_player_position_snapshot_like_cpp (& self) -> Option < wow_core :: Position >",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "death_corpse_config_like_cpp",
+          "visibility": "pub (crate)",
+          "signature": "const fn death_corpse_config_like_cpp (& self) -> DeathCorpseConfigLikeCpp",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "visible"
+          ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "set_death_corpse_config_like_cpp",
+          "visibility": "pub",
+          "signature": "fn set_death_corpse_config_like_cpp (& mut self , config : DeathCorpseConfigLikeCpp)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "setter",
+            "visible"
+          ]
         }
       ]
     },

@@ -18,6 +18,7 @@ mod driver;
 mod lifecycle;
 pub use lifecycle::PlayerSaveOutcomeLikeCpp;
 mod combat;
+pub use combat::DeathCorpseConfigLikeCpp;
 mod effect_learning;
 mod instances;
 mod legacy_runtime;
@@ -7086,6 +7087,7 @@ pub struct WorldSession {
     watched_faction_index_like_cpp: i32,
     /// C++ `CONFIG_ENABLE_AE_LOOT` represented switch.
     enable_ae_loot_like_cpp: bool,
+    death_corpse_config_like_cpp: combat::DeathCorpseConfigLikeCpp,
     /// C++ `CONFIG_ADDON_CHANNEL` represented switch.
     #[cfg(test)]
     addon_channel_like_cpp: bool,
@@ -8896,6 +8898,7 @@ impl WorldSession {
             #[cfg(test)]
             watched_faction_index_like_cpp: -1,
             enable_ae_loot_like_cpp: false,
+            death_corpse_config_like_cpp: combat::DeathCorpseConfigLikeCpp::default(),
             #[cfg(test)]
             addon_channel_like_cpp: true,
             #[cfg(test)]

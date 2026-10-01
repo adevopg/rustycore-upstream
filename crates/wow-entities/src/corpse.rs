@@ -29,6 +29,12 @@ pub const CORPSE_DATA_ITEMS_FIRST_BIT: usize = 13;
 
 pub const CORPSE_DYNFLAG_LOOTABLE: u32 = 0x0001;
 
+/// C++ `CorpseFlags::CORPSE_FLAG_BONES` (`Entities/Corpse/Corpse.h:42`).
+pub const CORPSE_FLAG_BONES_LIKE_CPP: u32 = 0x01;
+
+/// C++ `CORPSE_RECLAIM_RADIUS` (`Entities/Corpse/Corpse.h:37`).
+pub const CORPSE_RECLAIM_RADIUS_LIKE_CPP: f32 = 39.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CorpseType {
@@ -272,6 +278,12 @@ impl Corpse {
         self.set_u32_field(CORPSE_DATA_FLAGS_BIT, flags, |data| &mut data.flags);
     }
 
+    /// C++ `Corpse::ReplaceAllFlags` (used by `Map::ConvertCorpseToBones`,
+    /// `Maps/Map.cpp:3773`, to stamp `CORPSE_FLAG_BONES` onto the copy).
+    pub fn replace_all_flags_like_cpp(&mut self, flags: u32) {
+        self.set_u32_field(CORPSE_DATA_FLAGS_BIT, flags, |data| &mut data.flags);
+    }
+
     pub fn set_faction_template(&mut self, faction_template: i32) {
         self.set_i32_field(CORPSE_DATA_FACTION_TEMPLATE_BIT, faction_template, |data| {
             &mut data.faction_template
@@ -385,6 +397,11 @@ impl Corpse {
         self.corpse_data_changes.set(parent_bit);
         self.corpse_data_changes.set(first_element_bit + index);
     }
+}
+
+/// C++ `GameTime::GetGameTime` as the corpse subsystem reads it.
+pub fn corpse_unix_now_secs_like_cpp() -> i64 {
+    unix_now_secs()
 }
 
 fn unix_now_secs() -> i64 {

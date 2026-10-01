@@ -217,6 +217,17 @@ pub trait MapCorpsePersistencePortLikeCpp: Send + Sync {
         &'a self,
         row: MapCorpseSaveRowLikeCpp,
     ) -> PersistenceFutureLikeCpp<'a, MapCorpseSaveOutcomeLikeCpp>;
+
+    /// C++ `Corpse::DeleteFromDB` as `Map::ConvertCorpseToBones` calls it
+    /// (`Maps/Map.cpp:3748-3750`): one transaction dropping the owner's corpse,
+    /// phase and customization rows, so a corpse that became bones cannot be
+    /// loaded again after a restart. It is the delete half of
+    /// `persist_corpse_like_cpp`'s upsert, keyed the same way — by the OWNER's
+    /// guid counter.
+    fn delete_corpse_like_cpp<'a>(
+        &'a self,
+        owner_guid: u64,
+    ) -> PersistenceFutureLikeCpp<'a, MapCorpseSaveOutcomeLikeCpp>;
 }
 
 /// The corpse state C++ `Corpse::SaveToDB` binds to `CHAR_INS_CORPSE`, in the

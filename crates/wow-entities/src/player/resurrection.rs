@@ -92,3 +92,44 @@ mod tests {
         assert!(player.resurrection_state_like_cpp().death_timer_active);
     }
 }
+
+/// C++ `copseReclaimDelay` (`Entities/Player/Player.cpp:141`) — the spelling is
+/// the server's own.
+pub const CORPSE_RECLAIM_DELAY_SECS_LIKE_CPP: [u32; MAX_DEATH_COUNT_LIKE_CPP] = [30, 60, 120];
+
+/// C++ `MAX_DEATH_COUNT` (`Entities/Player/Player.cpp:139`).
+pub const MAX_DEATH_COUNT_LIKE_CPP: usize = 3;
+
+/// C++ `DEATH_EXPIRE_STEP` (`Entities/Player/Player.cpp:138`), five minutes.
+pub const DEATH_EXPIRE_STEP_SECS_LIKE_CPP: i64 = 5 * 60;
+
+/// C++ `Player::GetCorpseReclaimDelay` (`Entities/Player/Player.cpp:25297-25312`).
+///
+/// `pvp` selects which configuration flag decides whether the delay escalates at
+/// all; with the flag off, a PvP death falls back to the first step and a PvE
+/// death has no delay. `death_expire_time` is C++ `m_deathExpireTime`, and the
+/// count is deliberately `ceil(x) - 1` rather than `floor(x)` — the `- 1` on the
+/// expire time is the comment's own correction, kept here verbatim.
+pub fn corpse_reclaim_delay_secs_like_cpp(
+    pvp: bool,
+    pvp_delay_enabled: bool,
+    pve_delay_enabled: bool,
+    now_secs: i64,
+    death_expire_time_secs: i64,
+) -> u32 {
+    if pvp {
+        if !pvp_delay_enabled {
+            return CORPSE_RECLAIM_DELAY_SECS_LIKE_CPP[0];
+        }
+    } else if !pve_delay_enabled {
+        return 0;
+    }
+
+    let count = if now_secs < death_expire_time_secs - 1 {
+        (death_expire_time_secs - 1 - now_secs) / DEATH_EXPIRE_STEP_SECS_LIKE_CPP
+    } else {
+        0
+    };
+    let count = usize::try_from(count).unwrap_or(0);
+    CORPSE_RECLAIM_DELAY_SECS_LIKE_CPP[count.min(MAX_DEATH_COUNT_LIKE_CPP - 1)]
+}

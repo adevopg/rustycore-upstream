@@ -445,6 +445,99 @@ impl crate::session::WorldSession {
         )
     }
 
+    /// C++ `Player::GetCorpse` (`Entities/Player/Player.cpp:4421`), which is
+    /// `Map::GetCorpseByPlayer` on the player's own map. Returns the corpse guid,
+    /// its position, its ghost time and its type, which is everything
+    /// `HandleReclaimCorpse` reads from it.
+    fn canonical_player_live_corpse_like_cpp(
+        &self,
+    ) -> Option<(
+        wow_core::ObjectGuid,
+        wow_core::Position,
+        i64,
+        wow_entities::CorpseType,
+    )> {
+        let player_guid = self.player_guid()?;
+        let map_key = self.current_canonical_player_map_key_like_cpp()?;
+        let manager = self.canonical_map_manager.as_ref()?;
+        let mut manager = manager.lock().ok()?;
+        let managed = manager.find_map_mut(map_key.map_id, map_key.instance_id)?;
+        let corpse = managed.map().corpse_by_player_like_cpp(player_guid)?;
+        Some((
+            corpse.world().object().guid(),
+            corpse.world().position(),
+            corpse.ghost_time(),
+            corpse.corpse_type(),
+        ))
+    }
+
+    /// C++ `m_deathExpireTime`, the escalating-death window
+    /// `Player::GetCorpseReclaimDelay` reads.
+    ///
+    /// **Scope contract.** Its only writer in C++ is
+    /// `Player::UpdateCorpseReclaimDelay`, called from `Player::KillPlayer`
+    /// (`Entities/Player/Player.cpp:4327`). RustyCore has no `KillPlayer`
+    /// equivalent yet — a player dies where the runtime applies lethal damage —
+    /// so the window is reported as unset here. That is exactly what C++
+    /// computes for a player whose previous death is more than
+    /// `DEATH_EXPIRE_STEP` ago: `count = 0`, the first 30-second step. The
+    /// escalation to 60 and 120 seconds for repeated deaths inside five minutes
+    /// belongs to whoever ports `KillPlayer`, and is not invented here.
+    const fn death_expire_time_secs_like_cpp(&self) -> i64 {
+        0
+    }
+
+    /// C++ `Player::SpawnCorpseBones` (`Entities/Player/Player.cpp:4413-4419`),
+    /// which is `Map::ConvertCorpseToBones` plus the save that stops the player
+    /// loading as a ghost without a corpse.
+    ///
+    /// The corpse row delete that C++ runs inside `ConvertCorpseToBones`
+    /// (`Maps/Map.cpp:3748-3750`) happens here, because the map holds no database
+    /// handle. `SaveToDB` is not issued: the represented resurrection already
+    /// writes the health the player reloads with.
+    async fn spawn_corpse_bones_like_cpp(&mut self) -> bool {
+        let Some(player_guid) = self.player_guid() else {
+            return false;
+        };
+        let Some(map_key) = self.current_canonical_player_map_key_like_cpp() else {
+            return false;
+        };
+        let config = self.death_corpse_config_like_cpp();
+        // C++ picks the flag by map kind (`Maps/Map.cpp:3757`). Battlegrounds and
+        // arenas are not represented as maps yet, so the world flag decides.
+        let create_bones = config.bones_world;
+        let outcome = {
+            let Some(manager) = self.canonical_map_manager.as_ref().cloned() else {
+                return false;
+            };
+            let Ok(mut manager) = manager.lock() else {
+                return false;
+            };
+            let Some(managed) = manager.find_map_mut(map_key.map_id, map_key.instance_id) else {
+                return false;
+            };
+            managed
+                .map_mut()
+                .convert_corpse_to_bones_like_cpp(player_guid, create_bones)
+        };
+        let Some(outcome) = outcome else {
+            return false;
+        };
+        let Some(port) = self
+            .map_corpse_persistence_port_like_cpp()
+            .map(std::sync::Arc::clone)
+        else {
+            return outcome.bones_guid.is_some();
+        };
+        let Ok(owner_guid) = u64::try_from(player_guid.counter()) else {
+            return outcome.bones_guid.is_some();
+        };
+        matches!(
+            port.delete_corpse_like_cpp(owner_guid).await,
+            wow_persistence::MapCorpseSaveOutcomeLikeCpp::Saved
+        )
+    }
+
     /// CMSG_REPOP_REQUEST — release spirit.
     /// C++ ref: `WorldSession::HandleRepopRequest`.
 
@@ -556,10 +649,58 @@ impl crate::session::WorldSession {
             return;
         }
 
-        // C++ checks arena, live corpse existence, reclaim delay, and distance
-        // before `ResurrectPlayer(0.5f)` + `SpawnCorpseBones`. Those require the
-        // full player-corpse runtime; this represented slice only clears the
-        // ghost/dead state when the already-known C++ gates pass.
+        // C++ `HandleReclaimCorpse` (`Handlers/MiscHandler.cpp:435-464`) also
+        // refuses in an arena. Arenas are not represented at all, so there is
+        // nothing to test; the battleground flag must NOT stand in for it,
+        // because C++ allows a battleground reclaim and blocks only an arena.
+
+        // Body not released yet is already handled above by the ghost flag.
+        let Some((_corpse_guid, corpse_position, ghost_time, corpse_type)) =
+            self.canonical_player_live_corpse_like_cpp()
+        else {
+            // C++ `if (!corpse) return;` (`:449-450`). A corpse that already
+            // became bones is deliberately unreachable through
+            // `Map::GetCorpseByPlayer`, so this is also the "already reclaimed"
+            // answer.
+            return;
+        };
+
+        // C++ `:452-454`: the 30-second delay after the body is released.
+        let now_secs = crate::session::unix_now_like_cpp();
+        let config = self.death_corpse_config_like_cpp();
+        let delay_secs = wow_entities::corpse_reclaim_delay_secs_like_cpp(
+            corpse_type == wow_entities::CorpseType::ResurrectablePvp,
+            config.corpse_reclaim_delay_pvp,
+            config.corpse_reclaim_delay_pve,
+            now_secs,
+            self.death_expire_time_secs_like_cpp(),
+        );
+        if ghost_time.saturating_add(i64::from(delay_secs)) > now_secs {
+            return;
+        }
+
+        // C++ `:456-457`: `IsWithinDistInMap(_player, CORPSE_RECLAIM_RADIUS, true)`.
+        // `WorldObject::_IsWithinDist` (`Entities/Object/Object.cpp:1066-1086`)
+        // adds both combat reaches to the compared distance, and a Corpse is not
+        // a Unit, so only the player's reach contributes. The compared position
+        // is the Player object's own, which is also where `Corpse::Create` put
+        // the corpse, so both sides of this gate read the same authority.
+        let Some(player_position) = self
+            .canonical_player_position_snapshot_like_cpp()
+            .or_else(|| self.player_position_like_cpp())
+        else {
+            return;
+        };
+        let reach = self.canonical_player_combat_reach_snapshot_like_cpp();
+        if !crate::session_rules::position_is_in_dist_strict_3d_like_cpp(
+            &player_position,
+            &corpse_position,
+            wow_entities::CORPSE_RECLAIM_RADIUS_LIKE_CPP + reach,
+        ) {
+            return;
+        }
+
+        // C++ `:460`: resurrect at half health outside a battleground.
         self.set_player_ghost_flag_like_cpp(false);
         let restore_percent = if self.player_in_represented_battleground_like_cpp() {
             1.0
@@ -567,5 +708,7 @@ impl crate::session::WorldSession {
             0.5
         };
         self.apply_represented_resurrection_percent_like_cpp(restore_percent);
+        // C++ `:463`: the corpse becomes bones, so it cannot be reclaimed twice.
+        self.spawn_corpse_bones_like_cpp().await;
     }
 }

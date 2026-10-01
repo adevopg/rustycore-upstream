@@ -366,6 +366,15 @@ impl WorldSession {
     /// Resolving the GUID and map key is the only session-local part; the read
     /// itself is the placement-addressed accessor a remote reader uses too
     /// (#252), so one player's canonical state cannot be reached two ways.
+    /// The Player object's own position, which C++ reads straight off
+    /// `WorldObject` whenever it compares a distance to the player
+    /// (`Entities/Object/Object.cpp:1066-1086`). Exposed outside
+    /// `crate::session` because the corpse handler's reclaim radius must compare
+    /// against the same authority that placed the corpse.
+    pub(crate) fn canonical_player_position_snapshot_like_cpp(&self) -> Option<wow_core::Position> {
+        self.canonical_player_snapshot_like_cpp(|player| player.unit().world().position())
+    }
+
     pub(in crate::session) fn canonical_player_snapshot_like_cpp<R>(
         &self,
         f: impl FnOnce(&Player) -> R,

@@ -74,6 +74,13 @@ pub(crate) fn create_player_corpse_on_map_like_cpp(
         return None;
     }
     corpse.world_mut().relocate(position);
+    // C++ `Corpse::Create(guidlow, owner)` (`Entities/Corpse/Corpse.cpp:84-89`)
+    // stamps the owner before anything else reads the corpse. Without it the
+    // corpse existed but was unreachable: C++ `Map::GetCorpseByPlayer` keys
+    // `_corpsesByPlayer` on exactly this field (`Maps/Map.cpp:3714`), so every
+    // consumer that starts from the dead player — corpse reclaim above all —
+    // found nothing.
+    corpse.set_owner_guid(player_guid);
     corpse.set_race(race);
     corpse.set_class(class);
     corpse.set_sex(gender);

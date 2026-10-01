@@ -68,8 +68,10 @@ pub use corpse::{
     CORPSE_DATA_FLAGS_BIT, CORPSE_DATA_GUILD_GUID_BIT, CORPSE_DATA_ITEMS_FIRST_BIT,
     CORPSE_DATA_ITEMS_PARENT_BIT, CORPSE_DATA_OWNER_BIT, CORPSE_DATA_PARENT_BIT,
     CORPSE_DATA_PARTY_GUID_BIT, CORPSE_DATA_RACE_ID_BIT, CORPSE_DATA_SEX_BIT,
-    CORPSE_DYNFLAG_LOOTABLE, CORPSE_ITEMS, CORPSE_RESURRECTABLE_EXPIRE_SECS, Corpse,
+    CORPSE_DYNFLAG_LOOTABLE, CORPSE_FLAG_BONES_LIKE_CPP, CORPSE_ITEMS,
+    CORPSE_RECLAIM_RADIUS_LIKE_CPP, CORPSE_RESURRECTABLE_EXPIRE_SECS, Corpse,
     CorpseCustomizationChoice, CorpseDataUpdate, CorpseDataValues, CorpseType, CorpseValuesUpdate,
+    corpse_unix_now_secs_like_cpp,
 };
 pub use creature::{
     CREATURE_NOPATH_EVADE_TIME_MS, CREATURE_REGEN_INTERVAL_MS, CREATURE_TAPPERS_SOFT_CAP, Creature,
@@ -281,6 +283,10 @@ pub use player::{
     item_resistance_bonus_actions_like_cpp, item_scaling_stat_bonus_actions_like_cpp,
     item_shield_block_bonus_action_like_cpp, item_stat_bonus_actions_like_cpp,
     item_weapon_damage_actions_like_cpp, make_item_pos, parse_explored_zones_db_string_like_cpp,
+};
+pub use player::{
+    CORPSE_RECLAIM_DELAY_SECS_LIKE_CPP, DEATH_EXPIRE_STEP_SECS_LIKE_CPP, MAX_DEATH_COUNT_LIKE_CPP,
+    corpse_reclaim_delay_secs_like_cpp,
 };
 pub use player_gameplay_state::{
     PlayerAccountHeirloomDataLikeCpp, PlayerCollectionStateLikeCpp, PlayerCurrency,

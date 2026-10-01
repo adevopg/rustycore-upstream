@@ -71,6 +71,10 @@ mod group_membership;
 mod load_hydration;
 mod recent_instances;
 mod resurrection;
+pub use resurrection::{
+    CORPSE_RECLAIM_DELAY_SECS_LIKE_CPP, DEATH_EXPIRE_STEP_SECS_LIKE_CPP, MAX_DEATH_COUNT_LIKE_CPP,
+    corpse_reclaim_delay_secs_like_cpp,
+};
 mod save_ack;
 mod scalar_transitions;
 pub use save_ack::{PlayerSaveAcknowledgementLikeCpp, PlayerSavedGroupsLikeCpp};

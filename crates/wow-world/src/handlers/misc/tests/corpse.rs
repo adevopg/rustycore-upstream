@@ -380,12 +380,85 @@ async fn client_port_graveyard_alive_or_not_ghost_returns_like_cpp() {
     );
 }
 
+/// Seed a dead ghost with a real corpse where it died, the way
+/// `handle_repop_request` leaves it, and return the player guid.
+async fn dead_ghost_with_its_own_corpse_like_cpp(
+    session: &mut crate::session::WorldSession,
+    canonical: &crate::SharedCanonicalMapManager,
+    player_guid: ObjectGuid,
+    position: Position,
+) {
+    session.set_player_guid(Some(player_guid));
+    session.set_loaded_player_identity_like_cpp(571, 1, 1, 80, 0);
+    session.set_canonical_map_manager(Arc::clone(canonical));
+    add_canonical_test_player_on_map_for_misc_test(canonical, player_guid, position, 571, 0);
+    session.set_player_alive_like_cpp(false);
+    session.set_player_ghost_flag_like_cpp(true);
+    let _ = session.sync_canonical_player_health_like_cpp(0, 100);
+    session
+        .create_player_corpse_for_repop_like_cpp()
+        .expect("a dead player must produce a corpse");
+}
+
+/// C++ `WorldSession::HandleReclaimCorpse` (`Handlers/MiscHandler.cpp:435-464`)
+/// resurrects at half health, and only then.
+///
+/// This test previously asserted that a ghost with **no corpse at all**
+/// resurrects. That is the opposite of the C++ handler, which returns at
+/// `:449-450` when `Player::GetCorpse` finds nothing, and it is why a released
+/// spirit could rez instantly, anywhere, without the corpse run. Rewritten
+/// against the source: the ghost now has the corpse `BuildPlayerRepop` leaves
+/// behind, and the reclaim delay is the one the shipped
+/// `worldserver.conf.dist` configures for a PvE death
+/// (`Death.CorpseReclaimDelay.PvE = 0`), so there is nothing to wait for.
 #[tokio::test]
-async fn reclaim_corpse_dead_ghost_resurrects_and_clears_ghost_like_cpp() {
+async fn reclaim_corpse_at_its_own_corpse_resurrects_at_half_health_like_cpp() {
     let (mut session, send_rx) = make_session();
     let canonical = shared_canonical_map_manager_for_misc_test();
     let player_guid = ObjectGuid::create_player(1, 44);
-    let corpse_guid = ObjectGuid::create_world_object(HighGuid::Corpse, 0, 1, 571, 0, 0, 99);
+    session.set_death_corpse_config_like_cpp(crate::session::DeathCorpseConfigLikeCpp {
+        corpse_reclaim_delay_pve: false,
+        ..Default::default()
+    });
+    dead_ghost_with_its_own_corpse_like_cpp(
+        &mut session,
+        &canonical,
+        player_guid,
+        Position::new(1.0, 2.0, 3.0, 0.0),
+    )
+    .await;
+
+    session
+        .handle_reclaim_corpse(reclaim_corpse_packet(player_guid))
+        .await;
+
+    assert!(session.player_is_alive_like_cpp());
+    assert!(!session.player_has_ghost_flag_like_cpp());
+    assert_eq!(
+        session.canonical_player_health_snapshot_like_cpp(),
+        Some((50, 100))
+    );
+    // C++ `:463` turns the corpse into bones, and `Map::AddCorpse`
+    // (`Maps/Map.cpp:3713-3716`) keeps bones out of `_corpsesByPlayer`, so a
+    // second reclaim finds nothing.
+    {
+        let manager = canonical.lock().unwrap();
+        let map = manager.find_map(571, 0).expect("seeded map").map();
+        assert!(
+            map.corpse_by_player_like_cpp(player_guid).is_none(),
+            "a reclaimed corpse must no longer be reachable as a live corpse"
+        );
+    }
+    assert!(send_rx.try_recv().is_err());
+}
+
+/// C++ `:449-450`: no corpse, no resurrection. This is the state the previous
+/// test asserted was a success.
+#[tokio::test]
+async fn reclaim_corpse_without_a_corpse_refuses_like_cpp() {
+    let (mut session, _send_rx) = make_session();
+    let canonical = shared_canonical_map_manager_for_misc_test();
+    let player_guid = ObjectGuid::create_player(1, 144);
     session.set_player_guid(Some(player_guid));
     session.set_loaded_player_identity_like_cpp(571, 1, 1, 80, 0);
     session.set_canonical_map_manager(Arc::clone(&canonical));
@@ -401,16 +474,97 @@ async fn reclaim_corpse_dead_ghost_resurrects_and_clears_ghost_like_cpp() {
     let _ = session.sync_canonical_player_health_like_cpp(0, 100);
 
     session
-        .handle_reclaim_corpse(reclaim_corpse_packet(corpse_guid))
+        .handle_reclaim_corpse(reclaim_corpse_packet(player_guid))
         .await;
 
-    assert!(session.player_is_alive_like_cpp());
-    assert!(!session.player_has_ghost_flag_like_cpp());
-    assert_eq!(
-        session.canonical_player_health_snapshot_like_cpp(),
-        Some((50, 100))
+    assert!(!session.player_is_alive_like_cpp());
+    assert!(session.player_has_ghost_flag_like_cpp());
+}
+
+/// C++ `:452-454`: the corpse cannot be reclaimed until
+/// `GetGhostTime() + GetCorpseReclaimDelay()` has passed. With the code default
+/// for `Death.CorpseReclaimDelay.PvE` that is the first 30-second step
+/// (`copseReclaimDelay[0]`, `Entities/Player/Player.cpp:141`), so a reclaim in
+/// the same instant is refused.
+#[tokio::test]
+async fn reclaim_corpse_before_the_delay_refuses_like_cpp() {
+    let (mut session, _send_rx) = make_session();
+    let canonical = shared_canonical_map_manager_for_misc_test();
+    let player_guid = ObjectGuid::create_player(1, 145);
+    assert!(
+        crate::session::DeathCorpseConfigLikeCpp::default().corpse_reclaim_delay_pve,
+        "the C++ code default enables the PvE reclaim delay"
     );
-    assert!(send_rx.try_recv().is_err());
+    dead_ghost_with_its_own_corpse_like_cpp(
+        &mut session,
+        &canonical,
+        player_guid,
+        Position::new(1.0, 2.0, 3.0, 0.0),
+    )
+    .await;
+
+    session
+        .handle_reclaim_corpse(reclaim_corpse_packet(player_guid))
+        .await;
+
+    assert!(!session.player_is_alive_like_cpp());
+    assert!(session.player_has_ghost_flag_like_cpp());
+    let manager = canonical.lock().unwrap();
+    let map = manager.find_map(571, 0).expect("seeded map").map();
+    assert!(
+        map.corpse_by_player_like_cpp(player_guid).is_some(),
+        "a refused reclaim must leave the corpse alone"
+    );
+}
+
+/// C++ `:456-457`: the corpse must be within `CORPSE_RECLAIM_RADIUS`
+/// (`Entities/Corpse/Corpse.h:37`). The ghost is teleported to a graveyard by
+/// `RepopAtGraveyard`, so the corpse run is what this gate enforces.
+#[tokio::test]
+async fn reclaim_corpse_away_from_the_corpse_refuses_like_cpp() {
+    let (mut session, _send_rx) = make_session();
+    let canonical = shared_canonical_map_manager_for_misc_test();
+    let player_guid = ObjectGuid::create_player(1, 146);
+    session.set_death_corpse_config_like_cpp(crate::session::DeathCorpseConfigLikeCpp {
+        corpse_reclaim_delay_pve: false,
+        ..Default::default()
+    });
+    dead_ghost_with_its_own_corpse_like_cpp(
+        &mut session,
+        &canonical,
+        player_guid,
+        Position::new(1.0, 2.0, 3.0, 0.0),
+    )
+    .await;
+    // Walk the ghost one yard past the radius. The gate compares the Player
+    // object's own position, so the canonical player is what has to move.
+    let away = Position::new(
+        1.0 + wow_entities::CORPSE_RECLAIM_RADIUS_LIKE_CPP
+            + 1.0
+            + session.canonical_player_combat_reach_snapshot_like_cpp(),
+        2.0,
+        3.0,
+        0.0,
+    );
+    {
+        let mut manager = canonical.lock().unwrap();
+        manager
+            .find_map_mut(571, 0)
+            .expect("seeded map")
+            .map_mut()
+            .get_typed_player_mut(player_guid)
+            .expect("seeded player")
+            .unit_mut()
+            .world_mut()
+            .relocate(away);
+    }
+
+    session
+        .handle_reclaim_corpse(reclaim_corpse_packet(player_guid))
+        .await;
+
+    assert!(!session.player_is_alive_like_cpp());
+    assert!(session.player_has_ghost_flag_like_cpp());
 }
 
 #[tokio::test]

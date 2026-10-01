@@ -5,6 +5,7 @@
 use super::*;
 mod damage;
 mod death;
+pub use death::DeathCorpseConfigLikeCpp;
 mod melee;
 mod regeneration;
 mod state;

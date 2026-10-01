@@ -76,13 +76,28 @@ Two gate consequences of that unrecorded line, both measured at `62f5c619`:
   anything, so a green `final` is currently unreachable on this branch; the substantive
   campaign has to be run as workspace tests and recorded as such.
 
+A third gate consequence, measured 2026-10-01 and previously hidden: `physical-files`
+aborts the architecture check before the rest run, so two further checks were never
+reached at the branch point. Behind it, the **hotspot LOC ratchet** is red by very large
+aggregate margins at `origin/3.4.3` (`session/mod.rs` total +27525, `handlers/character`
++3907, `world-server/src/lib.rs` +1926, `map/mod.rs` +654, `player/mod.rs` +126), and the
+**handler audited count** disagreed with its own snapshot. The count was this branch's own
+loose end — `dbe66f01` added `CMSG_WHO` to `world-handler-contract.tsv` without bumping
+`runtime-ownership-ledger.json` — and is fixed; the hotspot margins are the same unrecorded
+feature line and belong to #584 C4 with the three physical ceilings.
+
+**Previous next responsibility — done.** The live player-melee blocker is repaired and the
+loop closes end to end; see STATE.md and the closed entry in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-the live player-melee blocker recorded in
-[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) (2026-09-30). It is the only
-Part 1 exit failure with a live two-configuration reproduction, and it sits exactly on
-#584's open C0/C1/C3 axes: which object is the authority for an accepted attack, what
-phase writes it, and what survives a tick. M1 entry and the M2 visibility path are
-observed working in the same session; M3 combat is not.
+the death exit, `CMSG_RECLAIM_CORPSE` and what it needs around it. Combat now kills the
+QA character routinely, which made the gap unmissable: the handler was a represented
+slice that cleared the ghost flag and resurrected with **no corpse, no reclaim delay and
+no distance check**, so a released spirit could resurrect instantly, anywhere, and the
+corpse it left behind carried no owner at all. That is the M5 lifecycle exit's core and it
+sits on the same #584 C0/C3 axis as the melee work: the canonical map is the authority for
+a corpse, and the session may only read it.
 
 ## 1. Direction from here
 
