@@ -89,6 +89,10 @@ pub mod attributes {
     pub const SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED_CASTER_FORM: u32 = 0x0008_0000;
     /// C++ `SPELL_ATTR2_NO_INITIAL_THREAT` (`SharedDefines.h`).
     pub const SPELL_ATTR2_NO_INITIAL_THREAT: u32 = 0x0040_0000;
+    /// C++ `SPELL_ATTR2_CANT_CRIT` (`SharedDefines.h:556`), which
+    /// `SpellMgr::LoadSpellInfoCustomAttributes` uses to clear
+    /// `SPELL_ATTR0_CU_CAN_CRIT` again (`Spells/SpellMgr.cpp:3643-3645`).
+    pub const SPELL_ATTR2_CANT_CRIT: u32 = 0x2000_0000;
     /// C++ `SPELL_ATTR3_CAN_PROC_FROM_PROCS` (`SharedDefines.h`).
     pub const SPELL_ATTR3_CAN_PROC_FROM_PROCS: u32 = 0x0400_0000;
     /// C++ `SPELL_ATTR3_IGNORE_CASTER_MODIFIERS` (`SharedDefines.h:571`):

@@ -157,6 +157,27 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**Spell hits can crit now, and two HIGH combat entries turned out to be stale records
+(D-H20, D-H1/D-H2).** The plan's next responsibility was to contrast the three open HIGH combat
+notes against current code before implementing any of them, and that was the right order: D-H1
+("melee damage has no formula") and D-H2 ("melee hit table absent") both point at a file that no
+longer exists and were overtaken by #29/#61 — the current swing runs the done and taken bonuses,
+`CalcArmorReducedDamage` with armour penetration, the attack-table roll and every outcome arm with
+its real `HitInfo`. They are closed as inaccurate records, with nothing implemented for them.
+
+D-H3 was wrong in two directions instead: the spell damage coefficient was already ported, and
+the critical was genuinely missing, in both the damage and the heal direction. The whole C++ chain
+is now in place — `SPELL_ATTR0_CU_CAN_CRIT` as a store predicate, `SpellCritChanceDone` with its
+damage-class switch, `SpellCritChanceTaken` including the arm that makes
+`SPELL_DAMAGE_CLASS_NONE` never crit, the single `roll_chance_f` per target, and the three
+different bonus arms for magic damage, weapon-based damage and healing. `SPELL_HIT_TYPE_CRIT` now
+reaches the wire.
+
+There is **no live crit evidence**, and the entry says so: forcing one needs a repeated-cast
+campaign against a ~5% chance or a sitting player victim, and the QA character is a warrior with
+no damaging magic. The scenario pins C++'s draw and asserts both outcomes of the same hit. What
+remains of D-H3 is the resist and absorb stage, which still reports zero for a creature target.
+
 **The kill-credit path had none of C++'s three pre-progress gates, and now has all three
 (D-H19).** `Player::UpdateQuestObjectiveProgress` refuses a matched objective for three separate
 reasons before it touches progress — a raid group for a quest not allowed in raid,

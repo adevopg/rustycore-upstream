@@ -270,3 +270,221 @@ fn a_player_without_auras_still_reports_an_empty_group_like_cpp() {
         "an empty group is not a missing group"
     );
 }
+
+/// A player-cast magical spell of 100 base damage at a 500-HP creature, with the
+/// caster's published fire spell-crit percentage set so the roll has something to
+/// compare against.
+async fn spell_crit_scenario_like_cpp(
+    creature_id: i64,
+) -> (
+    WorldSession,
+    crate::map_manager::SharedMapManager,
+    ObjectGuid,
+    i32,
+    flume::Receiver<Vec<u8>>,
+) {
+    let (mut session, _, send_rx) = make_session();
+    let manager = shared_map_manager();
+    let canonical = shared_canonical_map_manager();
+    let creature_guid = test_creature_guid(creature_id);
+    let player_guid = ObjectGuid::create_player(1, 91);
+    let spell_id = 133_i32; // any id; the fixture below supplies its metadata
+
+    // The published spell-crit percentages live on the canonical Player, so the
+    // roll needs one installed rather than a bare session guid.
+    canonical.lock().unwrap().create_world_map(0, 0);
+    session.set_canonical_map_manager(Arc::clone(&canonical));
+    session.set_map_store(Arc::new(wow_data::MapStore::from_entries([
+        wow_data::MapEntry {
+            id: 0,
+            instance_type: wow_data::map::MAP_COMMON,
+            expansion_id: 0,
+            parent_map_id: -1,
+            cosmetic_parent_map_id: -1,
+            flags1: 0,
+            flags2: 0,
+        },
+    ])));
+    session.attach_player_controller_like_cpp(SessionPlayerController::new(
+        player_guid,
+        "Critter".to_string(),
+        Position::new(10.0, 10.0, 0.0, 0.0),
+        0,
+        1,
+        1,
+        20,
+        0,
+    ));
+    let _ = session.ensure_canonical_world_map_for_current_player_like_cpp();
+    register_test_creature(&mut session, manager.clone(), creature_guid, 500);
+
+    let mut spell_store = wow_data::SpellStore::new();
+    spell_store.insert(
+        spell_id,
+        wow_data::SpellInfo {
+            spell_id,
+            cast_time_ms: 0,
+            cooldown_ms: 0,
+            recovery_time_ms: 0,
+            effect_type: wow_data::spell::spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+            effect_base_points: 0,
+            effect_bonus_coefficient: 0.0,
+            aura_type: None,
+            display_flags: 0,
+            requires_spell_focus: 0,
+            power_costs: Vec::new(),
+            // C++ `SPELL_ATTR0_CU_CAN_CRIT` comes from the effect list
+            // (`Spells/SpellMgr.cpp:3367-3381`).
+            effects: vec![wow_data::SpellEffectInfo {
+                effect_index: 0,
+                effect: wow_data::spell::spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+                ..Default::default()
+            }],
+        },
+    );
+    // `SpellInfo::DmgClass` is `SpellCategories::DefenseType`; 1 is
+    // `SPELL_DAMAGE_CLASS_MAGIC`, and the school mask is fire.
+    spell_store.insert_spell_hit_metadata_for_difficulty_like_cpp(
+        spell_id,
+        0,
+        wow_data::SpellHitMetadataLikeCpp {
+            category_id: 0,
+            charge_category_id: 0,
+            defense_type: 1,
+            spell_mechanic: 0,
+            school_mask: 0x04,
+            effect_mechanics: BTreeMap::from([(0, 0)]),
+        },
+    );
+    session.set_spell_store(Arc::new(spell_store));
+    // `SpellInfo::GetSchoolMask()` comes from `SpellMisc`, which is the reader the
+    // damage path passes to the critical roll.
+    session.set_spell_misc_store(Arc::new(wow_data::SpellMiscStore::from_entries([
+        wow_data::SpellMiscEntry {
+            id: spell_id as u32,
+            attributes: [0; 15],
+            difficulty_id: 0,
+            casting_time_index: 0,
+            duration_index: 0,
+            range_index: 0,
+            school_mask: 0x04,
+            speed: 0.0,
+            launch_delay: 0.0,
+            min_duration: 0.0,
+            spell_icon_file_data_id: 0,
+            active_icon_file_data_id: 0,
+            content_tuning_id: 0,
+            show_future_spell_player_condition_id: 0,
+            spell_id: spell_id as u32,
+        },
+    ])));
+
+    session
+        .mutate_canonical_player_like_cpp(|player| {
+            let mut stats = *player.effective_combat_stats_like_cpp();
+            // `ActivePlayerData::SpellCritPercentage[SPELL_SCHOOL_FIRE]`.
+            stats.spell_crit_pct[2] = 25.0;
+            player.replace_effective_combat_stats_like_cpp(stats);
+        })
+        .expect("the canonical Player must own the published percentages");
+
+    (session, manager, creature_guid, spell_id, send_rx)
+}
+
+/// The one `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` the hit published, as
+/// `(damage, original_damage, flags)`.
+fn spell_non_melee_damage_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32, u32) {
+    let bytes = packets
+        .iter()
+        .find(|bytes| {
+            wow_packet::WorldPacket::from_bytes(bytes).server_opcode()
+                == Some(ServerOpcodes::SpellNonMeleeDamageLog)
+        })
+        .expect("the hit must publish one SMSG_SPELL_NON_MELEE_DAMAGE_LOG");
+    let mut packet = wow_packet::WorldPacket::from_bytes(bytes);
+    assert_eq!(
+        packet.read_uint16().expect("opcode"),
+        ServerOpcodes::SpellNonMeleeDamageLog as u16
+    );
+    packet.read_packed_guid().expect("target");
+    packet.read_packed_guid().expect("caster");
+    packet.read_packed_guid().expect("cast id");
+    packet.read_int32().expect("spell id");
+    packet.read_int32().expect("visual id");
+    let damage = packet.read_int32().expect("damage");
+    let original_damage = packet.read_int32().expect("original damage");
+    packet.read_int32().expect("overkill");
+    packet.read_uint8().expect("school mask");
+    packet.read_int32().expect("absorbed");
+    packet.read_int32().expect("resisted");
+    packet.read_int32().expect("shield block");
+    packet.read_uint32().expect("world text viewers");
+    packet.read_uint32().expect("supporters");
+    // One `Periodic` bit, then the seven `HitInfo` bits.
+    packet.read_bit().expect("periodic");
+    let flags = packet.read_bits(7).expect("hit info");
+    (damage, original_damage, flags)
+}
+
+/// C++ rolls one spell critical chance per target before the hit
+/// (`Spells/Spell.cpp:8675-8684`) and applies the magical arm in
+/// `Unit::CalculateSpellDamageTaken` (`Entities/Unit/Unit.cpp:1319-1332`), where
+/// `SpellCriticalDamageBonus` adds half again. The creature takes the critical
+/// value and `SpellNonMeleeDamage::HitInfo` carries `SPELL_HIT_TYPE_CRIT`.
+#[tokio::test]
+async fn a_critical_spell_hit_adds_half_again_and_flags_the_log_like_cpp() {
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_001).await;
+    // The resolved chance is the published 25%; a draw below it crits.
+    let _pinned = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(10.0);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 100)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 150, "a magical critical adds half again");
+
+    let (damage, original_damage, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 150);
+    assert_eq!(
+        original_damage, 150,
+        "C++ assigns originalDamage after the critical arm"
+    );
+    assert_eq!(flags, 0x02, "SPELL_HIT_TYPE_CRIT");
+}
+
+/// The same hit with a draw above the chance is an ordinary hit: no bonus, no flag.
+#[tokio::test]
+async fn a_non_critical_spell_hit_keeps_its_damage_and_flags_like_cpp() {
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_002).await;
+    let _pinned = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 100)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 100);
+
+    let (damage, _, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 100);
+    assert_eq!(flags, 0);
+}

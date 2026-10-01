@@ -61,11 +61,8 @@ impl WorldSession {
     /// The three facts C++ `Player::UpdateQuestObjectiveProgress` reads for its
     /// raid gate (`Entities/Player/Player.cpp:16644-16646`).
     ///
-    /// The map difficulty is the one this port resolves for the player's current
-    /// map, which for a continent is `DIFFICULTY_NONE` exactly as C++
-    /// `Map::GetDifficultyID()` is. A downscaled or locked instance whose own
-    /// spawn mode differs from the player's selection is not tracked separately
-    /// here.
+    /// The difficulty is `Map::GetDifficultyID()` for the map that actually owns
+    /// this Player, which is the same reader the represented spell metadata uses.
     pub(in crate::session) fn resolved_quest_raid_context_like_cpp(
         &self,
     ) -> crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
@@ -73,17 +70,9 @@ impl WorldSession {
             .resolved_group_guid_like_cpp()
             .and_then(|group_guid| self.group_registry.as_ref()?.get(&group_guid))
             .is_some_and(|group| group.is_raid_group());
-        let map_id = u32::from(self.player_map_id_like_cpp());
-        let map_difficulty_id = self
-            .map_store()
-            .and_then(|store| store.get(map_id).copied())
-            .and_then(|entry| {
-                self.represented_player_difficulty_id_for_map_entry_like_cpp(map_id, entry)
-            })
-            .unwrap_or(0);
         crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
             in_raid_group,
-            map_difficulty_id,
+            map_difficulty_id: self.current_map_difficulty_id_like_cpp(),
             quests_ignore_raid: self.quests_ignore_raid_like_cpp,
         }
     }

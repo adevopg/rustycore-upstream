@@ -137,15 +137,25 @@ installation (no `quest_template` row carries `0x4000`) and the raid half still 
 two-account raid for live acceptance; the live run that was taken proves the three new refusals
 did not break the working credit chain.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** contrast
-the three open HIGH combat entries against current code before implementing any of them. D-H1
-(melee damage has no formula) and D-H2 (melee hit table absent) both point at `session.rs:79xx`,
-a file that no longer exists, and the `#29`/`#61` work recorded in the physical-file policy names
-`MeleeDamageBonusDone`, `RollMeleeOutcomeAgainst`, `CalcArmorReducedDamage`, block percent and
-the critical-damage multiplier as integrated — so those two entries are likely stale notes rather
-than open gaps, and saying so needs a read of the current swing, not a rewrite. D-H3 (spell
-damage and healing use raw base points, with no coefficient, crit or resist) has no such
-contradicting evidence and is the probable implementation target.
+**That contrast is done, and it went as predicted.** D-H1 and D-H2 are closed as inaccurate
+records: the current swing runs the done/taken bonuses, `CalcArmorReducedDamage` with armour
+penetration, the attack-table roll and every outcome arm with its real `HitInfo`, so there was
+nothing to implement. D-H3 was wrong in two directions — the spell damage coefficient was already
+ported, and the critical was missing in both the damage and the heal direction. **Spell criticals
+are now ported end to end (D-H20)**, including the custom attribute, both chance functions, the
+single roll per target and the three distinct bonus arms, with `SPELL_HIT_TYPE_CRIT` on the wire.
+It carries no live evidence, which the entry states: forcing a crit needs a repeated-cast campaign
+or a sitting player victim, and the QA character is a warrior with no damaging magic.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** the
+remaining half of D-H3, the spell resist and absorb stage. `Unit::CalcAbsorbResist` has no
+represented equivalent for a creature target, so `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` reports
+`absorbed = 0` and `resisted = 0` for every spell hit and a creature's resistances change nothing.
+Unlike the critical, this one has a live shape that works with the current QA character, because
+the resist roll does not need a caster-side percentage the warrior lacks: a physical-school spell
+hit on a creature with a non-zero `creature_template.resistance*` row is enough to read the
+published `resisted` field back. Scope it from `Unit::CalcAbsorbResist` plus the average-resist
+table, and keep the absorb half separate if the shield aura state is not represented.
 
 ## 1. Direction from here
 

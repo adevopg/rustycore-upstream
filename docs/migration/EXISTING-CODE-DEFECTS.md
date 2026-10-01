@@ -690,14 +690,72 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## HIGH — broken mechanics / silent failure / exploit
 
-- [ ] **D-H1 Melee damage has no formula.** Uses raw weapon-damage range as final damage; **no
-  armor mitigation, no AP scaling, no level reduction.** `session.rs:7913-7942`. C++
-  `Unit::CalcArmorReducedDamage` / AP→damage.
-- [ ] **D-H2 Melee hit table absent.** miss/dodge/parry/block/glancing/crit all bypassed;
-  hardcoded `HIT_INFO_NORMAL_SWING|VICTIM_STATE_HIT`. `session.rs:47813-47823`. C++
-  `Unit::MeleeSpellHitResult`.
-- [ ] **D-H3 Spell damage/heal uses raw base points.** No coefficient, crit, or resist.
-  `session.rs:49014-49026`.
+- [x] **D-H1 and D-H2 are stale notes, closed on contrast 2026-10-01, not by new work.** Both
+  pointed at `session.rs:79xx`/`:478xx`, a file that no longer exists, and both were overtaken by
+  the #29/#61 slices. The current swing in
+  `session/mod.rs::represented_white_swing_damage_like_cpp` runs, in C++'s order:
+  `MeleeDamageBonusDone`'s flat and percentage pair, the autoattack multiplier,
+  `MeleeDamageBonusTaken`, `CalcArmorReducedDamage` with armour penetration, the target's
+  resistance aura and the caster bypass, then the attack-table roll, then the outcome switch with
+  its own damage. `session_rules::melee_outcome_damage_like_cpp` carries every C++ arm — immune,
+  evade, miss, dodge, parry, glancing with the level-difference reduction, block with
+  `GetBlockPercent`, crit with the damage multiplier, and the crushing arm kept with its C++
+  source expression — and `melee_outcome_presentation_like_cpp` publishes the real
+  `HitInfo`/`VictimState` instead of a hardcoded pair. Both entries are closed as **inaccurate
+  records**; nothing was implemented for them here.
+- [ ] **D-H3 Spell hits had no coefficient, no critical and no resist. Two of the three are now
+  done; the resist/absorb stage is what remains.** Restated on contrast 2026-10-01, because the
+  original one-liner was wrong in two directions.
+
+  * **Coefficient: already done before this session.** `SpellDamageBonusDone` is ported with
+    `BonusCoefficient`, `BonusCoefficientFromAP`, the `SPELL_ATTR3_IGNORE_CASTER_MODIFIERS`
+    short circuit and the percentage chain
+    (`session/spell_effects/effect_combat.rs:614-668`), and the healing side with it.
+  * **Critical: done 2026-10-01**, see the entry below.
+  * **Resist and absorb: still open.** `Unit::CalcAbsorbResist` has no represented equivalent
+    for a creature target, so `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` still reports `absorbed = 0` and
+    `resisted = 0` and the victim's resistances change nothing. That is the remaining half of
+    this entry, and it needs the victim resistance plumbing a creature template already carries.
+- [x] **D-H20 Spell hits could never crit, in either direction.** Implemented 2026-10-01 as the
+  critical half of D-H3. The damage path applied no critical at all — the code said so in a
+  comment — so a caster's spell crit percentage, which the port already computes per school on
+  the Player, changed nothing, and `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` never carried
+  `SPELL_HIT_TYPE_CRIT`. Heals were the same: the log's `Crit` was a hardcoded `false`.
+
+  Ported as the chain C++ runs: `SPELL_ATTR0_CU_CAN_CRIT` as a store predicate, because this
+  port has no `AttributesCu` — the eleven effects at `Spells/SpellMgr.cpp:3367-3381` minus
+  `SPELL_ATTR2_CANT_CRIT` at `:3643-3645`; `Unit::SpellCritChanceDone`
+  (`Entities/Unit/Unit.cpp:7706-7772`) with its three early returns and the damage-class switch
+  that takes the larger of the physical and magical branches; `Unit::SpellCritChanceTaken`
+  (`:7774-7960`), including the arm that makes `SPELL_DAMAGE_CLASS_NONE` return zero however
+  large the done chance was; the single `roll_chance_f` C++ makes per target
+  (`Spells/Spell.cpp:8675-8684`); and the two different damage arms —
+  `Unit::SpellCriticalDamageBonus` for magic (`:7962-8003`) and the doubling arm
+  `CalculateSpellDamageTaken` runs inline for weapon-based spells (`:1266-1298`) — plus
+  `Unit::SpellCriticalHealingBonus` (`:8005-8036`), which is not the damage function renamed: it
+  computes the bonus alone, multiplies *that* by `MOD_CRIT_PERCENT_VERSUS`, adds it only when
+  positive, then multiplies the whole heal by `MOD_CRITICAL_HEALING_AMOUNT`.
+
+  **Named boundaries**, each a fact the represented runtime does not carry: every crit-chance and
+  crit-damage aura term is zero, and so is resilience, because those aura families are not
+  represented; `SpellInfo::IsPositive` is not represented, so the damage path passes harmful and
+  the heal path positive, which is what each one is by construction; a creature victim is taken
+  as standing, which is the stand state a represented creature has, so the always-crit-sitting
+  rule is reachable only for a player victim this path does not serve; the `SpellModOp::CritChance`
+  and `CritDamageAndHealing` spellmods need the talent spellmod owner; and the scripted class
+  blocks in `SpellCritChanceTaken` (`:7799-7930`: Shatter, Glyph of Shadowburn, Renewed Hope and
+  the per-family cases) need `SPELL_AURA_OVERRIDE_CLASS_SCRIPTS` effects this port has no
+  representation for.
+
+  **Excluded deliberately:** the reference fork's `alistar:`-marked warlock healthstone branch in
+  `getPhysicalCritChance` (`:7729-7736`). A patched region is not parity evidence for this build,
+  so the unpatched shape is what was ported, and the exclusion is recorded at the rule.
+
+  **No live evidence, and that is stated rather than implied.** Forcing a crit live needs either
+  a repeated-cast campaign against a ~5% chance or a sitting *player* victim, and the QA
+  character is a warrior with no damaging magic spell. The deterministic scenario pins C++'s draw
+  instead and asserts both outcomes of the same hit: 100 damage becomes 150 with `flags = 0x02`
+  on the wire, and stays 100 with `flags = 0` when the draw is above the chance.
 - [x] **D-H4 Quest kill-credit — verified working on a live kill, 2026-10-01.** The contested
   reading is settled in favour of "monster kills advance". Quest 14106 was seeded as
   incomplete for the QA character (a fixture: the bot cannot take a quest from an NPC yet),

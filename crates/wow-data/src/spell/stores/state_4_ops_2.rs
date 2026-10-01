@@ -60,6 +60,51 @@ impl SpellStore {
         })
     }
 
+    /// C++ `SPELL_ATTR0_CU_CAN_CRIT`, the custom attribute every spell critical
+    /// path gates on (`Unit::SpellCritChanceDone`/`Taken`, `Unit.cpp:7717`,
+    /// `:7777`).
+    ///
+    /// `SpellMgr::LoadSpellInfoCustomAttributes` sets it for any spell with one
+    /// of eleven effects (`Spells/SpellMgr.cpp:3367-3381`) and clears it again
+    /// for `SPELL_ATTR2_CANT_CRIT` (`:3643-3645`). This port has no
+    /// `AttributesCu` field, so both rules are read off the stores here.
+    pub fn spell_can_crit_like_cpp(
+        &self,
+        spell_id: i32,
+        requested_difficulty_id: u8,
+        difficulty_store: Option<&crate::difficulty::DifficultyStore>,
+    ) -> bool {
+        use crate::spell::spell_effect_types::*;
+        if self.has_attribute_for_difficulty_like_cpp(
+            spell_id,
+            requested_difficulty_id,
+            difficulty_store,
+            2,
+            crate::spell::attributes::SPELL_ATTR2_CANT_CRIT,
+        ) {
+            return false;
+        }
+        self.effects_for_difficulty_like_cpp(spell_id, requested_difficulty_id, difficulty_store)
+            .is_some_and(|effects| {
+                effects.iter().any(|effect| {
+                    matches!(
+                        effect.effect,
+                        SPELL_EFFECT_SCHOOL_DAMAGE
+                            | SPELL_EFFECT_HEALTH_LEECH
+                            | SPELL_EFFECT_HEAL
+                            | SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+                            | SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+                            | SPELL_EFFECT_WEAPON_DAMAGE
+                            | SPELL_EFFECT_POWER_BURN
+                            | SPELL_EFFECT_HEAL_MECHANICAL
+                            | SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+                            | SPELL_EFFECT_HEAL_PCT
+                            | SPELL_EFFECT_DAMAGE_FROM_MAX_HEALTH_PCT
+                    )
+                })
+            })
+    }
+
     /// C++ `SpellInfo::IsSingleTarget` (`SpellInfo.cpp:1789-1796`).
     pub fn is_single_target_like_cpp(
         &self,
