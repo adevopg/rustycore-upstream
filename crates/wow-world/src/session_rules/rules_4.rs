@@ -859,12 +859,10 @@ pub(crate) struct RepresentedSchoolAbsorbLikeCpp {
 /// left, a fully spent shield is removed, and a shield that consumes nothing
 /// still reports a zero consumption so the loop's clamps stay observable.
 ///
-/// Boundaries: C++'s `absorbIgnoringDamage` term (an attacker's
-/// `SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` reduced by
-/// `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`) has no represented producer or spell
-/// attribute projection, `SPELL_AURA_MANA_SHIELD` needs a power write the melee
-/// path does not own, and `Unit::CalcSpellResistedDamage` returns zero for a
-/// non-magic school mask (`Unit.cpp:2058-2060`), so physical melee never resists.
+/// C++'s `absorbIgnoringDamage` share is not a term of this loop: it leaves the
+/// damage once before both loops and returns once after them
+/// (`Unit.cpp:2112`, `:2250`), which is what
+/// [`represented_absorb_stages_like_cpp`] composes.
 /// C++ `Unit::CalcAbsorbResist`'s `auraAbsorbMod`
 /// (`Unit.cpp:2086-2106`): the attacker's
 /// `GetMaxPositiveAuraModifierByMiscMask(SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL,
@@ -896,7 +894,6 @@ pub(crate) fn represented_ignored_absorb_amount_like_cpp(damage: u32, pct: f32) 
 pub(crate) fn represented_school_absorb_like_cpp(
     shields: &[crate::session_rules::RepresentedAbsorbShieldLikeCpp],
     damage: u32,
-    ignore_absorb_pct: f32,
 ) -> RepresentedSchoolAbsorbLikeCpp {
     let mut result = RepresentedSchoolAbsorbLikeCpp {
         absorbed: 0,
@@ -906,7 +903,6 @@ pub(crate) fn represented_school_absorb_like_cpp(
     if damage == 0 || shields.is_empty() {
         return result;
     }
-    let ignore = represented_ignored_absorb_amount_like_cpp(damage, ignore_absorb_pct);
     let mut ordered: Vec<&crate::session_rules::RepresentedAbsorbShieldLikeCpp> =
         shields.iter().collect();
     ordered.sort_by_key(|shield| represented_absorb_priority_like_cpp(shield));
@@ -915,20 +911,10 @@ pub(crate) fn represented_school_absorb_like_cpp(
         if remaining_damage == 0 {
             break;
         }
-        // C++ `damageInfo.ModifyDamage(-absorbIgnoringDamage)` for every shield
-        // whose spell lacks `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`, then the
-        // `[0, damage]` clamp. C++ restores the reduction after the shield; the
-        // temporary damage is floored at zero here instead of reproducing the
-        // negative clamp C++ can reach when the ignoring amount exceeds what is
-        // left.
-        let absorbable_damage = if shield.cannot_be_ignored {
-            remaining_damage
-        } else {
-            remaining_damage.saturating_sub(ignore)
-        };
-        // C++ `if (currentAbsorb < 0) currentAbsorb = 0;`
+        // C++ `if (currentAbsorb < 0) currentAbsorb = 0;` then
+        // `RoundToInterval(currentAbsorb, 0, int32(damageInfo.GetDamage()))`.
         let available = shield.amount.max(0);
-        let consumed = available.min(i32::try_from(absorbable_damage).unwrap_or(i32::MAX));
+        let consumed = available.min(i32::try_from(remaining_damage).unwrap_or(i32::MAX));
         if consumed > 0 {
             remaining_damage -= consumed as u32;
             result.absorbed += consumed as u32;
@@ -990,15 +976,13 @@ pub(crate) struct RepresentedManaShieldAbsorbLikeCpp {
 /// to zero, an amount-counting shield is depleted and removed at zero, and once
 /// the damage is gone the remaining shields are not visited.
 ///
-/// Boundaries: C++'s `absorbIgnoringDamage` term and the spellmod half of
-/// `CalcValueMultiplier` stay unrepresented (`mana_multiplier` is the data
-/// amplitude alone), and a zero drain resolves to no absorb instead of C++'s
-/// `0 / 0` float division.
+/// Boundaries: the spellmod half of `CalcValueMultiplier` stays unrepresented
+/// (`mana_multiplier` is the data amplitude alone), and a zero drain resolves to
+/// no absorb instead of C++'s `0 / 0` float division.
 pub(crate) fn represented_mana_shield_absorb_like_cpp(
     shields: &[crate::session_rules::RepresentedManaShieldLikeCpp],
     damage: u32,
     available_mana: u32,
-    ignore_absorb_pct: f32,
 ) -> RepresentedManaShieldAbsorbLikeCpp {
     let mut result = RepresentedManaShieldAbsorbLikeCpp {
         absorbed: 0,
@@ -1009,25 +993,16 @@ pub(crate) fn represented_mana_shield_absorb_like_cpp(
     if damage == 0 || shields.is_empty() {
         return result;
     }
-    let ignore = represented_ignored_absorb_amount_like_cpp(damage, ignore_absorb_pct);
     let mut remaining_damage = damage;
     let mut remaining_mana = available_mana;
     for shield in shields {
         if remaining_damage == 0 {
             break;
         }
-        // C++ `damageInfo.ModifyDamage(-absorbIgnoringDamage)` for a mana shield
-        // without `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`, then the `[0, damage]`
-        // clamp.
-        let absorbable_damage = if shield.cannot_be_ignored {
-            remaining_damage
-        } else {
-            remaining_damage.saturating_sub(ignore)
-        };
         // C++ `if (currentAbsorb < 0) currentAbsorb = 0;` then the `[0, damage]`
         // clamp.
         let current = shield.amount.max(0) as u32;
-        let current = current.min(absorbable_damage);
+        let current = current.min(remaining_damage);
         let base_reduction = i32::try_from(current).unwrap_or(i32::MAX);
         // C++ `if (float manaMultiplier = CalcValueMultiplier(caster))
         // manaReduction = int32(float(manaReduction) * manaMultiplier);`
@@ -1070,6 +1045,62 @@ pub(crate) fn represented_mana_shield_absorb_like_cpp(
     }
     result.damage = remaining_damage;
     result
+}
+
+/// C++ `Unit::CalcAbsorbResist`'s absorb half for one hit.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct RepresentedAbsorbStagesLikeCpp {
+    /// C++ `DamageInfo::GetAbsorb()` once both loops have run.
+    pub absorbed: u32,
+    /// C++ `DamageInfo::GetDamage()` once both loops have run and the
+    /// ignore-absorb share has been added back.
+    pub damage: u32,
+    /// The mana C++ `ModifyPower(POWER_MANA, -manaReduction)` removed.
+    pub mana_spent: u32,
+    /// The school shields' depletion, in `AbsorbAuraOrderPred` order.
+    pub school_consumed: Vec<RepresentedAbsorbConsumptionLikeCpp>,
+    /// The mana shields' depletion, in aura order.
+    pub mana_consumed: Vec<RepresentedManaShieldConsumptionLikeCpp>,
+}
+
+/// C++ `Unit::CalcAbsorbResist`'s absorb half (`Unit.cpp:2106-2250`): the
+/// attacker's ignore-absorb share leaves the damage once
+/// (`damageInfo.ModifyDamage(-absorbIgnoringDamage)`, `:2112`), the
+/// school-absorb loop and then the mana-shield loop run over what is left, and
+/// the share returns once at the end (`:2250`).
+///
+/// The share is a percentage of the damage C++ reads at `:2106`, which is
+/// *before* `ResistDamage` (`:2111`), so the caller passes both the pre-resist
+/// damage the percentage applies to and the post-resist damage the shields see.
+/// For a physical melee hit those are the same value, because
+/// `CalcSpellResistedDamage` returns zero for a non-magic school mask
+/// (`Unit.cpp:1972-1974`).
+///
+/// This composition is the only owner of the ignore-absorb term; neither loop
+/// knows about it, exactly like C++, where the shields only ever see
+/// `damageInfo.GetDamage()`.
+pub(crate) fn represented_absorb_stages_like_cpp(
+    school_shields: &[crate::session_rules::RepresentedAbsorbShieldLikeCpp],
+    mana_shields: &[crate::session_rules::RepresentedManaShieldLikeCpp],
+    damage_before_resist: u32,
+    damage: u32,
+    available_mana: u32,
+    ignore_absorb_pct: f32,
+) -> RepresentedAbsorbStagesLikeCpp {
+    // C++ `CalculatePct(damageInfo.GetDamage(), auraAbsorbMod)` at `:2106`, then
+    // `ModifyDamage`'s `max(amount, -int32(GetDamage()))` clamp at `:241`.
+    let ignored =
+        represented_ignored_absorb_amount_like_cpp(damage_before_resist, ignore_absorb_pct)
+            .min(damage);
+    let school = represented_school_absorb_like_cpp(school_shields, damage - ignored);
+    let mana = represented_mana_shield_absorb_like_cpp(mana_shields, school.damage, available_mana);
+    RepresentedAbsorbStagesLikeCpp {
+        absorbed: school.absorbed + mana.absorbed,
+        damage: mana.damage + ignored,
+        mana_spent: mana.mana_spent,
+        school_consumed: school.consumed,
+        mana_consumed: mana.consumed,
+    }
 }
 
 /// C++ `Unit::CalcHealAbsorb`'s result for one heal.

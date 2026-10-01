@@ -1246,6 +1246,50 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   the reason after exactly one visual field. This is the second packed-field slip in this harness
   this session; both were caught by reading the server's own writer rather than by guessing.
 
+- [x] **D-H24 The absorb loop's ignore-absorb term was invented: a per-shield test, and a spell
+  attribute the 3.4.3 server never reads.** Found on 2026-10-02 while reading
+  `Unit::CalcAbsorbResist` for the spell side of D-H3, and fixed in the same reading.
+
+  C++ takes the attacker's `SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` share out of the damage **once**,
+  before both shield loops, and puts it back **once** after them:
+  `absorbIgnoringDamage = CalculatePct(damageInfo.GetDamage(), auraAbsorbMod)` at `Unit.cpp:2106`,
+  `damageInfo.ModifyDamage(-absorbIgnoringDamage)` at `:2112`, and
+  `damageInfo.ModifyDamage(absorbIgnoringDamage)` at `:2250`. Inside the loops the shields only ever
+  read `damageInfo.GetDamage()`; there is no exemption test of any kind. The port instead subtracted
+  the share from **each** shield's cap inside both loops and never restored it, and gated that
+  subtraction on `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`. That attribute is declared in the reference
+  (`SharedDefines.h:697`, `enuminfo_SharedDefines.cpp:1042`) and **read nowhere in the server** — a
+  tree-wide search finds only the declaration and its reflection table — so no shield is exempt in
+  3.4.3, and `cannot_be_ignored` was state with no source.
+
+  Two observable consequences, both now gone: with the modifier active the final damage was short by
+  the ignored share (the port absorbed from the reduced damage and never added the share back), and
+  a shield carrying the attribute absorbed a whole hit that C++ would have let partly through. The
+  per-shield subtraction also compounded across shields.
+
+  The repair moves the term to where C++ keeps it. `represented_absorb_stages_like_cpp`
+  (`session_rules/rules_4.rs`) is now the single owner of C++'s absorb half: it holds the share out,
+  runs the school-absorb loop and then the mana-shield loop over what is left, and adds the share
+  back. Neither loop takes an ignore argument any more, and `cannot_be_ignored` is removed from both
+  shield projections. One more fidelity detail came out of the same reading and is now kept: C++
+  reads the percentage from the damage **before** `ResistDamage` (`:2106` precedes `:2111`), so the
+  composition takes both the pre-resist and post-resist damage; for a physical melee hit they are the
+  same value, because `CalcSpellResistedDamage` returns zero for a non-magic school mask
+  (`Unit.cpp:1972-1974`).
+
+  Evidence: `represented_ignore_absorb_matches_calc_absorb_resist_like_cpp` replaces the test that
+  asserted the invented shape and now pins the hold-out, the restore, the pre-resist basis, the
+  100%-ignored case and both loops in sequence;
+  `legacy_creature_melee_tick_once_honors_ignore_absorb_like_cpp` was likewise asserting the
+  exemption and now asserts that the attribute changes nothing.
+
+  One circumstantial detail, recorded as a lead rather than a conclusion: the comments carrying the
+  invented term also carried line numbers hundreds of lines away from the 3.4.3 functions they
+  named (`Unit.cpp:1791-1880` for a loop that lives at `:2114-2178`). The anchors therefore did not
+  come from the pinned reference. Which file they did come from is not established here — the
+  complementary 3.3.5a checkout is not present on this host, so that is a question for whoever has
+  it, not a claim. Corrected anchors are in the same commit.
+
 ## MED — wrong values / loose checks / minor loss
 
 - [ ] **D-M1 Silent gold-save error.** `let _ = char_db.execute(stmt).await` swallows failures. `session.rs:21495`.

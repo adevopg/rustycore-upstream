@@ -1894,7 +1894,8 @@ fn legacy_creature_melee_tick_once_honors_ignore_absorb_like_cpp() {
             },
         );
     }
-    // The protected shield carries `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`.
+    // The second shield carries `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`, which the
+    // 3.4.3 server never reads.
     let mut attributes = [0_u32; 15];
     attributes[6] = wow_data::spell::attributes::SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE;
     spell_store.insert_spell_misc_attributes_like_cpp(91_813, attributes);
@@ -1949,16 +1950,18 @@ fn legacy_creature_melee_tick_once_honors_ignore_absorb_like_cpp() {
     );
     assert_eq!(victim_health(), 95);
 
-    // The shield whose spell carries
-    // `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE` ignores the modifier and absorbs the
-    // whole hit.
+    // `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE` exempts nothing: in the 3.4.3
+    // reference the attribute is declared (`SharedDefines.h:697`) and read
+    // nowhere, and the ignored share is held out of the whole loop rather than
+    // tested per shield. A second shield carrying the attribute therefore finds
+    // the same 5 absorbable points, and the held-out 5 still land.
     session
         .apply_aura(91_813, player, 30_000, 1)
-        .expect("apply protected absorb shield");
+        .expect("apply second absorb shield");
     reset_swing(&mut session);
     let outcome = run_legacy_creature_melee_tick_once_like_cpp(&manager, Some(&canonical), &config);
     let command = outcome.commands.last().expect("command").clone();
-    assert_eq!(command.absorbed, 10);
-    assert_eq!(command.damage, 0);
-    assert_eq!(victim_health(), 95);
+    assert_eq!(command.absorbed, 5);
+    assert_eq!(command.damage, 5);
+    assert_eq!(victim_health(), 90);
 }

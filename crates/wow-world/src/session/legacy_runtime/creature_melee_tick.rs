@@ -59,13 +59,28 @@ fn apply_melee_absorb_to_canonical_player_like_cpp(
         difficulty_store,
         school_mask,
     );
-    let absorb = crate::session_rules::represented_school_absorb_like_cpp(
+    // C++ runs the mana-shield loop after the school-absorb loop over the damage
+    // the school shields left, with the attacker's ignore-absorb share held out
+    // of both (`Unit.cpp:2112-2250`).
+    let mana_shields =
+        crate::session_rules::player_mana_shields_like_cpp(&auras, spell_store, school_mask);
+    let mana_before = player
+        .unit()
+        .get_power(wow_constants::PowerType::Mana)
+        .max(0);
+    let absorb = crate::session_rules::represented_absorb_stages_like_cpp(
         &shields,
+        &mana_shields,
+        // A physical melee hit never resists (`Unit.cpp:1972-1974`), so the
+        // pre-resist and post-resist damage are the same value here.
         damage,
+        damage,
+        mana_before as u32,
         ignore_absorb_pct,
     );
-    let mut consumptions = Vec::with_capacity(absorb.consumed.len());
-    for consumption in &absorb.consumed {
+    let mut consumptions =
+        Vec::with_capacity(absorb.school_consumed.len() + absorb.mana_consumed.len());
+    for consumption in &absorb.school_consumed {
         write_absorbed_shield_amount_like_cpp(player, consumption);
         consumptions.push(
             crate::session::mailbox::CreatureMeleeAbsorbConsumptionLikeCpp {
@@ -75,36 +90,16 @@ fn apply_melee_absorb_to_canonical_player_like_cpp(
             },
         );
     }
-
-    // C++ runs the mana-shield loop after the school-absorb loop
-    // (`Unit.cpp:2179-2248`) over the damage the school shields left.
-    let mana_shields = crate::session_rules::player_mana_shields_like_cpp(
-        &auras,
-        spell_store,
-        difficulty_id,
-        difficulty_store,
-        school_mask,
-    );
-    let mana_before = player
-        .unit()
-        .get_power(wow_constants::PowerType::Mana)
-        .max(0);
-    let mana_absorb = crate::session_rules::represented_mana_shield_absorb_like_cpp(
-        &mana_shields,
-        absorb.damage,
-        mana_before as u32,
-        ignore_absorb_pct,
-    );
-    if mana_absorb.mana_spent > 0 {
+    if absorb.mana_spent > 0 {
         // `Unit::ModifyPower(POWER_MANA, -manaReduction)`: the same locked map
         // phase that commits the health write owns the drain, and the canonical
         // setter clamps it like C++.
         player.unit_mut().set_power(
             wow_constants::PowerType::Mana,
-            mana_before - i32::try_from(mana_absorb.mana_spent).unwrap_or(i32::MAX),
+            mana_before - i32::try_from(absorb.mana_spent).unwrap_or(i32::MAX),
         );
     }
-    for consumption in &mana_absorb.consumed {
+    for consumption in &absorb.mana_consumed {
         write_absorbed_shield_amount_like_cpp(
             player,
             &crate::session_rules::RepresentedAbsorbConsumptionLikeCpp {
@@ -124,9 +119,9 @@ fn apply_melee_absorb_to_canonical_player_like_cpp(
         );
     }
     Some((
-        absorb.absorbed + mana_absorb.absorbed,
-        mana_absorb.damage,
-        mana_absorb.mana_spent,
+        absorb.absorbed,
+        absorb.damage,
+        absorb.mana_spent,
         consumptions,
     ))
 }
@@ -176,17 +171,22 @@ fn apply_melee_absorb_to_canonical_creature_like_cpp(
         difficulty_store,
         school_mask,
     );
-    let absorb = crate::session_rules::represented_school_absorb_like_cpp(
+    let absorb = crate::session_rules::represented_absorb_stages_like_cpp(
         &shields,
+        // A creature victim's `SPELL_AURA_MANA_SHIELD` has no represented power
+        // write on this path, so the mana-shield loop stays empty here.
+        &[],
         damage,
+        damage,
+        0,
         ignore_absorb_pct,
     );
-    if absorb.consumed.is_empty() {
+    if absorb.school_consumed.is_empty() {
         return Some((0, damage, Vec::new()));
     }
 
     let mut events = Vec::new();
-    for consumption in &absorb.consumed {
+    for consumption in &absorb.school_consumed {
         let Some(applied) = victim
             .unit()
             .subsystems()
