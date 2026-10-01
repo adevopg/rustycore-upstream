@@ -251,6 +251,7 @@ impl WorldSession {
         self.record_driver_phase_like_cpp(SessionDriverPhaseLikeCpp::CreatureKills);
         self.process_pending_creature_kills_with_generator_like_cpp(
             catalogs.id_generators.item.as_ref(),
+            catalogs.object_mgr.creature.as_ref(),
         )
         .await;
 

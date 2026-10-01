@@ -47,27 +47,6 @@ impl WorldSession {
         let completion_evidence_start = self
             .represented_quest_complete_status_updates_like_cpp()
             .len();
-        if let Some(bound_preflight) = self
-            .apply_quest_source_item_bound_objective_preflight_with_generator_like_cpp(
-                item_guid_generator,
-                entry_id,
-                quest_log_item_id,
-                quantity,
-            )
-            .await
-        {
-            for quest_id in bound_preflight.changed_quest_ids {
-                self.save_represented_quest_status_like_cpp(quest_id).await;
-            }
-            if bound_preflight.no_grant {
-                self.save_represented_quest_statuses_completed_after_like_cpp(
-                    completion_evidence_start,
-                )
-                .await;
-                return Some(QuestSourceItemStoreOutcomeLikeCpp::BoundObjectiveNoGrant);
-            }
-        }
-
         #[derive(Clone, Copy)]
         struct ExistingStackUpdate {
             item_guid: ObjectGuid,
@@ -366,15 +345,15 @@ impl WorldSession {
             .get(&entry_id)
             .copied()
             .unwrap_or(0);
-        let changed_non_bound_quest_ids = self
-            .apply_quest_source_item_added_non_bound_objective_progress_with_generator_like_cpp(
+        let changed_quest_ids = self
+            .apply_quest_item_added_objective_progress_with_generator_like_cpp(
                 item_guid_generator,
                 entry_id,
                 quest_log_item_id,
                 quantity,
             )
             .await;
-        for quest_id in changed_non_bound_quest_ids {
+        for quest_id in changed_quest_ids {
             self.save_represented_quest_status_like_cpp(quest_id).await;
         }
         self.save_represented_quest_statuses_completed_after_like_cpp(completion_evidence_start)

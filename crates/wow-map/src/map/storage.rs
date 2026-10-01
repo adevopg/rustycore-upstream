@@ -8,11 +8,115 @@
 use super::*;
 use crate::map_rules::ensure_map_guid_sequence_source_like_cpp;
 
+/// What C++ `Map::ConvertCorpseToBones` (`Maps/Map.cpp:3739-3794`) leaves for its
+/// caller: the corpse it removed — whose row `Corpse::DeleteFromDB` drops inside
+/// that function, which the caller owns here because the map holds no DB handle —
+/// and the bones it created, when the configuration and the grid allowed them.
+///
+/// The two guids are equal when bones are created: C++ builds the bones on the
+/// removed corpse's own counter (`:3762`), so the object standing there keeps the
+/// guid and changes type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConvertCorpseToBonesOutcomeLikeCpp {
+    pub removed_corpse_guid: ObjectGuid,
+    pub bones_guid: Option<ObjectGuid>,
+}
+
 impl<Terrain, Lifecycle> Map<Terrain, Lifecycle>
 where
     Terrain: TerrainGridLoader,
     Lifecycle: GridLifecycle,
 {
+    /// C++ `Map::ConvertCorpseToBones` (`Maps/Map.cpp:3739-3794`).
+    ///
+    /// Removes the owner's live corpse and, when `create_bones` holds, leaves a
+    /// bones copy in its place. C++ decides `create_bones` from
+    /// `CONFIG_DEATH_BONES_BG_OR_ARENA` or `CONFIG_DEATH_BONES_WORLD`
+    /// (`:3757`); the map takes the answer as an argument because it reads no
+    /// configuration. The grid condition is C++'s `!IsRemovalGrid` (`:3758`):
+    /// bones are not created where the corpse's grid is gone.
+    ///
+    /// Ported from `:3764-3775`: the dynamic flags, owner, party, guild, display
+    /// id, race, sex, class, customizations, `flags | CORPSE_FLAG_BONES` and
+    /// faction template, plus the cell coord and position (`:3776-3777`).
+    ///
+    /// NOT ported, so nothing is invented: `PhasingHandler::InheritPhaseShift`
+    /// (`:3779`) and `UpdatePositionData`/`SetZoneScript` (`:3783-3784`); the
+    /// bones inherit the default phase and carry no zone script.
+    pub fn convert_corpse_to_bones_like_cpp(
+        &mut self,
+        owner: ObjectGuid,
+        create_bones: bool,
+    ) -> Option<ConvertCorpseToBonesOutcomeLikeCpp> {
+        let corpse = self.corpse_by_player_like_cpp(owner)?;
+        let removed_corpse_guid = corpse.world().object().guid();
+        let data = corpse.data().clone();
+        let position = corpse.world().position();
+        let cell_coord = corpse.cell_coord();
+        let map_id = self.map_id;
+        let instance_id = self.instance_id;
+
+        let cell = Cell::from_world(position.x, position.y);
+        let grid = GridCoord::new(cell.grid_x(), cell.grid_y());
+        let grid_allows_bones = self.is_grid_loaded(grid);
+
+        // C++ `RemoveCorpse` publishes the destroy and takes the corpse out of
+        // the grid and the world before the bones are built (`:3745`).
+        if self
+            .remove_from_map_like_cpp(removed_corpse_guid, true)
+            .is_err()
+        {
+            return None;
+        }
+
+        let mut bones_guid = None;
+        if create_bones && grid_allows_bones {
+            // C++ reuses the removed corpse's low guid for the bones (`:3762`).
+            let low_guid = removed_corpse_guid.counter();
+            let mut bones = Corpse::new_at(
+                wow_entities::CorpseType::Bones,
+                wow_entities::corpse_unix_now_secs_like_cpp(),
+            );
+            let guid = ObjectGuid::create_world_object(
+                wow_core::guid::HighGuid::Corpse,
+                0,
+                removed_corpse_guid.realm_id(),
+                u16::try_from(map_id).ok()?,
+                0,
+                0,
+                low_guid,
+            );
+            bones.world_mut().object_mut().create(guid);
+            if bones.world_mut().set_map(map_id, instance_id).is_err() {
+                return None;
+            }
+            bones.replace_all_corpse_dynamic_flags(data.dynamic_flags);
+            bones.set_owner_guid(data.owner);
+            bones.set_party_guid(data.party_guid);
+            bones.set_guild_guid(data.guild_guid);
+            bones.set_display_id(data.display_id);
+            bones.set_race(data.race_id);
+            bones.set_sex(data.sex);
+            bones.set_class(data.class);
+            bones.set_customizations(data.customizations.clone());
+            bones.replace_all_flags_like_cpp(data.flags | wow_entities::CORPSE_FLAG_BONES_LIKE_CPP);
+            bones.set_faction_template(data.faction_template);
+            if let Some((cell_x, cell_y)) = cell_coord {
+                bones.set_cell_coord(cell_x, cell_y);
+            }
+            bones.world_mut().relocate(position);
+            bones.world_mut().object_mut().add_to_world();
+            if self.register_loaded_corpse_like_cpp(bones).is_ok() {
+                bones_guid = Some(guid);
+            }
+        }
+
+        Some(ConvertCorpseToBonesOutcomeLikeCpp {
+            removed_corpse_guid,
+            bones_guid,
+        })
+    }
+
     /// C++ `SPELL_CAST_SOURCE_NORMAL` encoded in a Cast GUID subtype
     /// (`Spell.h:140`, `ObjectGuid.h:227`).
     const SPELL_CAST_SOURCE_NORMAL_LIKE_CPP: u8 = 3;
@@ -1323,6 +1427,25 @@ where
             return None;
         }
         record.player_mut()
+    }
+
+    /// C++ `Map::GetCorpseByPlayer` (`Maps/Map.h:437`).
+    ///
+    /// C++ keeps `_corpsesByPlayer` keyed by owner and, per `Map::AddCorpse`
+    /// (`Maps/Map.cpp:3713-3716`), enters **only** a non-bones corpse there:
+    /// bones go to `_corpseBones` and are deliberately unreachable through this
+    /// lookup, which is what makes `HandleReclaimCorpse` refuse a corpse that
+    /// has already become bones. The Rust store holds corpses as typed records
+    /// in `entity_world`, so the same answer is computed from the owner field
+    /// instead of a second index; a player has at most one live corpse per map.
+    pub fn corpse_by_player_like_cpp(&self, owner: ObjectGuid) -> Option<&Corpse> {
+        self.entity_world
+            .iter()
+            .filter_map(|(_, record)| record.corpse())
+            .find(|corpse| {
+                corpse.corpse_type() != wow_entities::CorpseType::Bones
+                    && corpse.data().owner == owner
+            })
     }
 
     pub fn get_typed_corpse(&self, guid: ObjectGuid) -> Option<&Corpse> {

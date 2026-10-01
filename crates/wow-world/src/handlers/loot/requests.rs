@@ -1538,7 +1538,7 @@ impl WorldSession {
                 .try_into()
                 .unwrap_or(0);
             let mut changed_quest_ids = self
-                .apply_quest_source_item_added_non_bound_objective_progress_with_generator_like_cpp(
+                .apply_quest_item_added_objective_progress_with_generator_like_cpp(
                     item_guid_generator,
                     grant.entry.item_id,
                     quest_log_item_id,
@@ -1778,17 +1778,10 @@ impl WorldSession {
             .quest_log_item_id
             .try_into()
             .unwrap_or(0);
-        let bound_objective_plan = self
-            .plan_quest_source_item_bound_objective_persistence_like_cpp(
-                item_id,
-                quest_log_item_id,
-                count,
-            );
         #[cfg(test)]
         if let Some(grants) = self.loot_item_store_test_grants_like_cpp.clone() {
             let success = self.loot_item_store_test_success_like_cpp;
             let commit_gate = self.loot_item_store_test_commit_gate_like_cpp.clone();
-            let materializes_inventory_item = bound_objective_plan.is_none();
             let durable_completion_context = stored_item_loot_source
                 .map(|owner_guid| (owner_guid, loot_entry.loot_list_id, player_guid, true))
                 .or_else(|| {
@@ -1835,9 +1828,7 @@ impl WorldSession {
                     if !success {
                         return Err(());
                     }
-                    if materializes_inventory_item {
-                        grants.fetch_add(1, Ordering::SeqCst);
-                    }
+                    grants.fetch_add(1, Ordering::SeqCst);
                     Ok(())
                 },
                 claim.cloned(),
@@ -1848,25 +1839,20 @@ impl WorldSession {
             if !matches!(worker.await, Ok(Ok(()))) {
                 return false;
             }
-            if let Some(plan) = bound_objective_plan.as_ref() {
-                let applied = self
-                    .apply_quest_source_item_bound_objective_preflight_with_generator_like_cpp(
-                        item_guid_generator,
-                        item_id,
-                        quest_log_item_id,
-                        count,
-                    )
-                    .await;
-                debug_assert!(applied.as_ref().is_some_and(|result| result.no_grant));
-                debug_assert!(plan.statuses.iter().all(|planned| {
-                    self.player_quests
-                        .get(&planned.quest_id)
-                        .is_some_and(|actual| {
-                            actual.status == planned.status
-                                && actual.objective_counts == planned.objective_counts
-                        })
-                }));
-            }
+            // The seam stands in for the durable store, so it must also run the
+            // store's quest pass: C++ `StoreNewItem` calls
+            // `ItemAddedQuestCheck` on every successful store
+            // (`Entities/Player/Player.cpp:11602`).
+            let mut changed_quest_ids = self
+                .apply_quest_item_added_objective_progress_with_generator_like_cpp(
+                    item_guid_generator,
+                    item_id,
+                    quest_log_item_id,
+                    count,
+                )
+                .await;
+            self.save_changed_represented_quest_statuses_like_cpp(&mut changed_quest_ids)
+                .await;
             if !self.publish_persisted_loot_item_removal_like_cpp(
                 claim,
                 claim_commit_context,
@@ -1874,20 +1860,18 @@ impl WorldSession {
             ) {
                 return false;
             }
-            if bound_objective_plan.is_none() {
-                self.send_loot_item_push_result(
-                    player_guid,
-                    ObjectGuid::EMPTY,
-                    loot_entry,
-                    0,
-                    0,
-                    0,
-                    count,
-                    count,
-                    false,
-                    dungeon_encounter_id,
-                );
-            }
+            self.send_loot_item_push_result(
+                player_guid,
+                ObjectGuid::EMPTY,
+                loot_entry,
+                0,
+                0,
+                0,
+                count,
+                count,
+                false,
+                dungeon_encounter_id,
+            );
             if let Some(runtime_inventory_applied) = runtime_inventory_applied {
                 runtime_inventory_applied.store(true, Ordering::Release);
             }
@@ -1896,138 +1880,6 @@ impl WorldSession {
         let Some(inventory_persistence) = self.player_inventory_persistence_port_like_cpp() else {
             return false;
         };
-        if let Some(bound_objective_plan) = bound_objective_plan {
-            let persistence_request =
-                wow_persistence::PlayerInventoryPersistenceRequestLikeCpp::LootQuestBoundProgress(
-                    wow_persistence::LootQuestBoundProgressPersistenceLikeCpp {
-                        owner_guid: player_guid.counter() as u64,
-                        quest_statuses: self.represented_quest_status_persistence_rows_like_cpp(
-                            &bound_objective_plan.statuses,
-                        ),
-                        stored_item_source: stored_item_loot_source.map(|item_guid| {
-                            wow_persistence::StoredItemLootSourcePersistenceLikeCpp {
-                                item_guid: item_guid.counter() as u64,
-                                item_id,
-                                count,
-                                loot_list_id: u32::from(loot_entry.loot_list_id),
-                            }
-                        }),
-                    },
-                );
-
-            let durable_completion_context = stored_item_loot_source
-                .map(|owner_guid| (owner_guid, loot_entry.loot_list_id, player_guid, true))
-                .or_else(|| {
-                    claim_commit_context.map(|context| {
-                        (
-                            context.owner_guid,
-                            context.loot_list_id,
-                            context.player_guid,
-                            false,
-                        )
-                    })
-                });
-            let runtime_inventory_applied =
-                durable_completion_context.map(|_| Arc::new(AtomicBool::new(false)));
-            let durable_item_completion = durable_completion_context
-                .zip(runtime_inventory_applied.as_ref().map(Arc::clone))
-                .map(
-                    |(
-                        (owner_guid, loot_list_id, player_guid, item_owner_auto_release),
-                        runtime_inventory_applied,
-                    )| {
-                        (
-                            self.begin_durable_item_loot_persistence_like_cpp(),
-                            DurableItemLootCompletionLikeCpp {
-                                owner_guid,
-                                loot_list_id,
-                                player_guid,
-                                item_owner_auto_release,
-                                durable_item_money_applied_amount: None,
-                                durable_item_money_notified_amount: None,
-                                durable_item_money_balance_applied: None,
-                                item_fanout: durable_item_fanout.clone(),
-                                runtime_inventory_applied,
-                            },
-                        )
-                    },
-                );
-            let persistence = match spawn_loot_item_persistence_worker_like_cpp(
-                async move {
-                    inventory_persistence
-                        .persist_inventory_mutation_like_cpp(persistence_request)
-                        .await
-                },
-                claim.cloned(),
-                durable_item_completion,
-                self.session_command_tx(),
-            ) {
-                Ok(persistence) => persistence,
-                Err(error) => {
-                    warn!(
-                        ?error,
-                        "LootItem: quest-bound claim closed before persistence started"
-                    );
-                    self.send_equip_error(InventoryResult::InvFull, None, None, 0, 0);
-                    return false;
-                }
-            };
-            match persistence.await {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    warn!(?error, "LootItem: quest-bound objective transaction failed");
-                    self.send_equip_error(InventoryResult::InvFull, None, None, 0, 0);
-                    return false;
-                }
-                Err(error) => {
-                    warn!(
-                        ?error,
-                        "LootItem: detached quest-bound transaction worker terminated"
-                    );
-                    self.send_equip_error(InventoryResult::InvFull, None, None, 0, 0);
-                    return false;
-                }
-            }
-
-            let applied = self
-                .apply_quest_source_item_bound_objective_preflight_with_generator_like_cpp(
-                    item_guid_generator,
-                    item_id,
-                    quest_log_item_id,
-                    count,
-                )
-                .await;
-            if !applied.as_ref().is_some_and(|result| result.no_grant)
-                || !self
-                    .player_quest_gameplay_snapshot_like_cpp()
-                    .is_some_and(|state| {
-                        bound_objective_plan.statuses.iter().all(|planned| {
-                            state
-                                .statuses_like_cpp()
-                                .get(&planned.quest_id)
-                                .is_some_and(|actual| {
-                                    actual.status == planned.status
-                                        && actual.objective_counts == planned.objective_counts
-                                })
-                        })
-                    })
-            {
-                self.kick("durable quest-bound loot state diverged; relog required");
-                return true;
-            }
-            if let Some(runtime_inventory_applied) = runtime_inventory_applied {
-                runtime_inventory_applied.store(true, Ordering::Release);
-            }
-            if !self.publish_persisted_loot_item_removal_like_cpp(
-                claim,
-                claim_commit_context,
-                durable_item_fanout.as_ref(),
-            ) {
-                return false;
-            }
-            self.sync_player_registry_state_like_cpp();
-            return true;
-        }
         let store_random_properties = {
             let mut rng = self.represented_runtime_subrng_like_cpp();
             self.generate_loot_store_random_properties_with_rng_like_cpp(item_id, &mut rng)
@@ -2336,7 +2188,7 @@ impl WorldSession {
         }
 
         let mut changed_quest_ids = self
-            .apply_quest_source_item_added_non_bound_objective_progress_with_generator_like_cpp(
+            .apply_quest_item_added_objective_progress_with_generator_like_cpp(
                 item_guid_generator,
                 item_id,
                 quest_log_item_id,

@@ -415,11 +415,20 @@ fn combat_tick_bad_facing_sets_short_retry_timer_like_cpp() {
     session.combat_target = Some(guid);
     session.in_combat = true;
     register_test_creature(&mut session, manager.clone(), guid, 40);
+    // The facing arc only decides the swing while the attacker is *outside* the
+    // victim's boundary radius: C++ `getAutoAttackError` reads
+    // `!IsWithinBoundaryRadius(victim) && !HasInArc(2*pi/3, victim)`
+    // (`Entities/Unit/Unit.cpp:2452-2456`). With the player's own
+    // `DEFAULT_PLAYER_COMBAT_REACH` of 1.5 and this creature's zero reach that
+    // radius is `max(0.0, MIN_MELEE_REACH) + 1.5 + 0.0 = 3.5`, so the victim has
+    // to stand further than that to be refused for facing, and still inside
+    // `GetMeleeRange`'s `NOMINAL_MELEE_RANGE` of 5.0 to be refused for facing
+    // rather than for range. 4.0 yards behind the player is both.
     session
         .mutate_world_creature(guid, |creature| {
             creature
                 .creature
-                .set_ai_position(Position::new(12.0, 10.0, 0.0, 0.0));
+                .set_ai_position(Position::new(14.0, 10.0, 0.0, 0.0));
             creature.creature.unit_mut().set_bounding_radius(0.0);
             creature.creature.unit_mut().set_combat_reach(0.0);
             creature.enter_combat(player);

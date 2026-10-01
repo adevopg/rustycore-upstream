@@ -439,7 +439,7 @@ async fn durable_direct_item_claim_notifies_removed_before_item_push_like_cpp() 
     );
 }
 #[tokio::test]
-async fn quest_bound_loot_credits_objective_without_physical_item_like_cpp() {
+async fn loot_item_objective_credit_still_stores_the_item_like_cpp() {
     let (mut first, first_rx, _second, _second_rx, owner, first_guid, _) =
         two_sessions_with_authoritative_creature_loot_like_cpp(authoritative_test_loot_like_cpp(
             0, true,
@@ -447,7 +447,7 @@ async fn quest_bound_loot_credits_objective_without_physical_item_like_cpp() {
     let _ = drain_server_opcodes_like_cpp(&first_rx);
     let quest_id = 8_336;
     let item_id = 25;
-    install_quest_bound_loot_objective_like_cpp(&mut first, quest_id, item_id, 5, 6);
+    install_item_loot_objective_like_cpp(&mut first, quest_id, item_id, 5, 6);
     let grants = Arc::new(AtomicUsize::new(0));
     first.set_loot_item_store_test_seam_like_cpp(Arc::clone(&grants), true);
 
@@ -460,8 +460,8 @@ async fn quest_bound_loot_credits_objective_without_physical_item_like_cpp() {
 
     assert_eq!(
         grants.load(Ordering::SeqCst),
-        0,
-        "C++ StoreNewItem returns nullptr for quest-bound objective credit"
+        1,
+        "C++ StoreNewItem creates and stores the Item, then calls ItemAddedQuestCheck"
     );
     let status = first.player_quests.get(&quest_id).expect("active quest");
     assert_eq!(status.objective_counts, vec![6]);
@@ -483,18 +483,18 @@ async fn quest_bound_loot_credits_objective_without_physical_item_like_cpp() {
     assert_eq!(snapshot.loot.unlooted_count, 0);
 
     let opcodes = drain_server_opcodes_like_cpp(&first_rx);
-    let bound_credit = wow_constants::ServerOpcodes::ItemPushResult as u16;
+    let item_push = wow_constants::ServerOpcodes::ItemPushResult as u16;
     let loot_removed = wow_constants::ServerOpcodes::LootRemoved as u16;
-    assert!(opcodes.contains(&bound_credit), "{opcodes:?}");
+    assert!(opcodes.contains(&item_push), "{opcodes:?}");
     assert!(opcodes.contains(&loot_removed), "{opcodes:?}");
     assert!(
-        opcodes.iter().position(|opcode| *opcode == bound_credit)
-            < opcodes.iter().position(|opcode| *opcode == loot_removed),
-        "C++ bound objective notification precedes the committed loot removal: {opcodes:?}"
+        opcodes.iter().position(|opcode| *opcode == loot_removed)
+            < opcodes.iter().position(|opcode| *opcode == item_push),
+        "C++ Player::StoreLootItem notifies removal before SendNewItem: {opcodes:?}"
     );
 }
 #[tokio::test]
-async fn quest_bound_loot_still_requires_can_store_new_item_like_cpp() {
+async fn loot_item_objective_credit_still_requires_can_store_new_item_like_cpp() {
     let (mut first, first_rx, _second, _second_rx, owner, first_guid, _) =
         two_sessions_with_authoritative_creature_loot_like_cpp(authoritative_test_loot_like_cpp(
             0, true,
@@ -502,7 +502,7 @@ async fn quest_bound_loot_still_requires_can_store_new_item_like_cpp() {
     let _ = drain_server_opcodes_like_cpp(&first_rx);
     let quest_id = 8_336;
     let item_id = 25;
-    install_quest_bound_loot_objective_like_cpp(&mut first, quest_id, item_id, 5, 6);
+    install_item_loot_objective_like_cpp(&mut first, quest_id, item_id, 5, 6);
     install_limited_test_item_template(&mut first, item_id, 1);
     let existing_guid = ObjectGuid::create_item(1, 83_360);
     first.insert_inventory_item_like_cpp(

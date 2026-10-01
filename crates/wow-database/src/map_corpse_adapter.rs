@@ -50,21 +50,30 @@ pub struct MariaDbMapCorpsePersistenceAdapterLikeCpp {
 /// here: `create_player_corpse_on_map_like_cpp` does not set customizations or a
 /// phase shift yet, so there is nothing to persist. Their deletes ARE issued, so
 /// a stale row from an earlier corpse cannot survive.
-fn map_corpse_save_transaction_like_cpp(row: &MapCorpseSaveRowLikeCpp) -> SqlTransaction {
+/// C++ `Corpse::DeleteFromDB` — the three deletes `Corpse::SaveToDB` issues
+/// before its insert, and the whole transaction `Map::ConvertCorpseToBones`
+/// commits on its own (`Maps/Map.cpp:3748-3750`).
+fn map_corpse_delete_transaction_like_cpp(owner_guid: u64) -> SqlTransaction {
     let mut transaction = SqlTransaction::new();
 
     let mut delete_corpse = PreparedStatement::for_statement(CharStatements::DEL_CORPSE);
-    delete_corpse.set_u64(0, row.owner_guid);
+    delete_corpse.set_u64(0, owner_guid);
     transaction.append(delete_corpse);
 
     let mut delete_phases = PreparedStatement::for_statement(CharStatements::DEL_CORPSE_PHASES);
-    delete_phases.set_u64(0, row.owner_guid);
+    delete_phases.set_u64(0, owner_guid);
     transaction.append(delete_phases);
 
     let mut delete_customizations =
         PreparedStatement::for_statement(CharStatements::DEL_CORPSE_CUSTOMIZATIONS);
-    delete_customizations.set_u64(0, row.owner_guid);
+    delete_customizations.set_u64(0, owner_guid);
     transaction.append(delete_customizations);
+
+    transaction
+}
+
+fn map_corpse_save_transaction_like_cpp(row: &MapCorpseSaveRowLikeCpp) -> SqlTransaction {
+    let mut transaction = map_corpse_delete_transaction_like_cpp(row.owner_guid);
 
     // Field order mirrors `CHAR_INS_CORPSE` exactly.
     let mut insert = PreparedStatement::for_statement(CharStatements::INS_CORPSE);
@@ -102,6 +111,21 @@ impl MapCorpsePersistencePortLikeCpp for MariaDbMapCorpsePersistenceAdapterLikeC
     ) -> PersistenceFutureLikeCpp<'a, MapCorpseSaveOutcomeLikeCpp> {
         Box::pin(async move {
             let transaction = map_corpse_save_transaction_like_cpp(&row);
+            match self.character_db.commit_transaction(transaction).await {
+                Ok(()) => MapCorpseSaveOutcomeLikeCpp::Saved,
+                Err(error) => MapCorpseSaveOutcomeLikeCpp::Failed {
+                    reason: error.to_string(),
+                },
+            }
+        })
+    }
+
+    fn delete_corpse_like_cpp<'a>(
+        &'a self,
+        owner_guid: u64,
+    ) -> PersistenceFutureLikeCpp<'a, MapCorpseSaveOutcomeLikeCpp> {
+        Box::pin(async move {
+            let transaction = map_corpse_delete_transaction_like_cpp(owner_guid);
             match self.character_db.commit_transaction(transaction).await {
                 Ok(()) => MapCorpseSaveOutcomeLikeCpp::Saved,
                 Err(error) => MapCorpseSaveOutcomeLikeCpp::Failed {
@@ -304,5 +328,23 @@ mod tests {
                 vec![SqlParam::U32(571), SqlParam::U32(9)]
             );
         }
+    }
+
+    #[test]
+    fn corpse_delete_issues_only_the_cpp_delete_statements_in_order() {
+        // C++ `Map::ConvertCorpseToBones` commits `Corpse::DeleteFromDB` on its
+        // own (`Maps/Map.cpp:3748-3750`): the three deletes keyed by the owner's
+        // guid counter, and no insert.
+        let transaction = map_corpse_delete_transaction_like_cpp(4242);
+        assert_eq!(
+            transaction.len(),
+            3,
+            "the three owner-keyed deletes, and no insert"
+        );
+        assert_eq!(
+            map_corpse_save_transaction_like_cpp(&save_row_like_cpp()).len(),
+            transaction.len() + 1,
+            "the save is exactly these deletes plus its insert"
+        );
     }
 }

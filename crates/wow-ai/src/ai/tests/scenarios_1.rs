@@ -813,3 +813,62 @@ fn select_target_list_applies_offset_before_default_selector_like_cpp() {
 
     assert_eq!(selected, vec![kept.guid]);
 }
+
+/// Every C++ AI constructor that calls `Creature::SetCanMelee(false)` is covered,
+/// and nothing else is. That flag is what makes `Unit::DoMeleeAttackIfReady`
+/// return immediately (`Entities/Unit/Unit.cpp:2433-2434`), and
+/// `Creature::Update` reaches that function centrally for every creature, so this
+/// predicate is the whole of what keeps a passive creature from swinging.
+#[test]
+fn only_the_cpp_constructors_that_disable_melee_report_no_melee_like_cpp() {
+    for kind in [
+        CreatureAiKindLikeCpp::TurretAI,
+        CreatureAiKindLikeCpp::VehicleAI,
+        CreatureAiKindLikeCpp::PassiveAI,
+        CreatureAiKindLikeCpp::CritterAI,
+        CreatureAiKindLikeCpp::NullCreatureAI,
+        CreatureAiKindLikeCpp::TriggerAI,
+        CreatureAiKindLikeCpp::TotemAI,
+    ] {
+        assert!(
+            creature_ai_sets_no_melee_like_cpp(&kind),
+            "{kind:?} calls SetCanMelee(false) in C++"
+        );
+    }
+    for kind in [
+        CreatureAiKindLikeCpp::PetAI,
+        CreatureAiKindLikeCpp::ScriptedAI("npc_x".to_string()),
+        CreatureAiKindLikeCpp::UnknownNamedAI("Whatever".to_string()),
+        CreatureAiKindLikeCpp::AggressorAI,
+        CreatureAiKindLikeCpp::ReactorAI,
+        // C++ `PossessedAI` sets only REACT_PASSIVE (`AI/CoreAI/PassiveAI.cpp:31`).
+        CreatureAiKindLikeCpp::PossessedAI,
+        CreatureAiKindLikeCpp::GuardAI,
+        CreatureAiKindLikeCpp::CombatAI,
+        CreatureAiKindLikeCpp::SmartAI,
+        CreatureAiKindLikeCpp::ScheduledChangeAI,
+    ] {
+        assert!(
+            !creature_ai_sets_no_melee_like_cpp(&kind),
+            "{kind:?} does not disable melee in C++"
+        );
+    }
+}
+
+/// A critter reaches the no-melee rule through selection, not through an explicit
+/// `AIName`: its database row leaves `AIName` empty and `CritterAI::Permissible`
+/// scores `PERMIT_BASE_PROACTIVE` (`AI/CoreAI/PassiveAI.cpp:95-100`), which beats
+/// `AggressorAI`'s `PERMIT_BASE_REACTIVE`. Matching on the raw `AIName` string
+/// therefore cannot see it.
+#[test]
+fn a_critter_with_no_ai_name_selects_critter_ai_and_cannot_melee_like_cpp() {
+    let input = CreatureAiSelectionInputLikeCpp {
+        is_critter: true,
+        ..selector_input()
+    };
+    assert!(input.ai_name.is_empty());
+
+    let kind = select_creature_ai_like_cpp(&input);
+    assert_eq!(kind, CreatureAiKindLikeCpp::CritterAI);
+    assert!(creature_ai_sets_no_melee_like_cpp(&kind));
+}

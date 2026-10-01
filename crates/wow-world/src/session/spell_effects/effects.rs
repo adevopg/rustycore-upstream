@@ -888,12 +888,12 @@ impl WorldSession {
                 "Represented SPELL_EFFECT_KILL_CREDIT2 applies current-session credit only; C++ group fanout remains unrepresented"
             );
         }
-        self.on_creature_killed_with_generator_like_cpp(
-            item_guid_generator,
-            creature_entry,
-            ObjectGuid::EMPTY,
-        )
-        .await;
+        // C++ `Spell::EffectKillCreditPersonal` (`Spells/SpellEffects.cpp:5437`)
+        // calls `KilledMonsterCredit` with the effect's `MiscValue`, not
+        // `KilledMonster`: a spell credit names one entry and does not expand the
+        // template's `KillCredit` proxies.
+        self.killed_monster_credit_like_cpp(item_guid_generator, creature_entry, ObjectGuid::EMPTY)
+            .await;
         Ok(())
     }
     pub(in crate::session) async fn apply_instakill_like_cpp(

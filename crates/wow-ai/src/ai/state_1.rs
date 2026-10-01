@@ -232,6 +232,44 @@ pub fn creature_ai_can_attack_like_cpp(
     }
 }
 
+/// Whether this AI's C++ constructor calls `Creature::SetCanMelee(false)`, which
+/// applies `CREATURE_STATIC_FLAG_NO_MELEE` (`Entities/Creature/Creature.h:183`)
+/// and makes `Unit::DoMeleeAttackIfReady` return immediately
+/// (`Entities/Unit/Unit.cpp:2433-2434`).
+///
+/// This is the whole mechanism that stops a passive creature from swinging:
+/// `Creature::Update` calls `DoMeleeAttackIfReady()` centrally for every creature
+/// (`Entities/Creature/Creature.cpp:921-932`, a region the fork patches only to
+/// collapse a pet branch into the same unconditional call), so nothing else in the
+/// AI prevents it.
+///
+/// The constructors are `TurretAI` (`AI/CoreAI/CombatAI.cpp:200`), `VehicleAI`
+/// (`:234`), `PassiveAI` (`AI/CoreAI/PassiveAI.cpp:25`) and `NullCreatureAI`
+/// (`:36`). `CritterAI` derives from `PassiveAI`; `TriggerAI` and `TotemAI` derive
+/// from `NullCreatureAI`. `PossessedAI` sets only `REACT_PASSIVE` (`:31`) and is
+/// deliberately not here.
+pub fn creature_ai_sets_no_melee_like_cpp(ai_kind: &CreatureAiKindLikeCpp) -> bool {
+    match ai_kind {
+        CreatureAiKindLikeCpp::TurretAI
+        | CreatureAiKindLikeCpp::VehicleAI
+        | CreatureAiKindLikeCpp::PassiveAI
+        | CreatureAiKindLikeCpp::CritterAI
+        | CreatureAiKindLikeCpp::NullCreatureAI
+        | CreatureAiKindLikeCpp::TriggerAI
+        | CreatureAiKindLikeCpp::TotemAI => true,
+        CreatureAiKindLikeCpp::PetAI
+        | CreatureAiKindLikeCpp::ScriptedAI(_)
+        | CreatureAiKindLikeCpp::UnknownNamedAI(_)
+        | CreatureAiKindLikeCpp::AggressorAI
+        | CreatureAiKindLikeCpp::ReactorAI
+        | CreatureAiKindLikeCpp::PossessedAI
+        | CreatureAiKindLikeCpp::GuardAI
+        | CreatureAiKindLikeCpp::CombatAI
+        | CreatureAiKindLikeCpp::SmartAI
+        | CreatureAiKindLikeCpp::ScheduledChangeAI => false,
+    }
+}
+
 pub fn creature_ai_uses_base_move_in_line_of_sight_like_cpp(
     ai_kind: &CreatureAiKindLikeCpp,
 ) -> bool {

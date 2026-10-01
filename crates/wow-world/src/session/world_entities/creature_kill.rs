@@ -296,21 +296,67 @@ impl WorldSession {
             );
         }
     }
-    /// Called when the player kills a creature. Checks all active kill-objective quests
-    /// and updates progress. Sends SMSG_QUEST_UPDATE_ADD_CREDIT if progress was made.
+    /// C++ `Player::KilledMonster` (`Entities/Player/Player.cpp:16561-16571`).
+    ///
+    /// The kill credits the creature's own entry **and** every non-zero
+    /// `CreatureTemplate::KillCredit`, which is how a quest objective naming a
+    /// proxy entry advances at all: C++ loops `MAX_KILL_CREDIT` and calls
+    /// `KilledMonsterCredit` for each, with an empty guid, because the proxy is
+    /// not the unit that died. Crediting only the entry left every
+    /// credit-proxied "kill X" objective permanently uncompletable.
+    ///
+    /// The entry passed to the objective is the given one, not the dead
+    /// creature's: C++ `KilledMonsterCredit` resolves `real_entry` only for the
+    /// criteria it reports and hands `entry` to `UpdateQuestObjectiveProgress`
+    /// (`:16576-16588`).
+    /// `kill_credits` is `CreatureTemplate::KillCredit`, passed in rather than
+    /// read from session state: the composition root deliberately keeps the
+    /// ObjectMgr query catalogs out of `WorldSession`, which
+    /// `session_resources_requires_named_capability_bundles` pins. The caller that
+    /// holds the catalog resolves them; a caller that does not pass `[0, 0]` and
+    /// says so.
     pub(crate) async fn on_creature_killed_with_generator_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
         creature_entry: u32,
         creature_guid: wow_core::ObjectGuid,
+        kill_credits: [i32; 2],
     ) {
-        // C++ QUEST_OBJECTIVE_MONSTER.
+        if creature_entry != 0 {
+            self.killed_monster_credit_like_cpp(item_guid_generator, creature_entry, creature_guid)
+                .await;
+        }
+        for credit in kill_credits {
+            let Ok(credit_entry) = u32::try_from(credit) else {
+                continue;
+            };
+            if credit_entry == 0 {
+                continue;
+            }
+            self.killed_monster_credit_like_cpp(
+                item_guid_generator,
+                credit_entry,
+                wow_core::ObjectGuid::EMPTY,
+            )
+            .await;
+        }
+    }
+
+    /// C++ `Player::KilledMonsterCredit` (`Entities/Player/Player.cpp:16573-16589`),
+    /// reduced to the `QUEST_OBJECTIVE_MONSTER` progress it ends in. The criteria
+    /// it starts and updates first are not represented.
+    pub(in crate::session) async fn killed_monster_credit_like_cpp(
+        &mut self,
+        item_guid_generator: &wow_core::ObjectGuidGenerator,
+        entry: u32,
+        credit_guid: wow_core::ObjectGuid,
+    ) {
         self.update_represented_storing_value_quest_objective_progress_like_cpp(
             item_guid_generator,
-            0,
-            creature_entry as i32,
+            crate::handlers::quest::QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL,
+            entry as i32,
             1,
-            creature_guid,
+            credit_guid,
         )
         .await;
     }
@@ -320,6 +366,10 @@ impl WorldSession {
         creature_entry: u32,
         creature_guid: wow_core::ObjectGuid,
     ) {
+        let kill_credits = self
+            .world_query_catalogs_like_cpp()
+            .and_then(|catalogs| catalogs.creature.kill_credits_like_cpp(creature_entry))
+            .unwrap_or([0, 0]);
         let Some(generator) = self.item_guid_generator_like_cpp_for_bridge() else {
             return;
         };
@@ -327,12 +377,14 @@ impl WorldSession {
             generator.as_ref(),
             creature_entry,
             creature_guid,
+            kill_credits,
         )
         .await;
     }
     pub(in crate::session) async fn process_pending_creature_kills_with_generator_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
+        creature_catalog: &wow_data::CreatureQueryCatalogLikeCpp,
     ) {
         let mut pending = std::mem::take(&mut self.pending_creature_kill_loot_like_cpp);
         pending.sort_by_key(|guid| (guid.high_value(), guid.low_value()));
@@ -379,6 +431,9 @@ impl WorldSession {
                 item_guid_generator,
                 reward.creature_entry,
                 reward.creature_guid,
+                creature_catalog
+                    .kill_credits_like_cpp(reward.creature_entry)
+                    .unwrap_or([0, 0]),
             )
             .await;
             #[cfg(test)]

@@ -76,20 +76,43 @@ impl WorldSession {
 
         // Re-gate on arrival: a command resolved for one incarnation must not
         // land on a reconnect, another character, or another map.
-        if self.state() != crate::session::SessionState::LoggedIn {
-            return;
-        }
-        if self.player_guid() != Some(command.attacker_guid) {
-            return;
-        }
-        if self.player_map_id_like_cpp() != command.map_id {
-            return;
-        }
+        //
+        // Every rejection here is silent on the wire and indistinguishable from
+        // a swing that never happened, while the runtime phase has already
+        // counted the command as delivered and queued, so
+        // `RUSTYCORE_PLAYER_MELEE_TRACE=1` names the gate that dropped it.
         let session_instance_id = self
             .current_canonical_player_map_key_like_cpp()
             .map(|key| key.instance_id)
             .unwrap_or(0);
-        if session_instance_id != command.instance_id {
+        let arrival_gate = if self.state() != crate::session::SessionState::LoggedIn {
+            Some("state")
+        } else if self.player_guid() != Some(command.attacker_guid) {
+            Some("attacker_guid")
+        } else if self.player_map_id_like_cpp() != command.map_id {
+            Some("map_id")
+        } else if session_instance_id != command.instance_id {
+            Some("instance_id")
+        } else {
+            None
+        };
+        if std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+            tracing::info!(
+                account = self.account_id,
+                gate = arrival_gate.unwrap_or("accepted"),
+                swings = command.swings.len(),
+                ?command.victim_guid,
+                session_state = ?self.state(),
+                session_player_guid = ?self.player_guid(),
+                command_attacker_guid = ?command.attacker_guid,
+                session_map_id = self.player_map_id_like_cpp(),
+                command_map_id = command.map_id,
+                session_instance_id,
+                command_instance_id = command.instance_id,
+                "RUST_PLAYER_MELEE arrival"
+            );
+        }
+        if arrival_gate.is_some() {
             return;
         }
 

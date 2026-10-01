@@ -238,11 +238,18 @@ impl PlayerCreateData {
             buf.write_uint32(0);
         }
 
-        // BoundingRadius, CombatReach, DisplayScale
-        // C++ DEFAULT_PLAYER_BOUNDING_RADIUS = 0.388999998569489 (ObjectDefines.h:39),
-        // set via Player::SetObjectScale -> SetBoundingRadius(scale * DEFAULT) (scale=1.0 here).
-        buf.write_float(0.388_999_998_569_489); // BoundingRadius
-        buf.write_float(1.5); // CombatReach
+        // BoundingRadius, CombatReach, DisplayScale.
+        //
+        // C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1586`)
+        // writes `scale * DEFAULT_PLAYER_BOUNDING_RADIUS` and
+        // `scale * DEFAULT_PLAYER_COMBAT_REACH` into the Unit, and this block
+        // reports the same fields. `Player::set_object_scale_like_cpp` is the
+        // server-side writer and is called at the bootstrap scale of 1.0, so the
+        // two agree. A scaled player would need the entity's own values here;
+        // `PlayerCreateData` does not carry them yet, and no RustyCore path
+        // scales a player.
+        buf.write_float(wow_constants::object::DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP);
+        buf.write_float(wow_constants::object::DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP);
         buf.write_float(1.0); // DisplayScale
 
         // NativeDisplayID, NativeXDisplayScale, MountDisplayID

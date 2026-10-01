@@ -730,9 +730,14 @@ async fn quest_confirm_accept_source_item_binds_on_acquire_like_cpp_store_item()
     );
     assert!(sender_rx.try_recv().is_err());
 }
+/// The same scenario as the neutral case above with `Flags2` bit 0 set. The
+/// target build never reads that field — `QuestObjective::Flags2` is loaded in
+/// `Quests/QuestDef.cpp:262` and only forwarded to the client in
+/// `Server/Packets/QuestPackets.cpp:208` — so the source item must still be
+/// created, stored and pushed, and the confirm-accept outcome must be the
+/// ordinary `StoredNewItem`.
 #[tokio::test]
-async fn quest_confirm_accept_source_item_bound_objective_updates_quest_without_creating_item_like_cpp()
- {
+async fn quest_confirm_accept_source_item_ignores_objective_flags2_like_cpp() {
     let (mut session, send_rx) = make_session();
     let receiver_guid = session.player_guid().unwrap();
     let sender_guid = ObjectGuid::create_player(1, 191);
@@ -750,7 +755,7 @@ async fn quest_confirm_accept_source_item_bound_objective_updates_quest_without_
         object_id: quest_log_item_id as i32,
         amount: 2,
         flags: 0,
-        flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+        flags2: 0x1,
         progress_bar_weight: 0.0,
         description: String::new(),
     });
@@ -772,7 +777,7 @@ async fn quest_confirm_accept_source_item_bound_objective_updates_quest_without_
     let status = session
         .player_quests
         .get(&quest_id)
-        .expect("bound source-item quest should still add local quest state");
+        .expect("source-item quest should add local quest state");
     assert_eq!(status.status, QUEST_STATUS_COMPLETE_LIKE_CPP);
     assert_eq!(status.objective_counts, vec![2]);
     let stored_source_item_count: u32 = session
@@ -782,7 +787,10 @@ async fn quest_confirm_accept_source_item_bound_objective_updates_quest_without_
         .filter_map(|item| session.inventory_item_objects_like_cpp().get(&item.guid))
         .map(|item| item.count())
         .sum();
-    assert_eq!(stored_source_item_count, 0);
+    assert_eq!(
+        stored_source_item_count, 2,
+        "C++ StoreNewItem creates the Item before ItemAddedQuestCheck runs"
+    );
     assert_eq!(
         session.represented_quest_confirm_accepts_like_cpp(),
         &[RepresentedQuestConfirmAcceptLikeCpp {
@@ -790,7 +798,7 @@ async fn quest_confirm_accept_source_item_bound_objective_updates_quest_without_
             sender_guid_before_clear: sender_guid,
             quest_id,
             raw_quest_id: quest_id as i32,
-            reason: RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp::ReceiverGiveQuestSourceItemBoundObjectiveNoGrant,
+            reason: RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp::ReceiverGiveQuestSourceItemStoredNewItem,
             object_accessor_unrepresented: true,
             party_runtime_unrepresented: true,
             can_add_source_item_unrepresented: false,
@@ -803,34 +811,46 @@ async fn quest_confirm_accept_source_item_bound_objective_updates_quest_without_
     );
     assert_complete_status_update_like_cpp(&session, quest_id, false);
 
-    let sent = send_rx.try_recv().expect("bound item update packet");
-    assert!(send_rx.try_recv().is_err());
-    let mut packet = WorldPacket::from_bytes(&sent);
-    assert_eq!(
-        packet.read_uint16().unwrap(),
-        wow_constants::ServerOpcodes::ItemPushResult as u16
-    );
-    assert_eq!(packet.read_packed_guid().unwrap(), receiver_guid);
-    assert_eq!(
-        packet.read_uint8().unwrap(),
-        u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
-    );
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
-    assert_eq!(packet.read_int32().unwrap(), 2);
-    assert_eq!(packet.read_int32().unwrap(), 2);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_uint32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_packed_guid().unwrap(), ObjectGuid::EMPTY);
-    assert!(!packet.read_bit().unwrap());
-    assert!(!packet.read_bit().unwrap());
-    assert_eq!(packet.read_bits(3).unwrap(), 3);
+    let mut saw_item_push = false;
+    while let Ok(bytes) = send_rx.try_recv() {
+        let mut packet = WorldPacket::from_bytes(&bytes);
+        if packet.read_uint16().unwrap() != wow_constants::ServerOpcodes::ItemPushResult as u16 {
+            continue;
+        }
+        saw_item_push = true;
+        assert_eq!(packet.read_packed_guid().unwrap(), receiver_guid);
+        assert_eq!(
+            packet.read_uint8().unwrap(),
+            u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
+        );
+        let _slot_in_bag = packet.read_int32().unwrap();
+        assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
+        assert_eq!(packet.read_int32().unwrap(), 2);
+        assert_eq!(packet.read_int32().unwrap(), 2);
+        for _ in 0..3 {
+            assert_eq!(packet.read_int32().unwrap(), 0);
+        }
+        assert_eq!(packet.read_uint32().unwrap(), 0);
+        assert_eq!(packet.read_int32().unwrap(), 0);
+        assert_ne!(
+            packet.read_packed_guid().unwrap(),
+            ObjectGuid::EMPTY,
+            "a stored item pushes its own GUID"
+        );
+        // C++ `GiveQuestSourceItem` calls `SendNewItem(item, count, true, false)`
+        // (`Entities/Player/Player.cpp:15931`): pushed, not created.
+        assert!(packet.read_bit().unwrap());
+        assert!(!packet.read_bit().unwrap());
+        assert_eq!(
+            packet.read_bits(3).unwrap(),
+            1,
+            "DISPLAY_TYPE_NORMAL; the target enum has no value 3"
+        );
+    }
+    assert!(saw_item_push, "the source item grant must push its item");
     assert!(sender_rx.try_recv().is_err());
 }
-#[tokio::test]
+
 async fn quest_confirm_accept_tracking_event_source_item_objective_auto_rewards_like_cpp() {
     let (mut session, send_rx) = make_session();
     let sender_guid = ObjectGuid::create_player(1, 194);

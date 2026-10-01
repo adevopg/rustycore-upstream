@@ -7,8 +7,7 @@
 use std::collections::HashMap;
 
 use crate::CreatureDisplayInfoStore;
-
-const DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP: f32 = 1.5;
+use wow_constants::object::DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP;
 
 fn normalize_combat_reach_like_cpp(combat_reach: f32) -> f32 {
     if combat_reach < 0.1 {

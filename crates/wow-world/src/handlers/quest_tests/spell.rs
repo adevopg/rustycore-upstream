@@ -168,7 +168,7 @@ async fn quest_confirm_accept_source_spell_records_two_self_casts_like_cpp() {
     assert!(sender_rx.try_recv().is_err());
 }
 #[tokio::test]
-async fn quest_confirm_accept_source_item_bound_objective_broadcasts_to_group_like_cpp() {
+async fn quest_confirm_accept_source_item_never_broadcasts_to_group_like_cpp() {
     let (mut session, send_rx) = make_session();
     let receiver_guid = session.player_guid().unwrap();
     let sender_guid = ObjectGuid::create_player(1, 193);
@@ -186,7 +186,7 @@ async fn quest_confirm_accept_source_item_bound_objective_broadcasts_to_group_li
         object_id: quest_log_item_id as i32,
         amount: 2,
         flags: 0,
-        flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+        flags2: 0x1,
         progress_bar_weight: 0.0,
         description: String::new(),
     });
@@ -231,10 +231,21 @@ async fn quest_confirm_accept_source_item_bound_objective_broadcasts_to_group_li
 
     run_quest_confirm_accept(&mut session, quest_id as i32).await;
 
-    let self_packet = send_rx.try_recv().expect("receiver group packet");
-    assert_eq!(sender_rx.try_recv().unwrap(), self_packet);
-    assert_eq!(other_rx.try_recv().unwrap(), self_packet);
-    assert!(send_rx.try_recv().is_err());
+    // `Player::SendNewItem` only broadcasts when its `broadcast` argument is set,
+    // and C++ `GiveQuestSourceItem` leaves it at the default `false`
+    // (`Entities/Player/Player.cpp:15931`, `Player.h:1413`), so a grouped
+    // receiver's source item reaches nobody else even without the
+    // `DontReportLootLogToParty` template flag.
+    let mut item_push = None;
+    while let Ok(bytes) = send_rx.try_recv() {
+        let mut packet = WorldPacket::from_bytes(&bytes);
+        if packet.read_uint16().unwrap() == wow_constants::ServerOpcodes::ItemPushResult as u16 {
+            item_push = Some(bytes);
+        }
+    }
+    let self_packet = item_push.expect("the stored source item must push its result");
+    assert!(sender_rx.try_recv().is_err());
+    assert!(other_rx.try_recv().is_err());
     let mut packet = WorldPacket::from_bytes(&self_packet);
     assert_eq!(
         packet.read_uint16().unwrap(),
@@ -245,17 +256,8 @@ async fn quest_confirm_accept_source_item_bound_objective_broadcasts_to_group_li
         packet.read_uint8().unwrap(),
         u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
     );
-    assert_eq!(packet.read_int32().unwrap(), 0);
+    let _slot_in_bag = packet.read_int32().unwrap();
     assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
     assert_eq!(packet.read_int32().unwrap(), 2);
     assert_eq!(packet.read_int32().unwrap(), 2);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_uint32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_packed_guid().unwrap(), ObjectGuid::EMPTY);
-    assert!(!packet.read_bit().unwrap());
-    assert!(!packet.read_bit().unwrap());
-    assert_eq!(packet.read_bits(3).unwrap(), 3);
 }

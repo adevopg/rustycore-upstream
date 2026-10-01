@@ -337,6 +337,8 @@ pub(super) struct SessionRuntimePolicyCapabilitiesLikeCpp {
     pub(super) packet_spoof_config: PacketSpoofConfigLikeCpp,
     /// C++ `CONFIG_INTERVAL_SAVE` / `PlayerSaveInterval` in milliseconds.
     pub(super) player_save_interval_ms: u32,
+    /// C++ `CONFIG_DEATH_*`, read by corpse reclaim and the bones conversion.
+    pub(super) death_corpse_config: wow_world::session::DeathCorpseConfigLikeCpp,
 }
 
 /// Immutable identity and address snapshot for the selected realm.
@@ -551,6 +553,7 @@ impl SessionRuntimePolicyCapabilitiesLikeCpp {
         session.set_socket_timeouts_like_cpp(socket_timeouts);
         session.set_packet_spoof_config_like_cpp(self.packet_spoof_config);
         session.set_player_save_interval_ms_like_cpp(self.player_save_interval_ms);
+        session.set_death_corpse_config_like_cpp(self.death_corpse_config);
         session.set_group_registry(
             Arc::clone(&self.group_registry),
             Arc::clone(&self.pending_invites),

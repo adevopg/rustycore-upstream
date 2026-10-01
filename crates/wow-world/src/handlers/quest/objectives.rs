@@ -48,59 +48,6 @@ impl WorldSession {
         quest_log_item_id
     }
 
-    pub(crate) async fn apply_quest_source_item_added_non_bound_objective_progress_with_generator_like_cpp(
-        &mut self,
-        item_guid_generator: &wow_core::ObjectGuidGenerator,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-    ) -> Vec<u32> {
-        self.apply_quest_item_added_objective_progress_filtered_like_cpp(
-            item_guid_generator,
-            entry_id,
-            quest_log_item_id,
-            count,
-            Some(false),
-        )
-        .await
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn apply_quest_source_item_added_non_bound_objective_progress_like_cpp(
-        &mut self,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-    ) -> Vec<u32> {
-        let generators = self.id_generators_for_test_like_cpp();
-        self.apply_quest_source_item_added_non_bound_objective_progress_with_generator_like_cpp(
-            generators.item.as_ref(),
-            entry_id,
-            quest_log_item_id,
-            count,
-        )
-        .await
-    }
-
-    /// C++ `Player::ItemAddedQuestCheck(entry, count)` without a bound-item
-    /// filter, as used by bank withdrawals after `StoreItem`.
-    pub(crate) async fn apply_quest_item_added_objective_progress_with_generator_like_cpp(
-        &mut self,
-        item_guid_generator: &wow_core::ObjectGuidGenerator,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-    ) -> Vec<u32> {
-        self.apply_quest_item_added_objective_progress_filtered_like_cpp(
-            item_guid_generator,
-            entry_id,
-            quest_log_item_id,
-            count,
-            None,
-        )
-        .await
-    }
-
     #[cfg(test)]
     pub(crate) async fn apply_quest_item_added_objective_progress_like_cpp(
         &mut self,
@@ -118,79 +65,42 @@ impl WorldSession {
         .await
     }
 
-    async fn apply_quest_item_added_objective_progress_filtered_like_cpp(
+    /// C++ `Player::ItemAddedQuestCheck(entry, count)`
+    /// (`Entities/Player/Player.cpp:16533-16536`), i.e.
+    /// `UpdateQuestObjectiveProgress(QUEST_OBJECTIVE_ITEM, entry, count)`
+    /// (`:16631-16772`): every incomplete objective keyed on the item is
+    /// credited, and the credit message for `QUEST_OBJECTIVE_ITEM` is the
+    /// item push itself, never `SMSG_QUEST_UPDATE_ADD_CREDIT` (`:16676-16678`).
+    ///
+    /// The target build reads no objective flag here. `QuestObjective::Flags2`
+    /// is loaded (`Quests/QuestDef.cpp:262`) and forwarded to the client
+    /// (`Server/Packets/QuestPackets.cpp:208`) and never consulted again, so no
+    /// objective is exempt and no credit stands in for storing the item.
+    pub(crate) async fn apply_quest_item_added_objective_progress_with_generator_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
         entry_id: u32,
         quest_log_item_id: u32,
         count: u32,
-        bound_item_requirement: Option<bool>,
     ) -> Vec<u32> {
         use wow_packet::packets::quest::QuestUpdateComplete;
 
         let Some(quest_store) = self.quests.store.clone() else {
             return Vec::new();
         };
-        let added_count = count;
         let count = i32::try_from(count).unwrap_or(i32::MAX);
         let entry_object_id = i32::try_from(entry_id).unwrap_or(i32::MAX);
         let mut objective_ids = vec![entry_object_id];
-        let mut matching_entry_objectives = Vec::new();
-        let Some(state_snapshot) = self.player_quest_gameplay_snapshot_like_cpp() else {
-            return Vec::new();
-        };
-        'matching_entry: for status in state_snapshot.statuses_like_cpp().values() {
-            if status.status != QUEST_STATUS_INCOMPLETE_LIKE_CPP {
-                continue;
-            }
-            let Some(quest) = quest_store.get(status.quest_id) else {
-                continue;
-            };
-            for (objective_index, objective) in quest.objectives.iter().enumerate() {
-                let is_bound = (objective.flags2
-                    & QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL)
-                    != 0;
-                let passes_filter =
-                    bound_item_requirement.is_none_or(|required_bound| required_bound == is_bound);
-                let Ok(storage_index) = usize::try_from(objective.storage_index) else {
-                    continue;
-                };
-                let current = status
-                    .objective_counts
-                    .get(storage_index)
-                    .copied()
-                    .unwrap_or(0);
-                if objective.obj_type != QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL
-                    || objective.object_id != entry_object_id
-                    || !passes_filter
-                    || current >= objective.amount
-                    || !crate::handlers::quest_rules::represented_quest_objective_completable_like_cpp(
-                        status,
-                        quest,
-                        objective_index,
-                    )
-                {
-                    continue;
-                }
-                matching_entry_objectives.push(is_bound);
-                if is_bound {
-                    break 'matching_entry;
-                }
-            }
-        }
-        let should_update_quest_log_item = quest_log_item_id != 0
-            && (matching_entry_objectives.len() != 1 || !matching_entry_objectives[0]);
-        if should_update_quest_log_item {
+        if quest_log_item_id != 0 {
             objective_ids.push(i32::try_from(quest_log_item_id).unwrap_or(i32::MAX));
         }
 
-        let Some((changed_quest_ids, quests_to_complete, objective_updates)) = self
+        let Some((changed_quest_ids, quests_to_complete)) = self
             .mutate_player_quest_gameplay_like_cpp(|state| {
                 let rewarded_quest_ids = state.rewarded_quest_ids_like_cpp().clone();
                 let mut changed_quest_ids = Vec::new();
                 let mut quests_to_complete = Vec::new();
-                let mut objective_updates = Vec::new();
-                'quests: for status in state.statuses_mut_like_cpp() {
+                for status in state.statuses_mut_like_cpp() {
                     if status.status != QUEST_STATUS_INCOMPLETE_LIKE_CPP {
                         continue;
                     }
@@ -201,14 +111,6 @@ impl WorldSession {
 
                     for (objective_index, objective) in quest.objectives.iter().enumerate() {
                         if objective.obj_type != QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL {
-                            continue;
-                        }
-                        let is_bound = (objective.flags2
-                            & QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL)
-                            != 0;
-                        if bound_item_requirement
-                            .is_some_and(|required_bound| required_bound != is_bound)
-                        {
                             continue;
                         }
                         if !objective_ids.contains(&objective.object_id) {
@@ -238,9 +140,6 @@ impl WorldSession {
                         if !changed_quest_ids.contains(&status.quest_id) {
                             changed_quest_ids.push(status.quest_id);
                         }
-                        if count > 0 {
-                            objective_updates.push((new_count, is_bound));
-                        }
                         let quest_already_rewarded =
                             rewarded_quest_ids.contains(&status.quest_id);
                         if new_count >= objective.amount
@@ -253,12 +152,9 @@ impl WorldSession {
                         {
                             quests_to_complete.push(status.quest_id);
                         }
-                        if is_bound {
-                            break 'quests;
-                        }
                     }
                 }
-                (changed_quest_ids, quests_to_complete, objective_updates)
+                (changed_quest_ids, quests_to_complete)
             })
         else {
             return Vec::new();
@@ -287,66 +183,8 @@ impl WorldSession {
                 }
             }
         }
-        if objective_updates.len() == 1 && objective_updates[0].1 {
-            self.send_quest_bound_item_update_like_cpp(
-                entry_id,
-                quest_log_item_id,
-                added_count,
-                u32::try_from(objective_updates[0].0.max(0)).unwrap_or(u32::MAX),
-            );
-        }
         self.sync_player_registry_state_like_cpp();
         changed_quest_ids
-    }
-
-    /// C++ `Player::SendQuestUpdateAddItem`: ITEM objectives never use
-    /// `SMSG_QUEST_UPDATE_ADD_CREDIT`; a single quest-bound objective uses
-    /// `SMSG_ITEM_PUSH_RESULT` display type 3 instead.
-    fn send_quest_bound_item_update_like_cpp(
-        &self,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-        quantity_in_inventory: u32,
-    ) {
-        let Some(player_guid) = self.player_guid() else {
-            return;
-        };
-        let delivery = if self
-            .item_template_flags3(entry_id)
-            .is_some_and(|flags| (flags & ItemFlags3::DontReportLootLogToParty as u32) != 0)
-        {
-            SendNewItemDelivery::Direct
-        } else {
-            SendNewItemDelivery::GroupBroadcast
-        };
-
-        self.send_new_item_plan(&SendNewItemPlan {
-            player_guid,
-            item_guid: ObjectGuid::EMPTY,
-            item_entry: entry_id,
-            item_instance: SendNewItemInstancePlan {
-                item_id: entry_id,
-                random_properties_seed: 0,
-                random_properties_id: 0,
-                modifications: Vec::new(),
-            },
-            slot: u8::from(wow_entities::INVENTORY_SLOT_BAG_0),
-            slot_in_bag: 0,
-            quest_log_item_id,
-            quantity: count,
-            quantity_in_inventory,
-            dungeon_encounter_id: 0,
-            battle_pet_species_id: 0,
-            battle_pet_breed_id: 0,
-            battle_pet_breed_quality: 0,
-            battle_pet_level: 0,
-            pushed: false,
-            created: false,
-            is_encounter_loot: false,
-            display_text: SendNewItemDisplayText::QuestUpdateAddItem,
-            delivery,
-        });
     }
 
     /// C++ `Player::ItemRemovedQuestCheck`: after the inventory mutation,
@@ -395,7 +233,7 @@ impl WorldSession {
         Some(changed_quest_ids)
     }
 
-    pub(crate) fn apply_quest_item_added_non_bound_state_like_cpp(
+    pub(crate) fn apply_quest_item_added_state_like_cpp(
         &mut self,
         entry_id: u32,
         quest_log_item_id: u32,
@@ -416,15 +254,14 @@ impl WorldSession {
                 .iter()
                 .map(|(&id, status)| (id, status.clone()))
                 .collect();
-            let changed =
-                crate::handlers::quest_rules::apply_quest_item_added_non_bound_to_statuses_like_cpp(
-                    quest_store.as_ref(),
-                    &rewarded,
-                    &mut statuses,
-                    entry_id,
-                    quest_log_item_id,
-                    count,
-                );
+            let changed = crate::handlers::quest_rules::apply_quest_item_added_to_statuses_like_cpp(
+                quest_store.as_ref(),
+                &rewarded,
+                &mut statuses,
+                entry_id,
+                quest_log_item_id,
+                count,
+            );
             state.replace_statuses_like_cpp(
                 statuses.into_iter().collect(),
                 state.status_authority_complete_like_cpp(),
@@ -432,55 +269,6 @@ impl WorldSession {
             changed
         })
         .unwrap_or_default()
-    }
-
-    pub(crate) fn apply_quest_item_added_bound_state_like_cpp(
-        &mut self,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-    ) -> Vec<u32> {
-        self.invalidate_player_quest_status_authority_like_cpp();
-        let Some(quest_store) = self.quests.store.clone() else {
-            return Vec::new();
-        };
-        let Some(Some((quest_id, new_count))) =
-            self.mutate_player_quest_gameplay_like_cpp(|state| {
-                let rewarded = state
-                    .rewarded_quest_ids_like_cpp()
-                    .iter()
-                    .copied()
-                    .collect();
-                let mut statuses = state
-                    .statuses_like_cpp()
-                    .iter()
-                    .map(|(&id, status)| (id, status.clone()))
-                    .collect();
-                let result =
-                    crate::handlers::quest_rules::apply_quest_item_added_bound_to_statuses_like_cpp(
-                        quest_store.as_ref(),
-                        &rewarded,
-                        &mut statuses,
-                        entry_id,
-                        quest_log_item_id,
-                        count,
-                    );
-                state.replace_statuses_like_cpp(
-                    statuses.into_iter().collect(),
-                    state.status_authority_complete_like_cpp(),
-                );
-                result
-            })
-        else {
-            return Vec::new();
-        };
-        self.send_quest_bound_item_update_like_cpp(
-            entry_id,
-            quest_log_item_id,
-            count,
-            u32::try_from(new_count.max(0)).unwrap_or(u32::MAX),
-        );
-        vec![quest_id]
     }
 
     pub(crate) fn publish_quest_item_added_status_changes_like_cpp(
@@ -516,220 +304,5 @@ impl WorldSession {
             }
         }
         self.sync_player_registry_state_like_cpp();
-    }
-
-    /// C++ walks one objective-status index and stops at the first quest-bound
-    /// item objective. Rust stores statuses in a `HashMap`, so two independent
-    /// scans could select different quests. Use the explicit quest-log slot
-    /// (then quest id as a deterministic duplicate-slot fallback) for both the
-    /// durable plan and its post-commit application.
-    pub(super) fn quest_bound_item_objective_quest_order_like_cpp(&self) -> Vec<u32> {
-        let mut quests = self
-            .player_quest_gameplay_snapshot_like_cpp()
-            .into_iter()
-            .flat_map(|state| state.statuses_snapshot_like_cpp().into_values())
-            .map(|status| (status.slot, status.quest_id))
-            .collect::<Vec<_>>();
-        quests.sort_unstable();
-        quests.into_iter().map(|(_, quest_id)| quest_id).collect()
-    }
-
-    pub(super) async fn apply_quest_source_item_bound_objective_progress_for_object_with_generator_like_cpp(
-        &mut self,
-        item_guid_generator: &wow_core::ObjectGuidGenerator,
-        quest_store: &QuestStore,
-        object_id: i32,
-        count_i32: i32,
-    ) -> Vec<(u32, i32)> {
-        self.invalidate_player_quest_status_authority_like_cpp();
-        let ordered_quest_ids = self.quest_bound_item_objective_quest_order_like_cpp();
-        let Some((updated_counts, quests_to_complete)) = self
-            .mutate_player_quest_gameplay_like_cpp(|state| {
-                let rewarded_quest_ids = state.rewarded_quest_ids_like_cpp().clone();
-                let mut updated_counts = Vec::new();
-                let mut quests_to_complete = Vec::new();
-                'quests: for quest_id in ordered_quest_ids {
-                    let Some(status) = state.status_mut_like_cpp(quest_id) else {
-                        continue;
-                    };
-                    if status.status != QUEST_STATUS_INCOMPLETE_LIKE_CPP {
-                        continue;
-                    }
-
-                    let Some(quest) = quest_store.get(status.quest_id) else {
-                        continue;
-                    };
-
-                    for (objective_index, objective) in quest.objectives.iter().enumerate() {
-                        if objective.obj_type != QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL {
-                            continue;
-                        }
-                        if (objective.flags2
-                            & QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL)
-                            == 0
-                        {
-                            continue;
-                        }
-                        if objective.object_id != object_id {
-                            continue;
-                        }
-                        if !crate::handlers::quest_rules::represented_quest_objective_completable_like_cpp(
-                            status,
-                            quest,
-                            objective_index,
-                        ) {
-                            continue;
-                        }
-
-                        let Ok(storage_index) = usize::try_from(objective.storage_index) else {
-                            continue;
-                        };
-                        if status.objective_counts.len() <= storage_index {
-                            status.objective_counts.resize(storage_index + 1, 0);
-                        }
-                        let current = status.objective_counts[storage_index];
-                        if current >= objective.amount {
-                            continue;
-                        }
-                        let new_count =
-                            current.saturating_add(count_i32).clamp(0, objective.amount);
-                        status.objective_counts[storage_index] = new_count;
-                        updated_counts.push((status.quest_id, new_count));
-                        let quest_already_rewarded =
-                            rewarded_quest_ids.contains(&status.quest_id);
-                        if new_count >= objective.amount
-                            && crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
-                                status,
-                                quest,
-                                objective.id,
-                                quest_already_rewarded,
-                            )
-                        {
-                            quests_to_complete.push(status.quest_id);
-                        }
-                        // C++ `UpdateQuestObjectiveProgress` stops after the first
-                        // credited quest-bound Item objective.
-                        break 'quests;
-                    }
-                }
-                (updated_counts, quests_to_complete)
-            })
-        else {
-            return Vec::new();
-        };
-
-        for quest_id in quests_to_complete {
-            if let Some(quest) = quest_store.get(quest_id).cloned() {
-                self.complete_represented_quest_after_add_with_generator_like_cpp(
-                    item_guid_generator,
-                    &quest,
-                )
-                .await;
-            }
-        }
-
-        updated_counts
-    }
-
-    #[cfg(test)]
-    pub(super) async fn apply_quest_source_item_bound_objective_progress_for_object_like_cpp(
-        &mut self,
-        quest_store: &QuestStore,
-        object_id: i32,
-        count_i32: i32,
-    ) -> Vec<(u32, i32)> {
-        let generators = self.id_generators_for_test_like_cpp();
-        self.apply_quest_source_item_bound_objective_progress_for_object_with_generator_like_cpp(
-            generators.item.as_ref(),
-            quest_store,
-            object_id,
-            count_i32,
-        )
-        .await
-    }
-
-    pub(crate) async fn apply_quest_source_item_bound_objective_preflight_with_generator_like_cpp(
-        &mut self,
-        item_guid_generator: &wow_core::ObjectGuidGenerator,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-    ) -> Option<QuestSourceItemBoundPreflightLikeCpp> {
-        let Some(_player_guid) = self.player_guid() else {
-            return None;
-        };
-        let Some(quest_store) = self.quests.store.clone() else {
-            return None;
-        };
-        let count_i32 = i32::try_from(count).unwrap_or(i32::MAX);
-        let entry_object_id = i32::try_from(entry_id).unwrap_or(i32::MAX);
-        let mut updated_counts = self
-            .apply_quest_source_item_bound_objective_progress_for_object_with_generator_like_cpp(
-                item_guid_generator,
-                quest_store.as_ref(),
-                entry_object_id,
-                count_i32,
-            )
-            .await;
-
-        if quest_log_item_id != 0 && updated_counts.len() != 1 {
-            let quest_log_object_id = i32::try_from(quest_log_item_id).unwrap_or(i32::MAX);
-            updated_counts.extend(
-                self.apply_quest_source_item_bound_objective_progress_for_object_with_generator_like_cpp(
-                    item_guid_generator,
-                    quest_store.as_ref(),
-                    quest_log_object_id,
-                    count_i32,
-                )
-                .await,
-            );
-        }
-
-        if updated_counts.is_empty() {
-            return None;
-        }
-
-        self.sync_player_registry_state_like_cpp();
-        let mut changed_quest_ids = Vec::new();
-        for &(quest_id, _) in &updated_counts {
-            if !changed_quest_ids.contains(&quest_id) {
-                changed_quest_ids.push(quest_id);
-            }
-        }
-
-        if updated_counts.len() != 1 {
-            return Some(QuestSourceItemBoundPreflightLikeCpp {
-                no_grant: false,
-                changed_quest_ids,
-            });
-        }
-
-        self.send_quest_bound_item_update_like_cpp(
-            entry_id,
-            quest_log_item_id,
-            count,
-            u32::try_from(updated_counts[0].1.max(0)).unwrap_or(u32::MAX),
-        );
-        Some(QuestSourceItemBoundPreflightLikeCpp {
-            no_grant: true,
-            changed_quest_ids,
-        })
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn apply_quest_source_item_bound_objective_preflight_like_cpp(
-        &mut self,
-        entry_id: u32,
-        quest_log_item_id: u32,
-        count: u32,
-    ) -> Option<QuestSourceItemBoundPreflightLikeCpp> {
-        let generators = self.id_generators_for_test_like_cpp();
-        self.apply_quest_source_item_bound_objective_preflight_with_generator_like_cpp(
-            generators.item.as_ref(),
-            entry_id,
-            quest_log_item_id,
-            count,
-        )
-        .await
     }
 }

@@ -833,3 +833,155 @@ async fn creature_kill_tracking_event_objective_auto_rewards_like_cpp() {
         ]
     );
 }
+/// C++ `Player::KilledMonster` (`Entities/Player/Player.cpp:16561-16571`) credits
+/// the dead creature's entry **and** each non-zero
+/// `CreatureTemplate::KillCredit`, each through `KilledMonsterCredit` with an
+/// empty guid because the proxy is not the unit that died.
+///
+/// Only the own entry was credited before, so a "kill X" objective naming a
+/// credit proxy — the usual shape when several creatures count for one objective
+/// — could never advance. `creature_template.KillCredit1/2` was loaded for the
+/// client's creature query and read by nothing else.
+#[tokio::test]
+async fn creature_kill_credits_the_templates_kill_credit_entries_like_cpp() {
+    let (mut session, _pkt_tx, _send_rx) = make_session();
+    let player_guid = ObjectGuid::create_player(1, 43);
+    let creature_guid = test_creature_guid(9_910);
+    let killed_entry = 9_911_u32;
+    let proxy_entry = 9_912_u32;
+    let quest_id = 12_502;
+
+    // The objective names the proxy, not the creature that dies.
+    let mut quest = test_quest_template(quest_id);
+    quest.objectives.push(wow_data::quest::QuestObjective {
+        id: quest_id * 10,
+        quest_id,
+        obj_type: 0, // C++ QUEST_OBJECTIVE_MONSTER
+        order: 0,
+        storage_index: 0,
+        object_id: proxy_entry as i32,
+        amount: 2,
+        flags: 0,
+        flags2: 0,
+        progress_bar_weight: 0.0,
+        description: String::new(),
+    });
+    session.set_player_guid(Some(player_guid));
+    session.set_quest_store(Arc::new(wow_data::quest::QuestStore::from_quests_like_cpp(
+        [quest],
+    )));
+    session.player_quests.insert(
+        quest_id,
+        crate::handlers::quest::PlayerQuestStatus {
+            quest_id,
+            status: crate::conditions::QUEST_STATUS_INCOMPLETE_LIKE_CPP,
+            explored: false,
+            accept_time_secs: 0,
+            end_time_secs: 0,
+            objective_counts: vec![0],
+            slot: 0,
+        },
+    );
+    session.set_object_mgr_catalogs_like_cpp(Arc::new(crate::session::ObjectMgrCatalogsLikeCpp {
+        creature: Arc::new(wow_data::CreatureQueryCatalogLikeCpp::from_rows_like_cpp(
+            [wow_data::CreatureQueryTemplateLikeCpp {
+                entry: killed_entry,
+                kill_credits: [proxy_entry as i32, 0],
+                ..Default::default()
+            }],
+            [],
+        )),
+        ..Default::default()
+    }));
+
+    adopt_player_quest_fixture_into_canonical_owner_like_cpp(&mut session);
+    session
+        .on_creature_killed(killed_entry, creature_guid)
+        .await;
+
+    let counts = session
+        .player_quest_gameplay_snapshot_like_cpp()
+        .and_then(|quests| {
+            quests
+                .statuses_like_cpp()
+                .get(&quest_id)
+                .map(|status| status.objective_counts.clone())
+        })
+        .expect("the quest must still be tracked");
+    assert_eq!(
+        counts,
+        vec![1],
+        "the kill must credit the proxy entry the objective names"
+    );
+}
+
+/// The same kill with no credit proxies advances nothing beyond its own entry:
+/// C++ skips a zero `KillCredit` slot, so an objective on an unrelated entry
+/// stays where it was.
+#[tokio::test]
+async fn creature_kill_without_kill_credits_leaves_other_objectives_alone_like_cpp() {
+    let (mut session, _pkt_tx, _send_rx) = make_session();
+    let player_guid = ObjectGuid::create_player(1, 44);
+    let creature_guid = test_creature_guid(9_920);
+    let killed_entry = 9_921_u32;
+    let unrelated_entry = 9_922_u32;
+    let quest_id = 12_503;
+
+    let mut quest = test_quest_template(quest_id);
+    quest.objectives.push(wow_data::quest::QuestObjective {
+        id: quest_id * 10,
+        quest_id,
+        obj_type: 0,
+        order: 0,
+        storage_index: 0,
+        object_id: unrelated_entry as i32,
+        amount: 2,
+        flags: 0,
+        flags2: 0,
+        progress_bar_weight: 0.0,
+        description: String::new(),
+    });
+    session.set_player_guid(Some(player_guid));
+    session.set_quest_store(Arc::new(wow_data::quest::QuestStore::from_quests_like_cpp(
+        [quest],
+    )));
+    session.player_quests.insert(
+        quest_id,
+        crate::handlers::quest::PlayerQuestStatus {
+            quest_id,
+            status: crate::conditions::QUEST_STATUS_INCOMPLETE_LIKE_CPP,
+            explored: false,
+            accept_time_secs: 0,
+            end_time_secs: 0,
+            objective_counts: vec![0],
+            slot: 0,
+        },
+    );
+    session.set_object_mgr_catalogs_like_cpp(Arc::new(crate::session::ObjectMgrCatalogsLikeCpp {
+        creature: Arc::new(wow_data::CreatureQueryCatalogLikeCpp::from_rows_like_cpp(
+            [wow_data::CreatureQueryTemplateLikeCpp {
+                entry: killed_entry,
+                kill_credits: [0, 0],
+                ..Default::default()
+            }],
+            [],
+        )),
+        ..Default::default()
+    }));
+
+    adopt_player_quest_fixture_into_canonical_owner_like_cpp(&mut session);
+    session
+        .on_creature_killed(killed_entry, creature_guid)
+        .await;
+
+    let counts = session
+        .player_quest_gameplay_snapshot_like_cpp()
+        .and_then(|quests| {
+            quests
+                .statuses_like_cpp()
+                .get(&quest_id)
+                .map(|status| status.objective_counts.clone())
+        })
+        .expect("the quest must still be tracked");
+    assert_eq!(counts, vec![0]);
+}

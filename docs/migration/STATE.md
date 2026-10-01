@@ -25,6 +25,114 @@ clause that demanded hostility from a participant the creature was already engag
 Both, with their C++ anchors and the traced ordering, are in
 [EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
 
+**Quest kill credit is proven live on 2026-10-01**, which settles the contested D-H4 finding:
+killing a Rabbit with quest 14106 active published `SMSG_QUEST_UPDATE_ADD_CREDIT` and moved
+`character_queststatus_objectives.data` from 0 to 1, persisted. Verifying it exposed one real
+gap, now repaired: C++ `Player::KilledMonster` credits the creature's entry **and** each
+`CreatureTemplate::KillCredit` proxy, where RustyCore credited only the entry, so an objective
+naming a proxy could never advance. A kill by spell damage still passes no proxies, because
+that path has no ObjectMgr catalog in scope and the composition root keeps those out of
+`WorldSession` by design; it is named at the call site. The critter that swung back 47 times is also repaired:
+the only thing that stops a passive creature meleeing in C++ is
+`Unit::DoMeleeAttackIfReady`'s early return on `!Creature::CanMelee()`, and the flag behind it
+is written by the AI constructors that call `SetCanMelee(false)`. RustyCore enforced that for
+`TurretAI` by matching the database `AIName` string, which a critter — empty `AIName`,
+`CritterAI` by Permissible scoring — could never match; the gate now asks the resolved AI kind.
+Live: `creature_landed` went from 47 to 0 for a Rabbit, while entry 94 still retaliates, dies,
+pays XP and drops 9 copper plus two items in the same session.
+
+**Creature loot is proven live on 2026-10-01, in both halves.** `--loot-after-kill` kills a
+creature and loots it: against entry 299 the window offered `item_id 4865 x1` with
+`loot_list_id 0`, and after the clean logout `item_instance` carries that entry with a fresh
+guid in `character_inventory` (5 rows to 6); against entry 94 the window offered `coins=3`
+and `characters.money` went 0 to 3. `coins=0` for entry 299 is correct data, not a defect:
+`creature_template_difficulty` gives it `GoldMin = GoldMax = 0`. No server defect was found in
+this path — the chain was already implemented and unit-tested, and this moves it from
+implemented to proven over the wire. The one defect was in the harness: `CMSG_LOOT_ITEM` must
+quote the LootObject guid from `SMSG_LOOT_RESPONSE`, not the creature's, and quoting the
+creature is answered with a bare `SMSG_LOOT_RELEASE` — silent, with no item and nothing in the
+log. Observed in passing and not separately verified: the QA character reached level 2 from
+accumulated kills, and a level-1 target at player level 2 paid 44 XP, which is the `ml < pl`
+branch of the gain formula.
+
+**Item-objective credit was repaired on 2026-10-01 against the target C++, with unit
+evidence but no live confirmation yet.** The old one-line D-H6 note ("loot path doesn't
+advance collect X") was wrong in its diagnosis and understated the consequence. The loot
+path did credit item objectives, but it split them in two with a flag the target build
+never reads: for an objective whose `quest_objectives.Flags2` had bit 0 set, RustyCore
+credited the objective, skipped creating the item and emitted
+`SMSG_ITEM_PUSH_RESULT` with display type `3`. In
+`/home/server/woltk-trinity-legacy` there is no `QUEST_OBJECTIVE_FLAG_2` identifier at
+all, `ItemAddedQuestCheck` takes two arguments and not the four the Rust comment quoted,
+`StoreNewItem` always creates and stores the Item before calling it, and
+`ItemPushResult::DisplayType` has exactly three values. The consequence was worse than a
+missing count: `Player::CanRewardQuest` requires the item in the bags for **every**
+`QUEST_OBJECTIVE_ITEM`, so a credited-but-itemless objective is an unturnable quest — and
+in the installed world database 3533 of 5746 item objectives carry that bit. The repair
+removes the split rather than patching one side: one credit path, the item always stored,
+the out-of-range display type deleted, and the `LootQuestBoundProgress` transaction and
+void-storage `QuestBoundNoItem` destination retired with it. The affected tests were
+rewritten to assert the C++ behaviour instead of the imported one.
+
+**And it is proven live, on the same quest, in both classes at once.** Quest 1961
+"Gathering Materials" carries two `QUEST_OBJECTIVE_ITEM` rows: storage index 0 on item 2589
+with `Flags2 = 0`, and storage index 1 on item 7293 with `Flags2 = 1`. One kill of entry 94
+looted both. After the clean logout, `character_queststatus_objectives` holds
+`(1961, 0) = 3` and `(1961, 1) = 1`, and `item_instance` holds `2589 x3` in slot 39 **and
+`7293 x1` in slot 40`. The second row is the one the retired branch could never produce:
+it credited that objective and discarded the item. Full detail and anchors in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) under D-H6; `QuestLogItemId` is left
+open there as D-M15.
+
+**The player swing was blocked for a second reason, now closed as D-M16.** Reaching that
+loot took repairing the global player-melee phase, which used C++
+`Unit::IsWithinBoundaryRadius` as a second *range* requirement instead of as the facing
+exemption `getAutoAttackError` makes it (`Entities/Unit/Unit.cpp:2447-2459`). With the
+runtime combat reaches at zero the boundary term was `2.0`, so a facing attacker measured
+at 4.00 yards was refused with `NotInRange` on every swing, while
+`Unit::GetMeleeRange`'s `5.0` floor hid it from the other half of the condition. The
+session path and the creature tick already had the C++ shape; one site had diverged. The
+phase trace also lied about it — `creature_hits` counted a result with an empty swing list
+as a hit — and now counts only a swing that exists. Live after the repair:
+`player_landed=4 (45 damage) death=true xp=44 loot_coins=9 money 12 -> 21 inv 8 -> 10`.
+The zero combat reaches themselves are also repaired, as D-M17: nothing in RustyCore ever
+wrote a player's `BoundingRadius` or `CombatReach`, because the port had no equivalent of
+C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1586`), which is its only
+writer and which `Player::LoadFromDB` calls at `:17645`. Both fields stayed at `0.0` for
+the whole session while the CREATE packet wrote the correct literals straight to the client,
+so only the server disagreed — and the one consumer that would have shown it substituted the
+default on a zero, which hid it. `Unit::GetMeleeRange`'s `NOMINAL_MELEE_RANGE` floor
+absorbed the loss for melee range, so nothing failed outright until D-M16 turned the
+boundary radius into a range gate. The field now flows, which is what made one existing
+bad-facing test change behaviour: its victim stood at 2.0 yards, inside the boundary radius
+once the player has a reach, and C++ exempts the facing arc there, so the fixture moved to
+the 3.5-to-5.0 band where bad facing is actually what refuses the swing.
+
+**Quest explore objectives are wired as of 2026-10-01, with scenario and startup evidence
+but not yet on the wire.** D-H5's one-line note named one of three missing pieces. The
+relation store (C++ `ObjectMgr::LoadQuestAreaTriggers`) existed in `wow-data` with its
+loader and its SQL but was never composed — the comment said it stayed "dormant until its
+owners compose them" — so `GetQuestsForAreaTrigger` had nothing to answer with;
+`HandleAreaTriggerOpcode` had no quest block at all, going from the script dispatch straight
+to the tavern branch, which returns; and `represented_quest_objective_complete_like_cpp`
+returned `false` for every flag-storing type, so a credited area-trigger objective could
+never read as complete. All three are repaired, keeping C++'s own reason for not routing
+this through `UpdateQuestObjectiveProgress`: a `quest_objectives.ObjectID` of `-1` means any
+trigger the relation table binds. Live, the store now loads 82 quest area triggers where it
+loaded none (49 from relations, 35 from the objectives themselves, 8 obsolete rows skipped).
+Walking a real trigger still needs a `CMSG_AREA_TRIGGER` mode in tools/wow-test-bot and the
+trigger geometry from the client `AreaTrigger.db2`; quest 76 on trigger 87 is the scenario
+to run. The four live-state objective types in the same `match` remain open as D-H17.
+
+**The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
+`--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to
+the Elwynn graveyard, the corpse run brings it back, the reclaim is refused while the C++
+30-second delay runs — the server's own trace counts it down 27, 22, 17, 11, 6, 1 — and then
+takes, after which the `corpse` row is gone and a clean logout saves `health = 20` of 40
+with no ghost flag, which is the half health C++ `ResurrectPlayer(0.5f)` restores. Before
+this, `CMSG_RECLAIM_CORPSE` resurrected with no corpse, no delay and no distance check, and
+the corpse the release left behind carried no owner at all.
+
 This is the Part 1 M3 exit reached for a single solo melee kill on one spawn. It is not
 a claim about group credit, loot, quest kill credit, ranged or spell combat, chase over
 distance, or any other creature family; those remain unproven here.

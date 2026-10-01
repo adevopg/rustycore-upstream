@@ -62,6 +62,42 @@ pub(crate) async fn load_area_trigger_world_catalogs_like_cpp(
     })
 }
 
+/// C++ `ObjectMgr::LoadQuestAreaTriggers` (`Globals/ObjectMgr.cpp:6470-6532`),
+/// which runs **after** `LoadQuests` because it validates every relation row
+/// against the quest store and then adds the `QUEST_OBJECTIVE_AREATRIGGER`
+/// objectives' own trigger ids. Composed separately for that reason: the other
+/// three catalogs above only need `AreaTrigger.db2`.
+pub(crate) async fn load_quest_area_trigger_store_like_cpp(
+    persistence: &dyn AreaTriggerWorldCatalogPersistencePortLikeCpp,
+    area_trigger_db2_store: &wow_data::AreaTriggerDb2Store,
+    quest_store: &wow_data::quest::QuestStore,
+) -> Result<Arc<wow_data::QuestAreaTriggerStoreLikeCpp>> {
+    let quest_rows = loaded_rows_like_cpp(persistence.load_quest_rows_like_cpp().await)
+        .context("Failed to load C++ quest area triggers")?;
+    let outcome = wow_data::QuestAreaTriggerStoreLikeCpp::from_rows_like_cpp(
+        quest_rows
+            .into_iter()
+            .map(|row| wow_data::QuestAreaTriggerRowLikeCpp {
+                trigger_id: row.trigger_id,
+                quest_id: row.quest_id,
+            }),
+        |trigger_id| area_trigger_db2_store.get(trigger_id).is_some(),
+        quest_store,
+    );
+    let report = &outcome.report;
+    tracing::info!(
+        "Loaded {} C++ quest area triggers ({} rows seen, {} from relations, {} from objectives; {} skipped missing AreaTrigger.db2, {} skipped missing quest, {} skipped obsolete quest)",
+        outcome.store.len(),
+        report.rows_seen,
+        report.loaded_from_relation,
+        report.loaded_from_objectives,
+        report.skipped_missing_area_trigger.len(),
+        report.skipped_missing_quest.len(),
+        report.skipped_obsolete_quest.len(),
+    );
+    Ok(Arc::new(outcome.store))
+}
+
 fn loaded_rows_like_cpp<T>(outcome: AreaTriggerWorldLoadOutcomeLikeCpp<T>) -> Result<Vec<T>> {
     match outcome {
         AreaTriggerWorldLoadOutcomeLikeCpp::Loaded(rows) => Ok(rows),

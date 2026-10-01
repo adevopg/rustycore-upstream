@@ -854,7 +854,7 @@ fn represented_disenchant_test_outputs_like_cpp(
         .collect()
 }
 
-fn install_quest_bound_loot_objective_like_cpp(
+fn install_item_loot_objective_like_cpp(
     session: &mut WorldSession,
     quest_id: u32,
     item_id: u32,

@@ -2615,6 +2615,13 @@ async fn run_inner(
             .await
             .context("Failed to load quest store")?,
     );
+    let quest_area_trigger_store =
+        crate::area::trigger_world_catalog::load_quest_area_trigger_store_like_cpp(
+            &area_trigger_world_persistence,
+            area_trigger_db2_store.as_ref(),
+            quest_store.as_ref(),
+        )
+        .await?;
     let lfg_world_catalog_persistence =
         wow_database::MariaDbLfgWorldCatalogPersistenceAdapterLikeCpp::new(Arc::clone(&world_db));
     let lfg_load_outcome = catalogs::lfg_world::load_lfg_dungeon_store_like_cpp(
@@ -4715,6 +4722,7 @@ async fn run_inner(
                     destinations: Arc::clone(&area_trigger_store),
                     scripts: Arc::clone(&area_trigger_script_store),
                     taverns: Arc::clone(&tavern_area_trigger_store),
+                    quest_relations: Arc::clone(&quest_area_trigger_store),
                     script_dispatcher: None,
                 }),
                 item_valuation: Arc::new(wow_world::session::ItemValuationCatalogsLikeCpp {
@@ -5204,6 +5212,7 @@ async fn run_inner(
                 "CONFIG_INTERVAL_SAVE",
                 15 * 60 * 1000,
             ),
+            death_corpse_config: death_corpse_config_like_cpp(&world_configs),
         },
         realm: SessionRealmCapabilitiesLikeCpp {
             realm_id,

@@ -370,18 +370,6 @@ pub(crate) fn append_inventory_request_like_cpp(
                 append_loot_new_stack_like_cpp(&mut transaction, *stack);
             }
         }
-        PlayerInventoryPersistenceRequestLikeCpp::LootQuestBoundProgress(request) => {
-            for status in &request.quest_statuses {
-                append_quest_status_projection_like_cpp(
-                    &mut transaction,
-                    request.owner_guid,
-                    status,
-                );
-            }
-            if let Some(source) = request.stored_item_source {
-                append_stored_item_loot_source_like_cpp(&mut transaction, source);
-            }
-        }
         PlayerInventoryPersistenceRequestLikeCpp::LootDirectItemGrant(request) => {
             for stack in &request.existing_stacks {
                 append_loot_existing_stack_like_cpp(&mut transaction, *stack);
@@ -482,11 +470,10 @@ mod tests {
         InventoryGraphDestroyPersistenceLikeCpp, InventoryStackMergePersistenceLikeCpp,
         InventoryStackMergeSourcePersistenceLikeCpp, InventoryStorageMovePersistenceLikeCpp,
         InventorySwapPersistenceLikeCpp, LootDirectItemGrantPersistenceLikeCpp,
-        LootDisenchantBatchPersistenceLikeCpp, LootQuestBoundProgressPersistenceLikeCpp,
-        PlayerCurrencySaveKindLikeCpp, PlayerCurrencySaveRequestLikeCpp,
-        PlayerCurrencySaveRowLikeCpp, QuestItemGrantPersistenceLikeCpp,
-        QuestObjectiveCountPersistenceLikeCpp, QuestStatusPersistenceLikeCpp,
-        QuestTurnInPersistenceLikeCpp,
+        LootDisenchantBatchPersistenceLikeCpp, PlayerCurrencySaveKindLikeCpp,
+        PlayerCurrencySaveRequestLikeCpp, PlayerCurrencySaveRowLikeCpp,
+        QuestItemGrantPersistenceLikeCpp, QuestObjectiveCountPersistenceLikeCpp,
+        QuestStatusPersistenceLikeCpp, QuestTurnInPersistenceLikeCpp,
     };
 
     const QUEST_STATUS_REWARDED_LIKE_CPP: u8 = 6;
@@ -725,26 +712,6 @@ mod tests {
                 .statement_sqls
                 .iter()
                 .all(|(_, expected)| *expected == Some(1))
-        );
-    }
-
-    #[test]
-    fn quest_bound_loot_preserves_quest_then_stored_source_order_like_cpp() {
-        let request = PlayerInventoryPersistenceRequestLikeCpp::LootQuestBoundProgress(
-            LootQuestBoundProgressPersistenceLikeCpp {
-                owner_guid: 10,
-                quest_statuses: vec![quest(3)],
-                stored_item_source: Some(loot_source()),
-            },
-        );
-        assert_eq!(
-            sqls(request),
-            [
-                CharStatements::INS_CHAR_QUEST_STATUS.sql(),
-                CharStatements::DEL_CHAR_QUEST_STATUS_OBJECTIVES_BY_QUEST.sql(),
-                CharStatements::REP_CHAR_QUEST_STATUS_OBJECTIVES.sql(),
-                CharStatements::DEL_ITEMCONTAINER_ITEM.sql(),
-            ]
         );
     }
 

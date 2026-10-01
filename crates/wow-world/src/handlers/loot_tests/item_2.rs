@@ -627,7 +627,7 @@ async fn loot_item_added_progresses_incomplete_quest_item_objective_like_cpp() {
     ));
 
     let changed_quest_ids = session
-        .apply_quest_source_item_added_non_bound_objective_progress_like_cpp(item_id, 0, 3)
+        .apply_quest_item_added_objective_progress_like_cpp(item_id, 0, 3)
         .await;
 
     assert_eq!(changed_quest_ids, vec![quest_id]);
@@ -797,7 +797,7 @@ async fn loot_item_eligibility_does_not_treat_complete_quest_as_incomplete_like_
     ));
 
     let changed_quest_ids = session
-        .apply_quest_source_item_added_non_bound_objective_progress_like_cpp(item_id, 0, 1)
+        .apply_quest_item_added_objective_progress_like_cpp(item_id, 0, 1)
         .await;
 
     assert!(changed_quest_ids.is_empty());

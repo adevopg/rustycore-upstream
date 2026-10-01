@@ -76,13 +76,41 @@ Two gate consequences of that unrecorded line, both measured at `62f5c619`:
   anything, so a green `final` is currently unreachable on this branch; the substantive
   campaign has to be run as workspace tests and recorded as such.
 
+A third gate consequence, measured 2026-10-01 and previously hidden: `physical-files`
+aborts the architecture check before the rest run, so two further checks were never
+reached at the branch point. Behind it, the **hotspot LOC ratchet** is red by very large
+aggregate margins at `origin/3.4.3` (`session/mod.rs` total +27525, `handlers/character`
++3907, `world-server/src/lib.rs` +1926, `map/mod.rs` +654, `player/mod.rs` +126), and the
+**handler audited count** disagreed with its own snapshot. The count was this branch's own
+loose end — `dbe66f01` added `CMSG_WHO` to `world-handler-contract.tsv` without bumping
+`runtime-ownership-ledger.json` — and is fixed; the hotspot margins are the same unrecorded
+feature line and belong to #584 C4 with the three physical ceilings.
+
+**Previous next responsibilities — done.** The live player-melee blocker, the death exit
+and `CMSG_RECLAIM_CORPSE`, creature loot, quest kill credit, passive-creature melee,
+item-objective credit (D-H6) and the global phase's melee-range gate (D-M16) are all
+repaired, each with live evidence; see STATE.md and the closed entries in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md). One kill now produces XP, money, two
+looted items and two advanced quest objectives, persisted across a clean logout.
+
+**D-M17 is also done:** a logged-in player had no `BoundingRadius` and no `CombatReach` at
+all, because the port had no equivalent of C++ `Player::SetObjectScale`. See the closed
+entry for why neither the wire nor the one masking consumer could show it.
+
+**D-H5 is also done:** the explore objective needed three separate repairs — the relation
+store was never composed, the handler had no quest block, and no flag-storing objective
+could read as complete. See the closed entry for each anchor.
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-the live player-melee blocker recorded in
-[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) (2026-09-30). It is the only
-Part 1 exit failure with a live two-configuration reproduction, and it sits exactly on
-#584's open C0/C1/C3 axes: which object is the authority for an accepted attack, what
-phase writes it, and what survives a tick. M1 entry and the M2 visibility path are
-observed working in the same session; M3 combat is not.
+give tools/wow-test-bot a `CMSG_AREA_TRIGGER` mode, then run quest 76 "The Jasperlode Mine"
+on trigger 87 live. It is the smallest remaining step that converts today's largest body of
+unproven work into wire evidence, and it unblocks the same acceptance for every other
+explore quest. It needs the trigger geometry, which lives in the client `AreaTrigger.db2`
+rather than in SQL, so the mode has to read the position the server already loaded. After
+that, the quest-objective lane's open items in evidence order are D-H17 (four objective
+types that cannot complete because the completion rule carries no live player state), D-M15
+(`QuestLogItemId` credited and put on the wire where the target build does neither) and the
+`NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
 
 ## 1. Direction from here
 

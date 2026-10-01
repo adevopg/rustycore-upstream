@@ -120,7 +120,6 @@ struct PlannedVoidWithdrawalLikeCpp {
 
 #[derive(Debug, Clone)]
 enum PlannedVoidWithdrawalDestinationLikeCpp {
-    QuestBoundNoItem,
     New {
         bag: u8,
         slot: u8,

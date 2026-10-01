@@ -6,7 +6,7 @@
 use super::*;
 
 #[tokio::test]
-async fn quest_confirm_accept_source_item_bound_objective_dont_report_flag_sends_direct_like_cpp() {
+async fn quest_confirm_accept_source_item_dont_report_flag_sends_direct_like_cpp() {
     let (mut session, send_rx) = make_session();
     let receiver_guid = session.player_guid().unwrap();
     let sender_guid = ObjectGuid::create_player(1, 195);
@@ -24,7 +24,7 @@ async fn quest_confirm_accept_source_item_bound_objective_dont_report_flag_sends
         object_id: quest_log_item_id as i32,
         amount: 2,
         flags: 0,
-        flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+        flags2: 0x1,
         progress_bar_weight: 0.0,
         description: String::new(),
     });
@@ -74,36 +74,33 @@ async fn quest_confirm_accept_source_item_bound_objective_dont_report_flag_sends
 
     run_quest_confirm_accept(&mut session, quest_id as i32).await;
 
-    let sent = send_rx.try_recv().expect("direct bound item update packet");
-    assert!(send_rx.try_recv().is_err());
+    // C++ `Player::SendNewItem` only broadcasts when asked to and when the
+    // template does not carry `ITEM_FLAG3_DONT_REPORT_LOOT_LOG_TO_PARTY`
+    // (`Entities/Player/Player.cpp:13892-13895`); `GiveQuestSourceItem` does not
+    // ask (`:15931`), so with the flag set the push is doubly direct.
+    let mut saw_item_push = false;
+    while let Ok(bytes) = send_rx.try_recv() {
+        let mut packet = WorldPacket::from_bytes(&bytes);
+        if packet.read_uint16().unwrap() != wow_constants::ServerOpcodes::ItemPushResult as u16 {
+            continue;
+        }
+        saw_item_push = true;
+        assert_eq!(packet.read_packed_guid().unwrap(), receiver_guid);
+        assert_eq!(
+            packet.read_uint8().unwrap(),
+            u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
+        );
+        let _slot_in_bag = packet.read_int32().unwrap();
+        assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
+        assert_eq!(packet.read_int32().unwrap(), 2);
+        assert_eq!(packet.read_int32().unwrap(), 2);
+    }
+    assert!(saw_item_push, "the stored source item must push its result");
     assert!(sender_rx.try_recv().is_err());
     assert!(other_rx.try_recv().is_err());
-    let mut packet = WorldPacket::from_bytes(&sent);
-    assert_eq!(
-        packet.read_uint16().unwrap(),
-        wow_constants::ServerOpcodes::ItemPushResult as u16
-    );
-    assert_eq!(packet.read_packed_guid().unwrap(), receiver_guid);
-    assert_eq!(
-        packet.read_uint8().unwrap(),
-        u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
-    );
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
-    assert_eq!(packet.read_int32().unwrap(), 2);
-    assert_eq!(packet.read_int32().unwrap(), 2);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_uint32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_packed_guid().unwrap(), ObjectGuid::EMPTY);
-    assert!(!packet.read_bit().unwrap());
-    assert!(!packet.read_bit().unwrap());
-    assert_eq!(packet.read_bits(3).unwrap(), 3);
 }
 #[tokio::test]
-async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_first_like_cpp() {
+async fn quest_confirm_accept_source_item_credits_every_matching_objective_like_cpp() {
     let (mut session, send_rx) = make_session();
     let receiver_guid = session.player_guid().unwrap();
     let sender_guid = ObjectGuid::create_player(1, 192);
@@ -119,7 +116,7 @@ async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_
         object_id: source_item_id as i32,
         amount: 2,
         flags: 0,
-        flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+        flags2: 0x1,
         progress_bar_weight: 0.0,
         description: String::new(),
     });
@@ -132,7 +129,7 @@ async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_
         object_id: source_item_id as i32,
         amount: 2,
         flags: 0,
-        flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+        flags2: 0x1,
         progress_bar_weight: 0.0,
         description: String::new(),
     });
@@ -153,7 +150,10 @@ async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_
         .player_quests
         .get(&quest_id)
         .expect("source-item quest should add local quest state");
-    assert_eq!(status.objective_counts, vec![2, 0]);
+    // C++ `UpdateQuestObjectiveProgress` (`Player.cpp:16637-16767`) credits every
+    // objective in the `(QUEST_OBJECTIVE_ITEM, objectId)` range, without an early
+    // break and without any Flags2 exemption.
+    assert_eq!(status.objective_counts, vec![2, 2]);
     let stored_source_item_count: u32 = session
         .inventory_items_like_cpp()
         .values()
@@ -161,7 +161,7 @@ async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_
         .filter_map(|item| session.inventory_item_objects_like_cpp().get(&item.guid))
         .map(|item| item.count())
         .sum();
-    assert_eq!(stored_source_item_count, 0);
+    assert_eq!(stored_source_item_count, 2);
     assert_eq!(
         session.represented_quest_confirm_accepts_like_cpp(),
         &[RepresentedQuestConfirmAcceptLikeCpp {
@@ -169,7 +169,7 @@ async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_
             sender_guid_before_clear: sender_guid,
             quest_id,
             raw_quest_id: quest_id as i32,
-            reason: RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp::ReceiverGiveQuestSourceItemBoundObjectiveNoGrant,
+            reason: RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp::ReceiverGiveQuestSourceItemStoredNewItem,
             object_accessor_unrepresented: true,
             party_runtime_unrepresented: true,
             can_add_source_item_unrepresented: false,
@@ -186,7 +186,7 @@ async fn quest_confirm_accept_source_item_multiple_bound_objectives_stops_after_
             let mut packet = WorldPacket::from_bytes(bytes);
             packet.read_uint16().ok() == Some(wow_constants::ServerOpcodes::ItemPushResult as u16)
         }),
-        "C++ sends the bound-objective ItemPushResult without materializing an inventory Item"
+        "the stored source item must push its result"
     );
     assert!(sender_rx.try_recv().is_err());
 }

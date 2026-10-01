@@ -8,6 +8,7 @@ use super::*;
 mod character;
 mod cli;
 mod create_character;
+mod death_smoke;
 mod items_1;
 mod items_2;
 mod items_3;
@@ -43,6 +44,8 @@ pub(crate) use cli::*;
 #[allow(unused_imports)]
 pub(crate) use create_character::*;
 #[allow(unused_imports)]
+pub(crate) use death_smoke::*;
+#[allow(unused_imports)]
 pub(crate) use items_1::*;
 #[allow(unused_imports)]
 pub(crate) use items_2::*;
@@ -52,7 +55,6 @@ pub(crate) use items_3::*;
 pub(crate) use login::*;
 #[allow(unused_imports)]
 pub(crate) use loot::*;
-#[allow(unused_imports)]
 pub(crate) use melee_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use misc_1::*;

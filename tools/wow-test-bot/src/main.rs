@@ -159,6 +159,9 @@ async fn main() -> Result<()> {
     if cli.melee_smoke {
         return run_melee_smoke_mode(&cli, bots).await;
     }
+    if cli.death_smoke {
+        return run_death_smoke_mode(&cli, bots).await;
+    }
     if !cli.delete_character_guids.is_empty() {
         return run_delete_characters_mode(&cli, bots).await;
     }

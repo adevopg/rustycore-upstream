@@ -149,21 +149,6 @@ pub(crate) struct QuestChoiceItemLikeCpp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum QuestSourceItemStoreOutcomeLikeCpp {
     StoredNewItem,
-    BoundObjectiveNoGrant,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct QuestSourceItemBoundPreflightLikeCpp {
-    pub(crate) no_grant: bool,
-    pub(crate) changed_quest_ids: Vec<u32>,
-}
-
-/// Durable snapshot of C++ `StoreNewItem`'s first, quest-bound
-/// `ItemAddedQuestCheck` pass. A single matching bound objective consumes the
-/// loot award as quest credit without materialising an inventory Item.
-#[derive(Debug, Clone)]
-pub(crate) struct QuestSourceItemBoundPersistencePlanLikeCpp {
-    pub(crate) statuses: Vec<PlayerQuestStatus>,
 }
 
 fn reputation_rank_from_standing_like_cpp(standing: i32) -> u8 {
@@ -468,7 +453,12 @@ pub(crate) const QUEST_OBJECTIVE_GAMEOBJECT_LIKE_CPP_LOCAL: u8 = 2;
 pub(crate) const QUEST_OBJECTIVE_TALKTO_LIKE_CPP_LOCAL: u8 = 3;
 pub(crate) const QUEST_OBJECTIVE_PLAYERKILLS_LIKE_CPP_LOCAL: u8 = 9;
 pub(crate) const QUEST_OBJECTIVE_WINPVPPETBATTLES_LIKE_CPP_LOCAL: u8 = 13;
+pub(crate) const QUEST_OBJECTIVE_AREATRIGGER_LIKE_CPP_LOCAL: u8 = 10;
+pub(crate) const QUEST_OBJECTIVE_WINPETBATTLEAGAINSTNPC_LIKE_CPP_LOCAL: u8 = 11;
+pub(crate) const QUEST_OBJECTIVE_DEFEATBATTLEPET_LIKE_CPP_LOCAL: u8 = 12;
 pub(crate) const QUEST_OBJECTIVE_CRITERIA_TREE_LIKE_CPP_LOCAL: u8 = 14;
+pub(crate) const QUEST_OBJECTIVE_AREA_TRIGGER_ENTER_LIKE_CPP_LOCAL: u8 = 19;
+pub(crate) const QUEST_OBJECTIVE_AREA_TRIGGER_EXIT_LIKE_CPP_LOCAL: u8 = 20;
 pub(crate) const QUEST_OBJECTIVE_PROGRESS_BAR_LIKE_CPP_LOCAL: u8 = 15;
 pub(crate) const QUEST_OBJECTIVE_HAVE_CURRENCY_LIKE_CPP_LOCAL: u8 = 16;
 pub(crate) const QUEST_OBJECTIVE_OBTAIN_CURRENCY_LIKE_CPP_LOCAL: u8 = 17;
@@ -476,7 +466,6 @@ pub(crate) const QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP_LOCAL: u8 = 18;
 pub(crate) const QUEST_OBJECTIVE_FLAG_SEQUENCED_LIKE_CPP_LOCAL: u32 = 0x2;
 pub(crate) const QUEST_OBJECTIVE_FLAG_OPTIONAL_LIKE_CPP_LOCAL: u32 = 0x4;
 pub(crate) const QUEST_OBJECTIVE_FLAG_PART_OF_PROGRESS_BAR_LIKE_CPP_LOCAL: u32 = 0x40;
-pub(crate) const QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL: u32 = 0x1;
 
 // ── PlayerQuestStatus ────────────────────────────────────────────────────────
 

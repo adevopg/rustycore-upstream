@@ -272,9 +272,6 @@ pub(crate) fn item_push_result_from_send_new_item_plan(plan: &SendNewItemPlan) -
         display_text: match plan.display_text {
             SendNewItemDisplayText::Normal => ItemPushResultDisplayType::Normal,
             SendNewItemDisplayText::EncounterLoot => ItemPushResultDisplayType::EncounterLoot,
-            SendNewItemDisplayText::QuestUpdateAddItem => {
-                ItemPushResultDisplayType::QuestUpdateAddItem
-            }
         },
         created: plan.created,
         is_bonus_roll: false,

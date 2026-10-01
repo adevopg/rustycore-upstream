@@ -377,3 +377,33 @@ pub(crate) fn reset_schedule_like_cpp(configs: &WorldConfigSet) -> ResetSchedule
         week_day: world_config_u8(configs, "CONFIG_RESET_SCHEDULE_WEEK_DAY", 2),
     }
 }
+
+/// Resolve the four C++ `Death.*` world configuration values the corpse-reclaim
+/// and bones paths read (`server/game/World/World.cpp:1307-1310`).
+///
+/// It lives here rather than inline at the composition root so the root grows by
+/// one line: `crates/world-server/src/app.rs` is one of the files #584 C4 has to
+/// shorten, not lengthen.
+pub(crate) fn death_corpse_config_like_cpp(
+    configs: &WorldConfigSet,
+) -> wow_world::session::DeathCorpseConfigLikeCpp {
+    let defaults = wow_world::session::DeathCorpseConfigLikeCpp::default();
+    wow_world::session::DeathCorpseConfigLikeCpp {
+        corpse_reclaim_delay_pvp: world_config_bool(
+            configs,
+            "CONFIG_DEATH_CORPSE_RECLAIM_DELAY_PVP",
+            defaults.corpse_reclaim_delay_pvp,
+        ),
+        corpse_reclaim_delay_pve: world_config_bool(
+            configs,
+            "CONFIG_DEATH_CORPSE_RECLAIM_DELAY_PVE",
+            defaults.corpse_reclaim_delay_pve,
+        ),
+        bones_world: world_config_bool(configs, "CONFIG_DEATH_BONES_WORLD", defaults.bones_world),
+        bones_battleground_or_arena: world_config_bool(
+            configs,
+            "CONFIG_DEATH_BONES_BG_OR_ARENA",
+            defaults.bones_battleground_or_arena,
+        ),
+    }
+}

@@ -355,7 +355,7 @@ async fn quest_required_creature_loot_is_not_generated_after_completion_like_cpp
     let loot_id = 15_274;
     session.set_player_guid(Some(player_guid));
     install_limited_test_item_template(&mut session, item_id, 0);
-    install_quest_bound_loot_objective_like_cpp(&mut session, quest_id, item_id, 6, 6);
+    install_item_loot_objective_like_cpp(&mut session, quest_id, item_id, 6, 6);
     session.player_quests.get_mut(&quest_id).unwrap().status =
         crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP;
 

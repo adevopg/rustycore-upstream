@@ -1039,6 +1039,10 @@ pub(crate) fn run_legacy_player_melee_tick_and_deliver_once_like_cpp(
                 in_combat_reconciles = outcome.in_combat_reconciles,
                 commands = outcome.commands.len(),
                 delivered = delivery.commands_seen,
+                // `delivered` counts commands handed to the rail; `queued` and
+                // `dropped_durable` say whether the session received one.
+                queued = delivery.candidates_queued,
+                dropped_durable = delivery.candidates_dropped_durable,
                 "RUST_PLAYER_MELEE phase"
             );
         }

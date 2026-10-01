@@ -988,9 +988,6 @@ impl WorldSession {
                 QuestSourceItemStoreOutcomeLikeCpp::StoredNewItem => {
                     RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp::ReceiverGiveQuestSourceItemStoredNewItem
                 }
-                QuestSourceItemStoreOutcomeLikeCpp::BoundObjectiveNoGrant => {
-                    RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp::ReceiverGiveQuestSourceItemBoundObjectiveNoGrant
-                }
             };
             record(
                 self,

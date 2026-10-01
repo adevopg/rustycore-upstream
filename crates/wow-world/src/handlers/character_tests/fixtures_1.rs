@@ -252,6 +252,7 @@ pub(super) struct MapCorpseLoadPortFixtureLikeCpp {
         std::sync::Mutex<std::collections::VecDeque<PersistedMapCorpseLoadOutcomeLikeCpp>>,
     /// Every row C++ `Corpse::SaveToDB` would have written, in call order.
     pub(super) saved_corpses: std::sync::Mutex<Vec<wow_persistence::MapCorpseSaveRowLikeCpp>>,
+    pub(super) deleted_corpse_owners: std::sync::Mutex<Vec<u64>>,
 }
 
 impl MapCorpseLoadPortFixtureLikeCpp {
@@ -262,6 +263,7 @@ impl MapCorpseLoadPortFixtureLikeCpp {
             requests: std::sync::Mutex::new(Vec::new()),
             outcomes: std::sync::Mutex::new(outcomes.into_iter().collect()),
             saved_corpses: std::sync::Mutex::new(Vec::new()),
+            deleted_corpse_owners: std::sync::Mutex::new(Vec::new()),
         })
     }
 
@@ -271,6 +273,10 @@ impl MapCorpseLoadPortFixtureLikeCpp {
 
     pub(super) fn saved_corpses(&self) -> Vec<wow_persistence::MapCorpseSaveRowLikeCpp> {
         self.saved_corpses.lock().unwrap().clone()
+    }
+
+    pub(super) fn deleted_corpse_owners(&self) -> Vec<u64> {
+        self.deleted_corpse_owners.lock().unwrap().clone()
     }
 }
 
@@ -282,6 +288,16 @@ impl MapCorpsePersistencePortLikeCpp for MapCorpseLoadPortFixtureLikeCpp {
         row: wow_persistence::MapCorpseSaveRowLikeCpp,
     ) -> PersistenceFutureLikeCpp<'a, wow_persistence::MapCorpseSaveOutcomeLikeCpp> {
         self.saved_corpses.lock().unwrap().push(row);
+        Box::pin(async move { wow_persistence::MapCorpseSaveOutcomeLikeCpp::Saved })
+    }
+
+    /// Records the owner whose corpse rows C++ `Corpse::DeleteFromDB` drops, so
+    /// a test can assert the bones conversion reached the database.
+    fn delete_corpse_like_cpp<'a>(
+        &'a self,
+        owner_guid: u64,
+    ) -> PersistenceFutureLikeCpp<'a, wow_persistence::MapCorpseSaveOutcomeLikeCpp> {
+        self.deleted_corpse_owners.lock().unwrap().push(owner_guid);
         Box::pin(async move { wow_persistence::MapCorpseSaveOutcomeLikeCpp::Saved })
     }
 

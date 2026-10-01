@@ -18,6 +18,7 @@ mod driver;
 mod lifecycle;
 pub use lifecycle::PlayerSaveOutcomeLikeCpp;
 mod combat;
+pub use combat::DeathCorpseConfigLikeCpp;
 mod effect_learning;
 mod instances;
 mod legacy_runtime;
@@ -117,9 +118,9 @@ use crate::session_policy::{
 use wow_ai::{
     CURRENT_EXPANSION_LIKE_CPP, CreatureAiCanAttackInputLikeCpp, CreatureAiKindLikeCpp,
     CreatureAiSelectionInputLikeCpp, CreatureAttackDistanceInputLikeCpp,
-    creature_ai_can_attack_like_cpp, creature_ai_uses_base_move_in_line_of_sight_like_cpp,
-    creature_attack_distance_like_cpp, max_level_for_expansion_like_cpp,
-    select_creature_ai_like_cpp,
+    creature_ai_can_attack_like_cpp, creature_ai_sets_no_melee_like_cpp,
+    creature_ai_uses_base_move_in_line_of_sight_like_cpp, creature_attack_distance_like_cpp,
+    max_level_for_expansion_like_cpp, select_creature_ai_like_cpp,
 };
 use wow_constants::creature::{CreatureFlagsExtra, CreatureType, CreatureTypeFlags};
 use wow_constants::item::{
@@ -324,7 +325,6 @@ const QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP: u8 = 18;
 #[cfg(test)]
 const DEFAULT_VISIBILITY_DISTANCE_YARDS_LIKE_CPP: u32 = 100;
 const QUEST_OBJECTIVE_FLAG_KILL_PLAYERS_SAME_FACTION_LIKE_CPP: u32 = 0x0080;
-const QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP: u32 = 0x1;
 const QUEST_FLAGS_PLAYER_CAST_ACCEPT_LIKE_CPP: u32 = 0x0010_0000;
 const QUEST_FLAGS_EX_RECAST_ACCEPT_SPELL_ON_LOGIN_LIKE_CPP: u32 = 0x0000_1000;
 const MAX_GAMEOBJECT_SLOT_LIKE_CPP: usize = 4;
@@ -628,6 +628,7 @@ pub struct AreaTriggerCatalogsLikeCpp {
     pub destinations: Arc<AreaTriggerStore>,
     pub scripts: Arc<AreaTriggerScriptStoreLikeCpp>,
     pub taverns: Arc<TavernAreaTriggerStoreLikeCpp>,
+    pub quest_relations: Arc<wow_data::QuestAreaTriggerStoreLikeCpp>, // MiscHandler.cpp:534
     pub script_dispatcher: Option<AreaTriggerScriptDispatcherLikeCpp>,
 }
 
@@ -662,6 +663,7 @@ impl Default for AreaTriggerCatalogsLikeCpp {
             destinations: Arc::new(AreaTriggerStore::default()),
             scripts: Arc::new(AreaTriggerScriptStoreLikeCpp::default()),
             taverns: Arc::new(TavernAreaTriggerStoreLikeCpp::default()),
+            quest_relations: Arc::new(wow_data::QuestAreaTriggerStoreLikeCpp::default()),
             script_dispatcher: None,
         }
     }
@@ -1379,7 +1381,6 @@ fn quest_giver_creature_id_from_source_like_cpp(source_guid: ObjectGuid) -> i32 
     }
 }
 const ATTACK_DISPLAY_DELAY_LIKE_CPP_MS: u32 = 200;
-const DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP: f32 = 1.5;
 const MIN_MELEE_REACH_LIKE_CPP: f32 = 2.0;
 const NOMINAL_MELEE_RANGE_LIKE_CPP: f32 = 5.0;
 const SUMMON_PROPERTIES_ONLY_VISIBLE_TO_SUMMONER_LIKE_CPP: u32 = 0x0000_0010;
@@ -1850,7 +1851,6 @@ pub(crate) enum RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp {
     ReceiverGiveQuestSourceItemStartQuestNoGrant,
     ReceiverGiveQuestSourceItemMaxCountNoGrant,
     ReceiverGiveQuestSourceItemStoredNewItem,
-    ReceiverGiveQuestSourceItemBoundObjectiveNoGrant,
     GiveQuestSourceItemStoreNewItemUnrepresented,
     ReceiverAddQuestLocalStateRepresented,
     #[allow(dead_code)]
@@ -7086,6 +7086,7 @@ pub struct WorldSession {
     watched_faction_index_like_cpp: i32,
     /// C++ `CONFIG_ENABLE_AE_LOOT` represented switch.
     enable_ae_loot_like_cpp: bool,
+    death_corpse_config_like_cpp: combat::DeathCorpseConfigLikeCpp,
     /// C++ `CONFIG_ADDON_CHANNEL` represented switch.
     #[cfg(test)]
     addon_channel_like_cpp: bool,
@@ -8896,6 +8897,7 @@ impl WorldSession {
             #[cfg(test)]
             watched_faction_index_like_cpp: -1,
             enable_ae_loot_like_cpp: false,
+            death_corpse_config_like_cpp: combat::DeathCorpseConfigLikeCpp::default(),
             #[cfg(test)]
             addon_channel_like_cpp: true,
             #[cfg(test)]
@@ -9207,6 +9209,7 @@ impl WorldSession {
         let bootstrap_phase_shift = self.represented_player_phase_shift.clone();
         *player.unit_mut().world_mut().phase_shift_mut() = bootstrap_phase_shift;
         player.unit_mut().world_mut().object_mut().add_to_world();
+        player.set_object_scale_like_cpp(1.0); // C++ Player::LoadFromDB, Player.cpp:17645.
         player.set_race_class_gender(
             self.player_race_like_cpp(),
             self.player_class_like_cpp(),

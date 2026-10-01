@@ -144,6 +144,31 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `SMSG_LOG_XP_GAIN 50 XP`, `--melee-smoke` exit 0. The creature now retaliates, dies, and
   pays experience.
 
+- [x] **2026-10-01, live: a released spirit could resurrect instantly, anywhere, with no
+  corpse at all — and the corpse it left behind had no owner.** Found because combat now
+  kills the QA character routinely. `CMSG_RECLAIM_CORPSE` was a represented slice: it
+  cleared the ghost flag and restored half health after checking only alive/ghost, skipping
+  the four gates C++ `WorldSession::HandleReclaimCorpse`
+  (`Handlers/MiscHandler.cpp:435-464`) applies — arena, a live corpse (`:449-450`), the
+  reclaim delay (`:452-454`) and `CORPSE_RECLAIM_RADIUS` (`:456-457`) — and never reaching
+  `SpawnCorpseBones` (`:463`), so the same corpse stayed reclaimable forever. Underneath,
+  `create_player_corpse_on_map_like_cpp` never called `set_owner_guid`, where C++
+  `Corpse::Create(guidlow, owner)` stamps it (`Entities/Corpse/Corpse.cpp:84-89`) and
+  `Map::GetCorpseByPlayer` keys `_corpsesByPlayer` on exactly that field
+  (`Maps/Map.cpp:3714`): the corpse existed and nothing starting from the dead player could
+  find it. Repaired with the map-owned `corpse_by_player_like_cpp` and
+  `convert_corpse_to_bones_like_cpp`, a `delete_corpse_like_cpp` on the corpse persistence
+  port for the `Corpse::DeleteFromDB` transaction C++ commits inside the conversion, and the
+  delay arithmetic of `Player::GetCorpseReclaimDelay` (`Player.cpp:25297-25312`). Live proof,
+  six consecutive `--death-smoke` runs: release writes the corpse row and teleports the
+  ghost, the corpse run returns, the reclaim is refused while the delay counts down
+  27/22/17/11/6/1 and then takes, the row is gone, and a clean logout saves `health = 20`
+  of 40 with no ghost flag. Known boundary, written on the code: the arena refusal is not
+  ported because arenas are not represented and the battleground flag must not stand in for
+  it, and `m_deathExpireTime` is reported unset because its only C++ writer lives in
+  `Player::KillPlayer` (`:4327`), which has no Rust equivalent — unset is what C++ computes
+  for a death older than five minutes, the first 30-second step.
+
 - [x] **2026-10-01: the at-war reputation flag was treated as the hostility decision
   instead of a cap.** Found while splitting the reaction above.
   `WorldObject::GetFactionReactionTo` (`Entities/Object/Object.cpp:2880-2885`) reads the
@@ -673,13 +698,160 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `Unit::MeleeSpellHitResult`.
 - [ ] **D-H3 Spell damage/heal uses raw base points.** No coefficient, crit, or resist.
   `session.rs:49014-49026`.
-- [ ] **D-H4 ⚠VERIFY Quest kill-credit (MONSTER objective) not wired.** No
-  `KilledMonster`→objective path found; "kill X" may be uncompletable. **Contested:** a
-  separate pass said monster/GO kills advance. Must verify on a live kill. `handlers/quest.rs`.
-- [ ] **D-H5 Quest area-trigger (explore) objectives not wired.** Type 10 falls to `_=>false`;
-  "explore Y" uncompletable. `handlers/quest.rs:653`.
-- [ ] **D-H6 Quest item-loot objectives not credited.** Loot path doesn't advance "collect X"
-  objectives. `handlers/loot.rs:6786`.
+- [x] **D-H4 Quest kill-credit — verified working on a live kill, 2026-10-01.** The contested
+  reading is settled in favour of "monster kills advance". Quest 14106 was seeded as
+  incomplete for the QA character (a fixture: the bot cannot take a quest from an NPC yet),
+  its MONSTER objective names entry 721, and killing a Rabbit published
+  `SMSG_QUEST_UPDATE_ADD_CREDIT` and moved `character_queststatus_objectives.data` from 0 to
+  1, persisted. Reproduce with `--loot-after-kill --melee-creature-entry 721`.
+
+  **One real gap was found and repaired while verifying it.** C++ `Player::KilledMonster`
+  (`Entities/Player/Player.cpp:16561-16571`) credits the creature's own entry **and** each
+  non-zero `CreatureTemplate::KillCredit`, each through `KilledMonsterCredit` with an empty
+  guid. RustyCore credited only the entry, so a "kill X" objective naming a credit proxy —
+  the usual shape when several creatures count for one objective — could never advance;
+  `creature_template.KillCredit1/2` was loaded for the client's creature query and read by
+  nothing else. The proxies are now expanded on the kill-reward path, which is C++'s single
+  `KilledMonster` caller (`Entities/Player/KillRewarder.cpp:181`), and the kill-credit spell
+  effect was corrected to the single-entry `KilledMonsterCredit` C++ uses there
+  (`Spells/SpellEffects.cpp:5437`).
+
+  **Named boundary:** a kill by spell damage passes no credit proxies, because the composition
+  root deliberately keeps the ObjectMgr query catalogs out of `WorldSession` — pinned by
+  `session_resources_requires_named_capability_bundles` — and that path has no catalog in
+  scope. Written on the call site rather than left silent.
+
+- [x] **2026-10-01, live: a critter meleed the player back — repaired.** A Rabbit (entry 721,
+  `creature_template.type = 8` `CREATURE_TYPE_CRITTER`) published 47
+  `SMSG_ATTACKER_STATE_UPDATE` against the player over 120 seconds after being attacked.
+
+  The mechanism, read rather than assumed: `ThreatManager::CanHaveThreatList`
+  (`Combat/ThreatManager.cpp:172-190`) does **not** exclude critters, and
+  `Creature::Update` reaches `DoMeleeAttackIfReady()` centrally for every creature
+  (`Entities/Creature/Creature.cpp:921-932` — a region the fork patches, but only to collapse
+  a pet branch into the same unconditional call), so neither the threat list nor the AI's
+  `UpdateAI` is what stops the swing. The one thing that does is
+  `Unit::DoMeleeAttackIfReady`'s early return on `!Creature::CanMelee()`
+  (`Entities/Unit/Unit.cpp:2433-2434`), and the flag behind it is written by the AI
+  constructors that call `SetCanMelee(false)`: `TurretAI` (`AI/CoreAI/CombatAI.cpp:200`),
+  `VehicleAI` (`:234`), `PassiveAI` (`AI/CoreAI/PassiveAI.cpp:25`) and `NullCreatureAI`
+  (`:36`), with `CritterAI` deriving from `PassiveAI` and `TriggerAI`/`TotemAI` from
+  `NullCreatureAI`. `PossessedAI` sets only `REACT_PASSIVE` and is excluded.
+
+  RustyCore already enforced one of those at the global melee boundary, but by comparing the
+  database `AIName` against the string `"TurretAI"`. A critter's row leaves `AIName` empty and
+  receives `CritterAI` from the Permissible scoring (`AI/CoreAI/PassiveAI.cpp:95-100`), so it
+  was invisible to a string match. The gate now asks the resolved AI kind through
+  `creature_ai_sets_no_melee_like_cpp`, which covers every one of those constructors and
+  subsumes the old string test.
+
+  Live, before and after: `creature_landed=47` became `creature_landed=0`, with one player
+  swing killing the rabbit. Regression on an ordinary hostile creature in the same session:
+  entry 94 still retaliates (`creature_landed=3`), dies, pays 44 XP and drops 9 copper plus
+  two items. Reproduce with `--loot-after-kill --melee-creature-entry 721` and `… 94`.
+
+  **Not ported here:** `Creature::InitializeReactState` (`Creature.cpp:1357-1367`), which also
+  makes totems, triggers, critters and spirit services `REACT_PASSIVE`. RustyCore already
+  suppresses their `MoveInLineOfSight` aggro through the same AI-kind selection, so the
+  observable aggro behaviour matches; the react-state field itself is still unset for them.
+- [x] **D-H5 Quest area-trigger (explore) objectives were not wired, in three separate
+  places.** Closed 2026-10-01. The old note named one of them; reading the whole operation
+  found a data path that was never composed, a handler block that did not exist, and a
+  completion rule that could not recognise the result.
+
+  1. **The relation store was never loaded.** `QuestAreaTriggerStoreLikeCpp` and its
+     faithful loader (C++ `ObjectMgr::LoadQuestAreaTriggers`,
+     `Globals/ObjectMgr.cpp:6470-6532`) already existed in `wow-data`, as did the SQL and
+     the persistence port, but nothing composed them: the comment in
+     `world-server/src/area/trigger_world_catalog.rs` said the quest-relation operation
+     "remains dormant until its owners compose them". Composed now after the quest store,
+     which is the C++ order, because every row is validated against it.
+  2. **`HandleAreaTriggerOpcode` had no quest block.** C++ credits area-trigger quests
+     there (`Handlers/MiscHandler.cpp:530-574`), before the tavern branch and only for a
+     living player entering the trigger. RustyCore went from the script dispatch straight
+     to the tavern handling, which returns, so even a trigger that was both would have lost
+     its quest. The port keeps C++'s own reason for not using
+     `Player::UpdateQuestObjectiveProgress` (its comment at `:532`): a
+     `quest_objectives.ObjectID` of `-1` means "any trigger bound by
+     `areatrigger_involvedrelation`", so the quests come from the relation store and the
+     objective's id is only a filter.
+  3. **No flag-storing objective could ever be complete.**
+     `represented_quest_objective_complete_like_cpp` knew the counter types and the progress
+     bar and returned `false` for everything else, so `QUEST_OBJECTIVE_AREATRIGGER` stayed
+     incomplete no matter what was stored. C++ `Player::IsQuestObjectiveComplete`
+     (`Entities/Player/Player.cpp:16982-16990`) groups the flag-storing types apart and
+     completes them on any non-zero stored value. That group is now ported — types 10, 11,
+     12, 14, 19 and 20 — which also moved `QUEST_OBJECTIVE_CRITERIA_TREE` out of the
+     counter group, where it did not belong.
+
+  Evidence: two scenario tests drive the real handler from a `CMSG_AREA_TRIGGER` packet to
+  the credited objective and the `SMSG_QUEST_UPDATE_ADD_CREDIT_SIMPLE` on the wire, and
+  cover the `ObjectID = -1` case and the refusal of an objective naming a different
+  trigger. Live, the store now loads with real data where it previously loaded nothing:
+  `Loaded 82 C++ quest area triggers (57 rows seen, 49 from relations, 35 from objectives;
+  0 skipped missing AreaTrigger.db2, 0 skipped missing quest, 8 skipped obsolete quest)`.
+
+  **Not proven live on the wire yet,** and named rather than implied: walking a real trigger
+  needs a `CMSG_AREA_TRIGGER` mode in tools/wow-test-bot, which does not exist, plus the
+  trigger's geometry, which lives in the client `AreaTrigger.db2` and not in SQL
+  (`hotfixes.area_trigger` is empty). Quest 76 "The Jasperlode Mine" on trigger 87 and
+  quest 62 "The Fargodeep Mine" on trigger 88 are both in Elwynn and both carry
+  `QUEST_FLAGS_COMPLETION_AREA_TRIGGER` plus one `QUEST_OBJECTIVE_AREATRIGGER`, so either is
+  the scenario to run once the bot can send the packet from inside the radius.
+
+  **Also left open:** `IsQuestObjectiveComplete`'s live-state branches.
+  `QUEST_OBJECTIVE_MIN_REPUTATION` / `MAX_REPUTATION` ask `GetReputationMgr`, `MONEY` asks
+  `HasEnoughMoney`, `LEARNSPELL` asks `HasSpell` and `CURRENCY` asks `HasCurrency`
+  (`Player.cpp:16970-16998`). The Rust rule is pure — status and quest only — so each needs
+  that state threaded in. They still fail closed, which leaves a quest incomplete rather
+  than completing it on an unchecked condition. Recorded as D-H17.
+- [ ] **D-H17 Four objective types cannot complete because the completion rule carries no
+  live player state.** `represented_quest_objective_complete_like_cpp` is pure, so
+  `QUEST_OBJECTIVE_MIN_REPUTATION` (6), `MAX_REPUTATION` (7), `MONEY` (8) and `CURRENCY` (4)
+  — plus `LEARNSPELL` (5) — fail closed where C++ `Player::IsQuestObjectiveComplete`
+  (`Entities/Player/Player.cpp:16970-16998`) asks `GetReputationMgr`, `HasEnoughMoney`,
+  `HasSpell` and `HasCurrency`. Found while closing D-H5, which repaired the flag-storing
+  group in the same `match`. Failing closed keeps a quest incomplete rather than completing
+  it on an unchecked condition, so this is a missing feature rather than a wrong grant, but
+  any quest whose completion depends on one of those five types cannot be finished.
+- [x] **D-H6 Quest item-loot objectives: the credit existed, the item did not.** Closed
+  2026-10-01 after reading the whole operation instead of the old one-line note. The loot
+  path did advance "collect X", but only for objectives the Rust side classified as
+  *non-bound*, and for the other class it credited the objective and threw the item away.
+
+  The classifier was an import from a later TrinityCore, not from the target build.
+  `QuestObjective::Flags2` exists in 3.4.3 and RustyCore read bit 0 as
+  `QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM`, but in
+  `/home/server/woltk-trinity-legacy` that field is loaded in
+  `src/server/game/Quests/QuestDef.cpp:262`, written to the client in
+  `src/server/game/Server/Packets/QuestPackets.cpp:208` and read nowhere else — the whole
+  tree has no `QUEST_OBJECTIVE_FLAG_2` identifier at all. Three further anchors contradict
+  the imported design:
+  `Player::ItemAddedQuestCheck` takes two arguments (`Entities/Player/Player.h:1557`),
+  not the four the Rust comment quoted; `Player::StoreNewItem`
+  (`Entities/Player/Player.cpp:11590-11636`) always creates the Item, stores it and *then*
+  calls `ItemAddedQuestCheck`, with no early `nullptr` for a quest objective; and
+  `ItemPushResult::DisplayType` has exactly three values
+  (`Server/Packets/ItemPackets.h:328-332`), so the display type `3`
+  (`SendQuestUpdateAddItem`, a function this build does not contain) that the bound path
+  emitted is not a value of the target enum. `UpdateQuestObjectiveProgress`
+  (`Player.cpp:16631-16772`) credits every objective in the `(type, objectId)` range and
+  never breaks early.
+
+  The consequence was not a missing count but an unrewardable quest:
+  `Player::CanRewardQuest` (`Player.cpp:14659-14674`) requires
+  `GetItemCount(obj.ObjectID) >= obj.Amount` for **every** `QUEST_OBJECTIVE_ITEM` and
+  exempts none, so an objective credited without its item can never be turned in. In the
+  installed world database the affected class is the majority: of 5746 `Type = 1`
+  objectives, **3533 carry `Flags2 & 1`**.
+
+  The repair removes the partition rather than patching one side of it: one credit path
+  (`apply_quest_item_added_objective_progress_with_generator_like_cpp` →
+  `apply_quest_item_added_to_statuses_like_cpp`), the item always stored, and the
+  out-of-range display type deleted from `ItemPushResultDisplayType`. The
+  `LootQuestBoundProgress` inventory transaction and the void-storage
+  `QuestBoundNoItem` withdrawal destination existed only to serve the removed branch and
+  went with it.
 - [ ] **D-H7 Auras not saved at logout.** All buffs/debuffs reset on relog. `session.rs:21656`.
   C++ `Player::_SaveAuras`.
 - [ ] **D-H8 Periodic save represented-partial + incomplete logout save.** Issue #17 adds a
@@ -772,6 +944,119 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `wow-database/src/hotfix/skill_catalog_adapter.rs::load_skill_relation_hotfix_rows_like_cpp`.
   The wider #524 family remains open because Rust does not yet load and consume
   `SkillLineXTraitTree` through a `TraitMgr`-equivalent production authority.
+
+- [ ] **D-M15 `QuestLogItemId` is credited and put on the wire, which the target build
+  does neither.** RustyCore reads `item_template_addon.QuestLogItemId`, credits
+  `QUEST_OBJECTIVE_ITEM` objectives keyed on it in addition to the item entry, and writes it
+  into `SMSG_ITEM_PUSH_RESULT.QuestLogItemID`. In
+  `/home/server/woltk-trinity-legacy` the field appears exactly once in the whole server,
+  as the commented-out line
+  `//packet.QuestLogItemID = item->GetTemplate()->QuestLogItemId;`
+  (`src/server/game/Entities/Player/Player.cpp:13869`), so stock
+  `Player::SendNewItem` ships `0` and `ItemAddedQuestCheck(entry, count)`
+  (`:16533-16536`) only ever passes the item entry to
+  `UpdateQuestObjectiveProgress`. Two consequences: an item-push byte divergence, and
+  credit for objectives the target build would not credit. Found while closing D-H6, which
+  removed a separate invented objective gate in the same code; left open rather than folded
+  into that repair. Rust: `handlers/quest/objectives.rs`
+  (`apply_quest_item_added_objective_progress_with_generator_like_cpp`'s second objective
+  id) and `session_rules/rules_1.rs` (`quest_log_item_id` in the push plan).
+- [x] **D-M16 The global player-melee phase used the boundary radius as a second range
+  requirement, so a facing attacker four yards away never swung.** Closed 2026-10-01. Found
+  by chasing a swing that three live runs could not land: the phase counted
+  `creature_hits=1 commands=1 delivered=1 queued=1` while the bot saw no
+  `SMSG_ATTACKER_STATE_UPDATE` on either socket and the creature survived. Two things were
+  wrong, one of them in this file's own earlier wording of the symptom.
+
+  The command reached the session and was accepted; it simply carried no swing
+  (`gate="accepted" swings=0`, 38 times in one run). `outcome.creature_hits` was
+  incremented for every result the phase got back from the creature, including a result
+  with an empty swing list, so the trace claimed hits the victim never took. That counter
+  now only counts a swing that exists.
+
+  The swing itself was refused with `AttackSwingErr::NotInRange` at a measured 4.00 yards
+  (character `(-9159.58, 81.79, 77.45)`, `creature.guid = 280092` at
+  `(-9162.37, 84.63, 77.08)`), with facing true. C++
+  `Unit::DoMeleeAttackIfReady`'s `getAutoAttackError`
+  (`Entities/Unit/Unit.cpp:2447-2459`) asks two independent questions:
+  `!IsWithinMeleeRange(victim, IsPlayer())` is `NotInRange`, and
+  `!IsWithinBoundaryRadius(victim) && !HasInArc(2*pi/3, victim)` is `BadFacing`. The
+  boundary radius (`Unit::IsWithinBoundaryRadius`, `:806-814`) therefore **exempts** a very
+  close attacker from the facing arc; it is not a second range test.
+  `legacy_runtime/player_tick.rs` had it as
+  `in_melee_range = IsWithinMeleeRange && IsWithinBoundaryRadius`, which turns the
+  exemption into a requirement and reports the wrong error code. Since the runtime combat
+  reaches are zero here, the boundary term evaluated to `2.0` and refused every swing
+  beyond two yards, while `GetMeleeRange`'s `NOMINAL_MELEE_RANGE` floor of `5.0` hid the
+  problem from the other half of the condition.
+
+  The same C++ shape was already correct in the two sibling implementations — the session
+  path (`session/spell_effects/ticks.rs`, `boundary || facing`) and the creature tick
+  (`legacy_runtime/creature_movement_tick.rs`, `!boundary && !facing => BadFacing`) — so
+  this was one site diverging from its own neighbours, not a missing port.
+  `Unit::DoMeleeAttackIfReady`'s boundary call is `alistar:`-patched out in the pinned
+  reference, so the stock shape was taken from the surrounding code and the untouched
+  `IsWithinBoundaryRadius`/`AttackSwingErr` definitions, not from the patched line.
+
+  Live, after: one 90-second run killed the target — `player_landed=4 (45 damage)`,
+  `death=true`, `xp=44`, `loot_coins=9`, `money 12 -> 21`, `inv 8 -> 10`. Reproduce with
+  `--loot-after-kill --melee-creature-entry 94 --melee-creature-guid 280092`.
+
+  **Still open from the same investigation:** runtime `combat_reach` and `bounding_radius`
+  are zero for the player and for this creature, which is what made the boundary term so
+  small. C++ sets them from the model (`Creature::SetObjectScale`, and the player's
+  `DEFAULT_PLAYER_COMBAT_REACH` by scale), and `Unit::GetMeleeRange`'s `5.0` floor hides
+  the difference for melee but not for the other distance checks that read the same
+  fields. Not repaired here; recorded as D-M17.
+- [x] **D-M17 A logged-in player had no `BoundingRadius` and no `CombatReach` at all.**
+  Closed 2026-10-01. Found while closing D-M16, which the zero reach had made worse.
+
+  C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1586`) is the only writer
+  of those two fields for a player — `scale * DEFAULT_PLAYER_BOUNDING_RADIUS` and
+  `scale * DEFAULT_PLAYER_COMBAT_REACH` (`Entities/Object/ObjectDefines.h:39-40`) — and it
+  is called at `Player::Create` (`:439`), when resetting stats before reapplying auras
+  (`:2312`) and at `Player::LoadFromDB` (`:17645`). RustyCore had **no** writer: no
+  production path called `Unit::set_combat_reach` for a player, so both fields stayed at
+  their `0.0` default for the whole session. The creature side was fine — the production
+  create paths derive both from `CreatureModelInfo` by scale
+  (`session/world_entities/creature.rs:281-282`), and the hard-coded `0.389 / 1.5` in
+  `map_manager/runtime/creature.rs:83-84` belongs to `WorldCreature::new`, which has no
+  production caller.
+
+  It was invisible in two ways at once. The player's CREATE block wrote the correct
+  literals straight into the packet
+  (`wow-packet/.../update/player/state_2.rs`), so the client always saw `0.389 / 1.5` and
+  only the server disagreed; and `player_interaction_combat_reach_like_cpp` substituted
+  `DEFAULT_PLAYER_COMBAT_REACH` whenever it read a zero, which quietly fixed the one
+  consumer that would have shown it. Every other reader of the field was simply wrong:
+  `Unit::IsWithinBoundaryRadius`'s radius lost `1.5` yards, as did
+  `WorldObject::_IsWithinDist`'s combat-reach term. `Unit::GetMeleeRange`'s
+  `NOMINAL_MELEE_RANGE` floor of `5.0` absorbed the loss for melee range itself, which is
+  why nothing had failed outright before D-M16 turned the boundary radius into a range gate.
+
+  The repair adds `Player::set_object_scale_like_cpp` as the port of
+  `Player::SetObjectScale` and calls it at the login bootstrap, removes the substituting
+  fallback so a future zero is visible instead of patched, and gives the two
+  `ObjectDefines.h` values a single home in `wow_constants::object` (the copy in
+  `wow-map` stays, with the reason: that crate does not depend on `wow-constants` and one
+  float is not worth a new crate edge). The CREATE block now writes those constants instead
+  of magic numbers; a *scaled* player would still need the entity's own values there, which
+  `PlayerCreateData` does not carry and no RustyCore path needs yet.
+
+  Evidence: two entity tests on the derived values and their scaling, and a login-bootstrap
+  test that the canonical player comes out of `build_initial_player_for_owner_like_cpp` with
+  `0.389 / 1.5`. One existing test changed behaviour and was corrected rather than
+  re-baselined: `combat_tick_bad_facing_sets_short_retry_timer_like_cpp` placed its victim
+  at 2.0 yards, which was outside the boundary radius only while the player's reach was
+  zero; with the C++ value the attacker is inside it, and C++ then exempts the facing arc,
+  so the fixture now stands at 4.0 yards — outside the `3.5` boundary and inside the `5.0`
+  melee range, which is the only band where bad facing is what refuses the swing. That
+  behaviour change is itself the integration evidence that the field now reaches the
+  predicate. The live run after the repair is a regression check, not a measurement: the
+  wire carried the right literal either way, so no capture can distinguish the two.
+  `--loot-after-kill --melee-creature-entry 94 --melee-creature-guid 280092` still reports
+  `player_landed=4 (43 damage) creature_landed=3 death=true xp=44 loot_coins=8`,
+  money 21 -> 29.
 
 ## LOW — non-issues in practice / cosmetic (recorded for completeness)
 

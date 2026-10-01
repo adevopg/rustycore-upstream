@@ -62,6 +62,76 @@ This mode writes: it creates an account fixture if missing, writes
 `account.session_key_bnet` and `account.os`, and creates a character. Use it only
 against authorized test identities.
 
+### Looting the kill
+
+`--loot-after-kill` adds the loot phase to `--melee-smoke`: open the corpse, take
+the money, take every item the window offers, close it, then log out cleanly and
+read back what was granted.
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --loot-after-kill --melee-creature-entry 94 --melee-timeout 120
+```
+
+`CMSG_LOOT_ITEM` must quote the **LootObject** guid, which is the *second* guid in
+`SMSG_LOOT_RESPONSE`, not the creature's. The handler resolves the request through
+`active_loot_owner_for_loot_object_like_cpp`, so the creature's own guid finds
+nothing and is answered with a bare `SMSG_LOOT_RELEASE` — no error, no item, and
+nothing in the log. `CMSG_LOOT_RELEASE`, by contrast, carries the owner.
+
+The loot list id is read back from the response rather than assumed: the server
+assigns it over every generated entry (`handlers/loot/generation.rs:172`) and
+resolves the request by it (`handlers/loot/authority.rs:127`), so entries this
+player never sees still consume ids.
+
+Item blocks carrying item bonuses or modifications are refused rather than guessed,
+because their lengths are variable; white loot never produces them.
+
+Pick the target by what it drops. `creature_template_difficulty` holds `GoldMin`,
+`GoldMax` and `LootID`: entry 299 (Diseased Young Wolf) has no gold at all, so
+`coins=0` there is correct data and not a defect, while entry 94 (Defias Cutpurse,
+1-12 copper, spawns 25 yards from the QA start) exercises the money half.
+
+## The death exit — live and mutating
+
+`--death-smoke` drives the whole corpse circuit and reports what the server
+recorded:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --death-smoke --death-timeout 120
+```
+
+```text
+fixture: health = 0 and PLAYER_FLAGS_GHOST cleared, stale corpse rows dropped
+login -> CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE -> CMSG_REPOP_REQUEST
+      -> SMSG_MOVE_TELEPORT to the graveyard, acknowledged
+      -> run back to the position the `corpse` row itself carries
+      -> CMSG_RECLAIM_CORPSE every 5 s until it takes
+      -> clean logout, then read health and playerFlags back
+```
+
+The acceptance signal is the `corpse` row, not a decoded update block. C++
+`Corpse::SaveToDB` writes it inside `CreateCorpse` and
+`Map::ConvertCorpseToBones` deletes it inside the reclaim
+(`Maps/Map.cpp:3748-3750`), both committed immediately rather than at the next
+player save, so the row appearing and then disappearing is the server's own
+record of the two transitions. The logout then confirms the player came back:
+half health and no ghost flag.
+
+The fixture writes `characters.health = 0` and clears `PLAYER_FLAGS_GHOST`,
+because a fresh death is a corpse and not a ghost — C++
+`WorldSession::HandleRepopRequest` (`Handlers/MiscHandler.cpp:62-63`) refuses to
+release a spirit that already carries that flag, and the flag is persisted. Like
+the `--melee-smoke` revive, it is a fixture reset and exercises no server death
+path.
+
+Every refusal is silent on the wire by design: C++ returns without a packet. Set
+`RUSTYCORE_CORPSE_RECLAIM_TRACE=1` on the server to see which gate refused and,
+for the delay, how many seconds are left.
+
 ## Retiring QA characters — live and destructive
 
 `--delete-characters <guid,guid,…>` deletes characters through the server's own
@@ -150,6 +220,23 @@ swing is what the scenario is really waiting for. The target is selected by
 `creature_template.entry`, optionally pinned to one `world.creature.guid`, and its
 live ObjectGuid must be discovered within 60 yards of that SQL position — the mode
 fails closed rather than attacking a guessed GUID.
+
+Pinning a stationary spawn removes the wander from the picture, and it is the
+reliable way to run this mode: `creature.guid` 280092, 280093 and 280091 (entry
+94) all carry `wander_distance = 0` and `MovementType = 0`. Doing that on
+2026-10-01 exposed a real server defect rather than a harness one — three runs
+at 4.0 yards saw no `SMSG_ATTACKER_STATE_UPDATE` at all, because the global
+player-melee phase refused every swing with `NotInRange`. It is closed as
+**D-M16** in `docs/migration/EXISTING-CODE-DEFECTS.md`, and the same run proved
+the fix: `player_landed=4 (45 damage) death=true xp=44 loot_coins=9`.
+
+Read the phase trace, not the summary, when a run lands nothing. `delivered`
+counts commands the phase handed to the rail; `queued` and `dropped_durable` say
+whether the session received one; the arrival line names the gate that dropped
+it; and `ready_attack_without_swing` reports a ready attack that produced no
+swing, with the range, facing and unit-state facts behind it. The old
+`creature_hits` counter was not usable for this: it counted a result with an
+empty swing list as a hit, and now counts only a swing that exists.
 
 A run fails if SMSG_ATTACK_START never arrives or if no player swing lands. The
 retaliation, the death and the XP are reported but not required: a critter neither
