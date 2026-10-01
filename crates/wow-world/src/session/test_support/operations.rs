@@ -121,6 +121,10 @@ impl WorldSession {
                 .tavern_area_trigger_store
                 .clone()
                 .unwrap_or_else(|| Arc::new(TavernAreaTriggerStoreLikeCpp::default())),
+            // The quest-relation store is not a Session field: the scenarios that
+            // need it build their own catalogs and call
+            // `handle_area_trigger_with_catalogs_like_cpp` directly.
+            quest_relations: Arc::new(wow_data::QuestAreaTriggerStoreLikeCpp::default()),
             script_dispatcher: self.area_trigger_script_dispatcher_like_cpp.clone(),
         }
     }

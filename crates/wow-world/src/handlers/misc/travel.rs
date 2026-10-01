@@ -37,6 +37,7 @@ inventory::submit! {
                 session
                     .handle_area_trigger_with_catalogs_like_cpp(
                         catalogs.area_triggers.as_ref(),
+                        catalogs.id_generators.item.as_ref(),
                         pkt,
                     )
                     .await
@@ -391,6 +392,7 @@ impl crate::session::WorldSession {
     pub async fn handle_area_trigger_with_catalogs_like_cpp(
         &mut self,
         catalogs: &AreaTriggerCatalogsLikeCpp,
+        item_guid_generator: &wow_core::ObjectGuidGenerator,
         mut pkt: wow_packet::WorldPacket,
     ) {
         let Ok(trigger_id) = pkt.read_uint32() else {
@@ -476,6 +478,19 @@ impl crate::session::WorldSession {
             }
         }
 
+        // C++ credits area-trigger quests here, before the tavern branch and
+        // only for a living player entering the trigger
+        // (`Handlers/MiscHandler.cpp:530-574`). The tavern handling below
+        // returns, so a trigger that is both would otherwise lose its quest.
+        if entered {
+            self.credit_represented_area_trigger_quests_like_cpp(
+                item_guid_generator,
+                catalogs.quest_relations.as_ref(),
+                trigger_id,
+            )
+            .await;
+        }
+
         if self.handle_represented_tavern_area_trigger_with_catalog_like_cpp(
             catalogs.taverns.as_ref(),
             trigger_id,
@@ -512,8 +527,189 @@ impl crate::session::WorldSession {
     #[cfg(test)]
     pub async fn handle_area_trigger(&mut self, pkt: wow_packet::WorldPacket) {
         let catalogs = self.area_trigger_catalogs_for_test_like_cpp();
-        self.handle_area_trigger_with_catalogs_like_cpp(&catalogs, pkt)
+        let generators = self.id_generators_for_test_like_cpp();
+        self.handle_area_trigger_with_catalogs_like_cpp(&catalogs, generators.item.as_ref(), pkt)
             .await;
+    }
+
+    /// C++ `WorldSession::HandleAreaTriggerOpcode`'s quest block
+    /// (`Handlers/MiscHandler.cpp:530-574`).
+    ///
+    /// Deliberately not `Player::UpdateQuestObjectiveProgress`: C++ says why in
+    /// its own comment at `:532` — a `quest_objectives.ObjectID` of `-1` means
+    /// "any trigger bound by `areatrigger_involvedrelation`", which an ObjectID
+    /// lookup cannot express. So the quests come from the relation store and the
+    /// objective's own id is only a filter.
+    ///
+    /// Not ported here: `Player::isDebugAreaTriggers` chat output, and
+    /// `IsQuestObjectiveComplete`'s live-state branches, which
+    /// `represented_quest_objective_complete_like_cpp` still fails closed on.
+    async fn credit_represented_area_trigger_quests_like_cpp(
+        &mut self,
+        item_guid_generator: &wow_core::ObjectGuidGenerator,
+        quest_relations: &wow_data::QuestAreaTriggerStoreLikeCpp,
+        trigger_id: u32,
+    ) {
+        use wow_packet::packets::quest::{QuestUpdateAddCreditSimple, QuestUpdateComplete};
+
+        // C++ `player->IsAlive()` gates the whole block. An unresolved vital
+        // state is not an alive player, so it fails closed like the rest of the
+        // handler's gates.
+        if self.resolved_player_is_alive_like_cpp() != Some(true) {
+            return;
+        }
+        let Some(quest_ids) = quest_relations
+            .quests_for_area_trigger_like_cpp(trigger_id)
+            .map(|quests| quests.iter().copied().collect::<Vec<_>>())
+        else {
+            return;
+        };
+        let Some(store) = self.quests.store.clone() else {
+            return;
+        };
+
+        self.invalidate_player_quest_status_authority_like_cpp();
+        let mut any_objective_changed_completion_state = false;
+        let mut quests_to_save = Vec::new();
+
+        for quest_id in quest_ids {
+            let Some(quest) = store.get(quest_id).cloned() else {
+                continue;
+            };
+            let Some(status) = self
+                .player_quest_gameplay_snapshot_like_cpp()
+                .and_then(|state| state.statuses_like_cpp().get(&quest_id).cloned())
+            else {
+                continue;
+            };
+            // C++ needs a real quest-log slot and QUEST_STATUS_INCOMPLETE.
+            if status.slot >= crate::handlers::quest::MAX_QUEST_LOG_SIZE_LIKE_CPP
+                || status.status != crate::conditions::QUEST_STATUS_INCOMPLETE_LIKE_CPP
+            {
+                continue;
+            }
+
+            // C++ stops at the first objective it can credit.
+            let credited = quest.objectives.iter().enumerate().find_map(
+                |(objective_index, objective)| {
+                    if objective.obj_type
+                        != crate::handlers::quest::QUEST_OBJECTIVE_AREATRIGGER_LIKE_CPP_LOCAL
+                        || !crate::handlers::quest_rules::represented_quest_objective_completable_like_cpp(
+                            &status,
+                            &quest,
+                            objective_index,
+                        )
+                        || crate::handlers::quest_rules::represented_quest_objective_complete_like_cpp(
+                            &status, &quest, objective,
+                        )
+                        || (objective.object_id != -1
+                            && objective.object_id != i32::try_from(trigger_id).unwrap_or(i32::MAX))
+                    {
+                        return None;
+                    }
+                    let storage_index = usize::try_from(objective.storage_index).ok()?;
+                    Some((storage_index, objective.id, objective.object_id, objective.obj_type))
+                },
+            );
+
+            if let Some((storage_index, objective_id, object_id, objective_type)) = credited {
+                // C++ `SetQuestObjectiveData(obj, 1)`; an areatrigger objective is
+                // flag-storing, so any non-zero value completes it.
+                let applied = self
+                    .mutate_player_quest_gameplay_like_cpp(|state| {
+                        let Some(status) = state.status_mut_like_cpp(quest_id) else {
+                            return false;
+                        };
+                        if status.objective_counts.len() <= storage_index {
+                            status.objective_counts.resize(storage_index + 1, 0);
+                        }
+                        status.objective_counts[storage_index] = 1;
+                        true
+                    })
+                    .unwrap_or(false);
+                if applied {
+                    self.send_packet(&QuestUpdateAddCreditSimple {
+                        quest_id,
+                        object_id,
+                        objective_type,
+                    });
+                    any_objective_changed_completion_state = true;
+                    quests_to_save.push(quest_id);
+                    self.complete_represented_area_trigger_quest_like_cpp(
+                        item_guid_generator,
+                        &quest,
+                        Some(objective_id),
+                    )
+                    .await;
+                }
+            }
+
+            // C++ `AreaExploredOrEventHappens(questId)` for a quest whose
+            // completion is the trigger itself (`Player.cpp:16495-16513`).
+            if (quest.flags & crate::handlers::quest::QUEST_FLAGS_COMPLETION_AREA_TRIGGER_LIKE_CPP)
+                != 0
+                && let Some((quest_is_in_log, should_send_event_complete)) = self
+                    .mark_represented_quest_explored_like_cpp(
+                        quest_id,
+                        crate::conditions::QUEST_STATUS_FAILED_LIKE_CPP,
+                    )
+                && quest_is_in_log
+            {
+                if should_send_event_complete {
+                    self.send_packet(&QuestUpdateComplete { quest_id });
+                    quests_to_save.push(quest_id);
+                }
+                self.complete_represented_area_trigger_quest_like_cpp(
+                    item_guid_generator,
+                    &quest,
+                    None,
+                )
+                .await;
+            }
+        }
+
+        self.save_changed_represented_quest_statuses_like_cpp(&mut quests_to_save)
+            .await;
+        if any_objective_changed_completion_state {
+            let _ = self.update_visible_gameobjects_or_spell_clicks_like_cpp();
+        }
+        self.sync_player_registry_state_like_cpp();
+    }
+
+    /// C++ `if (player->CanCompleteQuest(questId)) player->CompleteQuest(questId);`
+    /// after each area-trigger credit (`Handlers/MiscHandler.cpp:566-567`).
+    async fn complete_represented_area_trigger_quest_like_cpp(
+        &mut self,
+        item_guid_generator: &wow_core::ObjectGuidGenerator,
+        quest: &wow_data::quest::QuestTemplate,
+        objective_id: Option<u32>,
+    ) {
+        use wow_packet::packets::quest::QuestUpdateComplete;
+
+        let quest_id = quest.id;
+        let completed = match objective_id {
+            Some(objective_id) => {
+                self.complete_represented_quest_after_objective_with_generator_like_cpp(
+                    item_guid_generator,
+                    quest,
+                    objective_id,
+                )
+                .await
+            }
+            None => {
+                self.complete_represented_quest_after_add_with_generator_like_cpp(
+                    item_guid_generator,
+                    quest,
+                )
+                .await
+            }
+        };
+        if completed
+            && self.represented_player_quest_status_like_cpp(quest_id)
+                == Some(Some(crate::conditions::QUEST_STATUS_COMPLETE_LIKE_CPP))
+        {
+            self.send_packet(&QuestUpdateComplete { quest_id });
+        }
     }
 
     fn area_trigger_client_conditions_meet_like_cpp(&mut self, trigger_id: u32) -> bool {

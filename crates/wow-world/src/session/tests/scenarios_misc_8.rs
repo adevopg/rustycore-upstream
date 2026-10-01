@@ -870,3 +870,210 @@ fn update_zone_records_area_then_top_level_criteria_like_cpp() {
         "C++ Player::UpdateZone calls UpdateArea before EnterTopLevelArea/LeaveTopLevelArea"
     );
 }
+
+/// Build the one area-trigger fixture both quest scenarios below need: a live
+/// player standing inside trigger `trigger_id`, with `quest_id` incomplete in
+/// the log and one `QUEST_OBJECTIVE_AREATRIGGER` objective bound to
+/// `objective_object_id`.
+#[cfg(test)]
+fn area_trigger_quest_fixture_like_cpp(
+    session: &mut WorldSession,
+    trigger_id: u32,
+    quest_id: u32,
+    objective_object_id: i32,
+    quest_flags: u32,
+) {
+    let player_guid = ObjectGuid::create_player(1, 0xA7_01);
+    session.set_player_guid(Some(player_guid));
+    // The canonical fixture owner is installed on map 0, and the radius gate
+    // compares the trigger's continent against the player's live map
+    // (`player_is_in_area_trigger_radius_like_cpp`), so the trigger lives there
+    // too.
+    session.set_area_trigger_db2_store(Arc::new(wow_data::AreaTriggerDb2Store::from_entries([
+        test_db2_area_trigger_like_cpp(trigger_id, 0, Position::new(10.0, 20.0, 30.0, 0.0)),
+    ])));
+
+    let mut quest = test_quest_template(quest_id);
+    quest.flags |= quest_flags;
+    quest.objectives.push(wow_data::quest::QuestObjective {
+        id: quest_id * 10,
+        quest_id,
+        obj_type: 10, // C++ QUEST_OBJECTIVE_AREATRIGGER.
+        order: 0,
+        storage_index: 0,
+        object_id: objective_object_id,
+        amount: 1,
+        flags: 0,
+        flags2: 0,
+        progress_bar_weight: 0.0,
+        description: String::new(),
+    });
+    session.set_quest_store(Arc::new(wow_data::quest::QuestStore::from_quests_like_cpp(
+        [quest],
+    )));
+    session.player_quests.insert(
+        quest_id,
+        crate::handlers::quest::PlayerQuestStatus {
+            quest_id,
+            status: crate::conditions::QUEST_STATUS_INCOMPLETE_LIKE_CPP,
+            explored: false,
+            accept_time_secs: 0,
+            end_time_secs: 0,
+            objective_counts: vec![0],
+            slot: 0,
+        },
+    );
+    adopt_player_quest_fixture_into_canonical_owner_like_cpp(session);
+    // C++ gates the whole quest block on `player->IsAlive()`, and the canonical
+    // fixture owner starts with no vitals and at the map origin.
+    session
+        .mutate_canonical_player_like_cpp(|player| {
+            player.unit_mut().set_max_health(100);
+            player
+                .unit_mut()
+                .set_death_state(wow_constants::DeathState::Alive);
+            player.unit_mut().set_health(100);
+            player
+                .unit_mut()
+                .world_mut()
+                .relocate(Position::new(10.5, 20.0, 30.0, 0.0));
+        })
+        .expect("canonical Player fixture accepts its vitals");
+    session.set_player_map_position_like_cpp(0, Position::new(10.5, 20.0, 30.0, 0.0));
+    assert!(
+        session.resolved_player_is_alive_like_cpp() == Some(true),
+        "the fixture player must be alive for the C++ quest gate"
+    );
+}
+
+#[cfg(test)]
+fn canonical_objective_counts_like_cpp(session: &WorldSession, quest_id: u32) -> Vec<i32> {
+    session
+        .player_quest_gameplay_snapshot_like_cpp()
+        .expect("canonical Player quest state")
+        .statuses_like_cpp()
+        .get(&quest_id)
+        .expect("quest remains in the log")
+        .objective_counts
+        .clone()
+}
+
+#[cfg(test)]
+fn area_trigger_catalogs_with_quest_relations_like_cpp(
+    session: &WorldSession,
+    relations: wow_data::QuestAreaTriggerStoreLikeCpp,
+) -> AreaTriggerCatalogsLikeCpp {
+    AreaTriggerCatalogsLikeCpp {
+        quest_relations: Arc::new(relations),
+        ..session.area_trigger_catalogs_for_test_like_cpp()
+    }
+}
+
+#[cfg(test)]
+fn enter_area_trigger_packet_like_cpp(trigger_id: u32) -> WorldPacket {
+    let mut pkt = WorldPacket::new_empty();
+    pkt.write_uint32(trigger_id);
+    pkt.write_bit(true);
+    pkt.write_bit(false);
+    pkt.flush_bits();
+    pkt
+}
+
+/// C++ `HandleAreaTriggerOpcode` credits the first creditable
+/// `QUEST_OBJECTIVE_AREATRIGGER` objective and announces it with
+/// `SMSG_QUEST_UPDATE_ADD_CREDIT_SIMPLE` (`Handlers/MiscHandler.cpp:543-559`).
+#[tokio::test]
+async fn area_trigger_credits_its_quest_objective_like_cpp() {
+    let (mut session, _, send_rx) = make_session();
+    let trigger_id = 4_421;
+    let quest_id = 12_601;
+    area_trigger_quest_fixture_like_cpp(&mut session, trigger_id, quest_id, trigger_id as i32, 0);
+    let relations = wow_data::QuestAreaTriggerStoreLikeCpp::from_rows_like_cpp(
+        [wow_data::QuestAreaTriggerRowLikeCpp {
+            trigger_id,
+            quest_id,
+        }],
+        |_| true,
+        session.quests.store.as_deref().expect("quest store"),
+    );
+    let catalogs = area_trigger_catalogs_with_quest_relations_like_cpp(&session, relations.store);
+    let generators = session.id_generators_for_test_like_cpp();
+
+    session
+        .handle_area_trigger_with_catalogs_like_cpp(
+            &catalogs,
+            generators.item.as_ref(),
+            enter_area_trigger_packet_like_cpp(trigger_id),
+        )
+        .await;
+
+    assert_eq!(
+        canonical_objective_counts_like_cpp(&session, quest_id),
+        vec![1],
+        "an areatrigger objective is flag-storing: C++ SetQuestObjectiveData writes 1"
+    );
+    let mut saw_simple_credit = false;
+    while let Ok(bytes) = send_rx.try_recv() {
+        let mut packet = WorldPacket::from_bytes(&bytes);
+        if packet.read_uint16().unwrap()
+            != wow_constants::ServerOpcodes::QuestUpdateAddCreditSimple as u16
+        {
+            continue;
+        }
+        saw_simple_credit = true;
+        assert_eq!(packet.read_int32().unwrap(), quest_id as i32);
+        assert_eq!(packet.read_int32().unwrap(), trigger_id as i32);
+        assert_eq!(packet.read_uint8().unwrap(), 10);
+    }
+    assert!(saw_simple_credit, "the credit must reach the client");
+}
+
+/// C++ reads the quests from `areatrigger_involvedrelation` precisely because
+/// `quest_objectives.ObjectID` may be `-1`, which no ObjectID lookup could match
+/// (`Handlers/MiscHandler.cpp:532`); and an objective naming a *different*
+/// trigger is still refused even when the relation binds the quest (`:555-556`).
+#[tokio::test]
+async fn area_trigger_objective_takes_minus_one_but_refuses_a_foreign_id_like_cpp() {
+    let trigger_id = 4_422;
+    let foreign_trigger_id = 4_423;
+
+    for (objective_object_id, expected) in [
+        (-1_i32, vec![1_i32]),
+        (foreign_trigger_id as i32, vec![0_i32]),
+    ] {
+        let (mut session, _, _) = make_session();
+        let quest_id = 12_602;
+        area_trigger_quest_fixture_like_cpp(
+            &mut session,
+            trigger_id,
+            quest_id,
+            objective_object_id,
+            0,
+        );
+        let relations = wow_data::QuestAreaTriggerStoreLikeCpp::from_rows_like_cpp(
+            [wow_data::QuestAreaTriggerRowLikeCpp {
+                trigger_id,
+                quest_id,
+            }],
+            |_| true,
+            session.quests.store.as_deref().expect("quest store"),
+        );
+        let catalogs =
+            area_trigger_catalogs_with_quest_relations_like_cpp(&session, relations.store);
+        let generators = session.id_generators_for_test_like_cpp();
+
+        session
+            .handle_area_trigger_with_catalogs_like_cpp(
+                &catalogs,
+                generators.item.as_ref(),
+                enter_area_trigger_packet_like_cpp(trigger_id),
+            )
+            .await;
+
+        assert_eq!(
+            canonical_objective_counts_like_cpp(&session, quest_id),
+            expected,
+            "objective ObjectID {objective_object_id} against trigger {trigger_id}"
+        );
+    }
+}

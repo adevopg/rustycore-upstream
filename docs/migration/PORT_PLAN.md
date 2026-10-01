@@ -97,15 +97,20 @@ looted items and two advanced quest objectives, persisted across a clean logout.
 all, because the port had no equivalent of C++ `Player::SetObjectScale`. See the closed
 entry for why neither the wire nor the one masking consumer could show it.
 
+**D-H5 is also done:** the explore objective needed three separate repairs — the relation
+store was never composed, the handler had no quest block, and no flag-storing objective
+could read as complete. See the closed entry for each anchor.
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-**D-H5** — quest area-trigger (explore) objectives are not wired, so "explore Y" cannot be
-completed. It is the last of the M3/M4 objective types still missing after kill credit and
-item credit were closed today, it is bounded (one objective type, one handler), and the
-live acceptance is the same shape that worked for the other two: seed the objective, trip
-the trigger, read `character_queststatus_objectives` back after a clean logout. The two
-divergences this session left open, D-M15 (`QuestLogItemId` credited and put on the wire
-where the target build does neither) and the `NO_CREDIT_FOR_PROXY` boundary noted under
-D-H4, are smaller and belong to the same quest-objective lane.
+give tools/wow-test-bot a `CMSG_AREA_TRIGGER` mode, then run quest 76 "The Jasperlode Mine"
+on trigger 87 live. It is the smallest remaining step that converts today's largest body of
+unproven work into wire evidence, and it unblocks the same acceptance for every other
+explore quest. It needs the trigger geometry, which lives in the client `AreaTrigger.db2`
+rather than in SQL, so the mode has to read the position the server already loaded. After
+that, the quest-objective lane's open items in evidence order are D-H17 (four objective
+types that cannot complete because the completion rule carries no live player state), D-M15
+(`QuestLogItemId` credited and put on the wire where the target build does neither) and the
+`NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
 
 ## 1. Direction from here
 

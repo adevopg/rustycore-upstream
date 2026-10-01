@@ -754,8 +754,66 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   makes totems, triggers, critters and spirit services `REACT_PASSIVE`. RustyCore already
   suppresses their `MoveInLineOfSight` aggro through the same AI-kind selection, so the
   observable aggro behaviour matches; the react-state field itself is still unset for them.
-- [ ] **D-H5 Quest area-trigger (explore) objectives not wired.** Type 10 falls to `_=>false`;
-  "explore Y" uncompletable. `handlers/quest.rs:653`.
+- [x] **D-H5 Quest area-trigger (explore) objectives were not wired, in three separate
+  places.** Closed 2026-10-01. The old note named one of them; reading the whole operation
+  found a data path that was never composed, a handler block that did not exist, and a
+  completion rule that could not recognise the result.
+
+  1. **The relation store was never loaded.** `QuestAreaTriggerStoreLikeCpp` and its
+     faithful loader (C++ `ObjectMgr::LoadQuestAreaTriggers`,
+     `Globals/ObjectMgr.cpp:6470-6532`) already existed in `wow-data`, as did the SQL and
+     the persistence port, but nothing composed them: the comment in
+     `world-server/src/area/trigger_world_catalog.rs` said the quest-relation operation
+     "remains dormant until its owners compose them". Composed now after the quest store,
+     which is the C++ order, because every row is validated against it.
+  2. **`HandleAreaTriggerOpcode` had no quest block.** C++ credits area-trigger quests
+     there (`Handlers/MiscHandler.cpp:530-574`), before the tavern branch and only for a
+     living player entering the trigger. RustyCore went from the script dispatch straight
+     to the tavern handling, which returns, so even a trigger that was both would have lost
+     its quest. The port keeps C++'s own reason for not using
+     `Player::UpdateQuestObjectiveProgress` (its comment at `:532`): a
+     `quest_objectives.ObjectID` of `-1` means "any trigger bound by
+     `areatrigger_involvedrelation`", so the quests come from the relation store and the
+     objective's id is only a filter.
+  3. **No flag-storing objective could ever be complete.**
+     `represented_quest_objective_complete_like_cpp` knew the counter types and the progress
+     bar and returned `false` for everything else, so `QUEST_OBJECTIVE_AREATRIGGER` stayed
+     incomplete no matter what was stored. C++ `Player::IsQuestObjectiveComplete`
+     (`Entities/Player/Player.cpp:16982-16990`) groups the flag-storing types apart and
+     completes them on any non-zero stored value. That group is now ported — types 10, 11,
+     12, 14, 19 and 20 — which also moved `QUEST_OBJECTIVE_CRITERIA_TREE` out of the
+     counter group, where it did not belong.
+
+  Evidence: two scenario tests drive the real handler from a `CMSG_AREA_TRIGGER` packet to
+  the credited objective and the `SMSG_QUEST_UPDATE_ADD_CREDIT_SIMPLE` on the wire, and
+  cover the `ObjectID = -1` case and the refusal of an objective naming a different
+  trigger. Live, the store now loads with real data where it previously loaded nothing:
+  `Loaded 82 C++ quest area triggers (57 rows seen, 49 from relations, 35 from objectives;
+  0 skipped missing AreaTrigger.db2, 0 skipped missing quest, 8 skipped obsolete quest)`.
+
+  **Not proven live on the wire yet,** and named rather than implied: walking a real trigger
+  needs a `CMSG_AREA_TRIGGER` mode in tools/wow-test-bot, which does not exist, plus the
+  trigger's geometry, which lives in the client `AreaTrigger.db2` and not in SQL
+  (`hotfixes.area_trigger` is empty). Quest 76 "The Jasperlode Mine" on trigger 87 and
+  quest 62 "The Fargodeep Mine" on trigger 88 are both in Elwynn and both carry
+  `QUEST_FLAGS_COMPLETION_AREA_TRIGGER` plus one `QUEST_OBJECTIVE_AREATRIGGER`, so either is
+  the scenario to run once the bot can send the packet from inside the radius.
+
+  **Also left open:** `IsQuestObjectiveComplete`'s live-state branches.
+  `QUEST_OBJECTIVE_MIN_REPUTATION` / `MAX_REPUTATION` ask `GetReputationMgr`, `MONEY` asks
+  `HasEnoughMoney`, `LEARNSPELL` asks `HasSpell` and `CURRENCY` asks `HasCurrency`
+  (`Player.cpp:16970-16998`). The Rust rule is pure — status and quest only — so each needs
+  that state threaded in. They still fail closed, which leaves a quest incomplete rather
+  than completing it on an unchecked condition. Recorded as D-H17.
+- [ ] **D-H17 Four objective types cannot complete because the completion rule carries no
+  live player state.** `represented_quest_objective_complete_like_cpp` is pure, so
+  `QUEST_OBJECTIVE_MIN_REPUTATION` (6), `MAX_REPUTATION` (7), `MONEY` (8) and `CURRENCY` (4)
+  — plus `LEARNSPELL` (5) — fail closed where C++ `Player::IsQuestObjectiveComplete`
+  (`Entities/Player/Player.cpp:16970-16998`) asks `GetReputationMgr`, `HasEnoughMoney`,
+  `HasSpell` and `HasCurrency`. Found while closing D-H5, which repaired the flag-storing
+  group in the same `match`. Failing closed keeps a quest incomplete rather than completing
+  it on an unchecked condition, so this is a missing feature rather than a wrong grant, but
+  any quest whose completion depends on one of those five types cannot be finished.
 - [x] **D-H6 Quest item-loot objectives: the credit existed, the item did not.** Closed
   2026-10-01 after reading the whole operation instead of the old one-line note. The loot
   path did advance "collect X", but only for objectives the Rust side classified as

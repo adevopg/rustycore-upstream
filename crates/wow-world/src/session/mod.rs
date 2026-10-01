@@ -628,6 +628,10 @@ pub struct AreaTriggerCatalogsLikeCpp {
     pub destinations: Arc<AreaTriggerStore>,
     pub scripts: Arc<AreaTriggerScriptStoreLikeCpp>,
     pub taverns: Arc<TavernAreaTriggerStoreLikeCpp>,
+    /// C++ `ObjectMgr::mQuestAreaTriggerStore`, read by
+    /// `HandleAreaTriggerOpcode` through `GetQuestsForAreaTrigger`
+    /// (`Handlers/MiscHandler.cpp:534`).
+    pub quest_relations: Arc<wow_data::QuestAreaTriggerStoreLikeCpp>,
     pub script_dispatcher: Option<AreaTriggerScriptDispatcherLikeCpp>,
 }
 
@@ -662,6 +666,7 @@ impl Default for AreaTriggerCatalogsLikeCpp {
             destinations: Arc::new(AreaTriggerStore::default()),
             scripts: Arc::new(AreaTriggerScriptStoreLikeCpp::default()),
             taverns: Arc::new(TavernAreaTriggerStoreLikeCpp::default()),
+            quest_relations: Arc::new(wow_data::QuestAreaTriggerStoreLikeCpp::default()),
             script_dispatcher: None,
         }
     }

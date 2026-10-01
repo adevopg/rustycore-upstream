@@ -108,6 +108,22 @@ bad-facing test change behaviour: its victim stood at 2.0 yards, inside the boun
 once the player has a reach, and C++ exempts the facing arc there, so the fixture moved to
 the 3.5-to-5.0 band where bad facing is actually what refuses the swing.
 
+**Quest explore objectives are wired as of 2026-10-01, with scenario and startup evidence
+but not yet on the wire.** D-H5's one-line note named one of three missing pieces. The
+relation store (C++ `ObjectMgr::LoadQuestAreaTriggers`) existed in `wow-data` with its
+loader and its SQL but was never composed — the comment said it stayed "dormant until its
+owners compose them" — so `GetQuestsForAreaTrigger` had nothing to answer with;
+`HandleAreaTriggerOpcode` had no quest block at all, going from the script dispatch straight
+to the tavern branch, which returns; and `represented_quest_objective_complete_like_cpp`
+returned `false` for every flag-storing type, so a credited area-trigger objective could
+never read as complete. All three are repaired, keeping C++'s own reason for not routing
+this through `UpdateQuestObjectiveProgress`: a `quest_objectives.ObjectID` of `-1` means any
+trigger the relation table binds. Live, the store now loads 82 quest area triggers where it
+loaded none (49 from relations, 35 from the objectives themselves, 8 obsolete rows skipped).
+Walking a real trigger still needs a `CMSG_AREA_TRIGGER` mode in tools/wow-test-bot and the
+trigger geometry from the client `AreaTrigger.db2`; quest 76 on trigger 87 is the scenario
+to run. The four live-state objective types in the same `match` remain open as D-H17.
+
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to
 the Elwynn graveyard, the corpse run brings it back, the reclaim is refused while the C++
