@@ -961,6 +961,58 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   The aura rows are now built from the `Player` the projection was given; the session-based
   wrapper is kept for callers that do not hold the lock, and says so.
 
+- [x] **D-H19 The kill-credit path applied none of the three gates C++ puts in front of
+  objective progress.** Opened and implemented 2026-10-01. The plan named one of them; reading
+  the whole operation found that `Player::UpdateQuestObjectiveProgress`
+  (`Entities/Player/Player.cpp:16631-16772`) refuses a matched objective for three separate
+  reasons before it touches progress, and the session-side path that credits kills, talk-to,
+  gameobject use and player kills checked **none** of them. Only the item path, which is a
+  second implementation of the same C++ function, applied one.
+
+  The three, in C++ order:
+
+  1. **The raid gate** (`:16644-16646`): unless `QuestObjective::CanAlwaysBeProgressedInRaid`
+     (`Quests/QuestDef.h:489-507`, eight types that are not earned by being somewhere or
+     killing something), a raid group blocks the objective for a quest that is not
+     `Quest::IsAllowedInRaid` (`Quests/QuestDef.cpp:511-549`: the `QuestInfoID` raid arms, then
+     `QUEST_FLAGS_RAID_GROUP_OK`, then the `Quests.IgnoreRaid` config). This is the classic
+     rule that a raid group cannot do ordinary quests, and it was absent.
+  2. **`IsQuestObjectiveCompletable`** (`:16650-16651`), which owns the sequenced and
+     progress-bar ordering. A kill could credit an objective whose predecessor was unfinished.
+  3. **`QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY`** (`:16653-16655`): a `QUEST_OBJECTIVE_MONSTER`
+     credit carrying an empty victim GUID is refused. That empty GUID is precisely how
+     `Player::KilledMonster` (`:16568-16570`) marks the credit it grants for a
+     `CreatureTemplate::KillCredit` proxy rather than for the unit that died — so the flag is
+     the only thing that distinguishes the two, and the D-H4 repair that added the proxy
+     expansion left it unread.
+
+  All three now live in one pure rule applied where C++ applies them, so the gate order is
+  stated once. `Quests.IgnoreRaid` is wired from the config registry through the composition
+  root; its row in `cpp-world-config-registry.tsv` moves from `missing_in_rust` to its real
+  consumer.
+
+  **The proxy half is latent on this installation, and recorded as such rather than as proven
+  in play.** Of 8,543 `quest_template` rows, 31 carry any `FlagsEx` at all and the only two
+  values present are `8` and `0x40000000`; **no quest here carries `0x4000`**, so none of the
+  2,734 `QUEST_OBJECTIVE_MONSTER` objectives could exercise it and no live run distinguishes
+  before from after. Both directions are covered by tests instead.
+
+  **The raid half has no live evidence yet**, because blocking it needs two accounts in a group
+  converted to a raid. What was checked instead is that it cannot change solo or party play:
+  `GROUP_FLAG_RAID` is `0x002` in both cores, and the only writer in this port is
+  `Group::convert_to_raid_like_cpp`, so an ordinary party never sets it.
+
+  **Live regression, 2026-10-01** — the point of which is that three new refusals were added to
+  a working credit path. With the quest reset to incomplete, one kill of entry 721 published
+  `SMSG_QUEST_UPDATE_ADD_CREDIT` and persisted `character_queststatus_objectives` `(14106, 0) = 1`
+  across the clean logout; a kill of entry 94 in the same session still paid 44 XP, 8 copper and
+  two looted items. Reproduce with `--loot-after-kill --melee-creature-entry 721`.
+
+  **Named boundary:** the raid gate reads the difficulty this port resolves for the player's
+  current map, which for a continent is `DIFFICULTY_NONE` exactly as C++ `Map::GetDifficultyID()`
+  is. A downscaled or locked instance whose own spawn mode differs from the player's selection is
+  not tracked separately, and is written at the call site.
+
 ## MED — wrong values / loose checks / minor loss
 
 - [ ] **D-M1 Silent gold-save error.** `let _ = char_db.execute(stmt).await` swallows failures. `session.rs:21495`.

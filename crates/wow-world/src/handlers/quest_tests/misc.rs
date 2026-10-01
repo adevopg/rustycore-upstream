@@ -287,3 +287,183 @@ async fn an_item_objective_keyed_on_quest_log_item_id_is_not_credited_like_cpp()
         "the entry's objective advances and the QuestLogItemId one is untouched"
     );
 }
+
+/// One `QUEST_OBJECTIVE_MONSTER` objective on `entry`, with the quest in the log
+/// and nothing stored for it.
+fn monster_objective_fixture_like_cpp(
+    quest_id: u32,
+    entry: i32,
+) -> (QuestTemplate, PlayerQuestStatus) {
+    let mut quest = quest_template(quest_id);
+    quest.objectives = vec![QuestObjective {
+        id: quest_id * 10,
+        quest_id,
+        obj_type: QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL,
+        order: 0,
+        storage_index: 0,
+        object_id: entry,
+        amount: 3,
+        flags: 0,
+        flags2: 0,
+        progress_bar_weight: 0.0,
+        description: String::new(),
+    }];
+    let status = PlayerQuestStatus {
+        quest_id,
+        status: QUEST_STATUS_INCOMPLETE_LIKE_CPP,
+        explored: false,
+        accept_time_secs: 0,
+        end_time_secs: 0,
+        objective_counts: vec![0],
+        slot: 0,
+    };
+    (quest, status)
+}
+
+fn no_raid_context_like_cpp() -> crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
+    crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
+        in_raid_group: false,
+        map_difficulty_id: 0,
+        quests_ignore_raid: false,
+    }
+}
+
+/// C++ `Player::UpdateQuestObjectiveProgress` refuses a `QUEST_OBJECTIVE_MONSTER`
+/// credit with an empty victim GUID when the quest carries
+/// `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` (`Entities/Player/Player.cpp:16653-16655`).
+/// That empty GUID is how `Player::KilledMonster` (`:16568-16570`) marks the credit
+/// granted for a `CreatureTemplate::KillCredit` proxy rather than for the unit that
+/// actually died.
+#[test]
+fn no_credit_for_proxy_refuses_only_the_guidless_monster_credit_like_cpp() {
+    let (mut quest, status) = monster_objective_fixture_like_cpp(7401, 721);
+    let facts = crate::handlers::quest::ResolvedQuestObjectivePlayerFactsLikeCpp::default();
+    let allowed = |quest: &QuestTemplate, victim_guid_is_empty: bool| {
+        crate::handlers::quest_rules::represented_quest_objective_progress_allowed_like_cpp(
+            &status,
+            quest,
+            0,
+            &quest.objectives[0],
+            &no_raid_context_like_cpp(),
+            victim_guid_is_empty,
+            &facts.borrow_like_cpp(),
+        )
+    };
+
+    // Without the flag, both the real kill and the proxy credit advance.
+    assert!(allowed(&quest, false));
+    assert!(allowed(&quest, true));
+
+    quest.flags_ex |= wow_data::quest::QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY_LIKE_CPP;
+    assert!(
+        allowed(&quest, false),
+        "the creature that died still counts"
+    );
+    assert!(!allowed(&quest, true), "its credit proxies do not");
+}
+
+/// The proxy refusal is only for `QUEST_OBJECTIVE_MONSTER`: C++ checks the type
+/// before it looks at the GUID, so a flagged quest's other objectives are
+/// untouched by a guidless credit.
+#[test]
+fn no_credit_for_proxy_leaves_other_objective_types_alone_like_cpp() {
+    let (mut quest, status) = monster_objective_fixture_like_cpp(7402, 721);
+    quest.flags_ex |= wow_data::quest::QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY_LIKE_CPP;
+    quest.objectives[0].obj_type = QUEST_OBJECTIVE_TALKTO_LIKE_CPP_LOCAL;
+    let facts = crate::handlers::quest::ResolvedQuestObjectivePlayerFactsLikeCpp::default();
+    assert!(
+        crate::handlers::quest_rules::represented_quest_objective_progress_allowed_like_cpp(
+            &status,
+            &quest,
+            0,
+            &quest.objectives[0],
+            &no_raid_context_like_cpp(),
+            true,
+            &facts.borrow_like_cpp(),
+        )
+    );
+}
+
+/// C++ blocks every objective a raid group cannot earn unless the quest is
+/// allowed in raid (`Player.cpp:16644-16646`, `Quests/QuestDef.cpp:511-549`).
+#[test]
+fn a_raid_group_blocks_a_kill_objective_unless_the_quest_allows_raid_like_cpp() {
+    let (mut quest, status) = monster_objective_fixture_like_cpp(7403, 721);
+    let facts = crate::handlers::quest::ResolvedQuestObjectivePlayerFactsLikeCpp::default();
+    let allowed =
+        |quest: &QuestTemplate,
+         raid: crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp| {
+            crate::handlers::quest_rules::represented_quest_objective_progress_allowed_like_cpp(
+                &status,
+                quest,
+                0,
+                &quest.objectives[0],
+                &raid,
+                false,
+                &facts.borrow_like_cpp(),
+            )
+        };
+    let in_raid = crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
+        in_raid_group: true,
+        ..no_raid_context_like_cpp()
+    };
+
+    assert!(
+        allowed(&quest, no_raid_context_like_cpp()),
+        "solo kill counts"
+    );
+    assert!(!allowed(&quest, in_raid), "a raid group does not");
+
+    // `Quests.IgnoreRaid` is the operator escape hatch C++ falls back on.
+    assert!(allowed(
+        &quest,
+        crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
+            in_raid_group: true,
+            map_difficulty_id: 0,
+            quests_ignore_raid: true,
+        }
+    ));
+
+    // `QUEST_FLAGS_RAID_GROUP_OK` makes the quest a raid quest at any difficulty.
+    quest.flags |= wow_data::quest::QUEST_FLAGS_RAID_GROUP_OK_LIKE_CPP;
+    assert!(allowed(&quest, in_raid));
+}
+
+/// The eight objective types C++ `QuestObjective::CanAlwaysBeProgressedInRaid`
+/// lists (`Quests/QuestDef.h:489-507`) are never blocked by a raid group, and
+/// nothing else is exempt.
+#[test]
+fn only_the_cpp_objective_types_are_always_progressable_in_raid_like_cpp() {
+    for objective_type in [
+        QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_CURRENCY_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_LEARNSPELL_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_MIN_REPUTATION_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_MAX_REPUTATION_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_MONEY_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_HAVE_CURRENCY_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP_LOCAL,
+    ] {
+        assert!(
+            crate::handlers::quest_rules::represented_objective_can_always_be_progressed_in_raid_like_cpp(
+                objective_type
+            ),
+            "type {objective_type} is in the C++ list"
+        );
+    }
+    for objective_type in [
+        QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_GAMEOBJECT_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_TALKTO_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_PLAYERKILLS_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_AREATRIGGER_LIKE_CPP_LOCAL,
+        QUEST_OBJECTIVE_CRITERIA_TREE_LIKE_CPP_LOCAL,
+    ] {
+        assert!(
+            !crate::handlers::quest_rules::represented_objective_can_always_be_progressed_in_raid_like_cpp(
+                objective_type
+            ),
+            "type {objective_type} is not"
+        );
+    }
+}

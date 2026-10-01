@@ -130,6 +130,11 @@ impl WorldSession {
     pub fn set_instance_ignore_raid_like_cpp(&mut self, ignore: bool) {
         self.instance_ignore_raid_like_cpp = ignore;
     }
+    /// C++ `CONFIG_QUEST_IGNORE_RAID` (`Quests.IgnoreRaid`), read by
+    /// `Quest::IsAllowedInRaid` (`Quests/QuestDef.cpp:543-549`).
+    pub fn set_quests_ignore_raid_like_cpp(&mut self, ignore: bool) {
+        self.quests_ignore_raid_like_cpp = ignore;
+    }
     pub fn set_instance_ignore_level_like_cpp(&mut self, ignore: bool) {
         self.instance_ignore_level_like_cpp = ignore;
     }

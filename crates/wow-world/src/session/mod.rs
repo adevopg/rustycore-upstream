@@ -5404,6 +5404,7 @@ pub struct WorldSession {
     #[cfg(test)]
     feature_system_character_undelete_enabled_like_cpp: bool,
     instance_ignore_raid_like_cpp: bool,
+    quests_ignore_raid_like_cpp: bool,
     instance_ignore_level_like_cpp: bool,
     max_instances_per_hour_like_cpp: u32,
     #[cfg(test)]
@@ -7878,6 +7879,7 @@ impl WorldSession {
             #[cfg(test)]
             feature_system_character_undelete_enabled_like_cpp: false,
             instance_ignore_raid_like_cpp: false,
+            quests_ignore_raid_like_cpp: false,
             instance_ignore_level_like_cpp: false,
             max_instances_per_hour_like_cpp: 5,
             #[cfg(test)]

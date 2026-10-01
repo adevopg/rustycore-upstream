@@ -157,6 +157,27 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**The kill-credit path had none of C++'s three pre-progress gates, and now has all three
+(D-H19).** `Player::UpdateQuestObjectiveProgress` refuses a matched objective for three separate
+reasons before it touches progress — a raid group for a quest not allowed in raid,
+`IsQuestObjectiveCompletable`, and `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` for a
+`QUEST_OBJECTIVE_MONSTER` credit with an empty victim GUID — and the session path that credits
+kills, talk-to, gameobject use and player kills checked none of them. The empty GUID is exactly
+how `Player::KilledMonster` marks a `CreatureTemplate::KillCredit` proxy credit, so that flag is
+the only thing separating a kill credited by the unit that died from one credited by a proxy.
+`Quests.IgnoreRaid` is wired through the composition root and its config-registry row moves off
+`missing_in_rust`.
+
+Two halves are recorded with different evidence levels. The proxy refusal is **latent here**: of
+8,543 `quest_template` rows only 31 carry any `FlagsEx` and the sole values present are `8` and
+`0x40000000`, so nothing on this installation could exercise `0x4000`. The raid refusal has **no
+live evidence** yet, because it needs two accounts in a converted raid; what is checked is that it
+cannot touch solo or party play, since `GROUP_FLAG_RAID` is `0x002` in both cores and the only
+writer here is `convert_to_raid_like_cpp`. What *was* proven live is the thing that mattered —
+that adding three refusals to a working path did not break it: one kill of entry 721 still
+published `SMSG_QUEST_UPDATE_ADD_CREDIT` and persisted `(14106, 0) = 1`, and a kill of entry 94
+still paid 44 XP, 8 copper and two items.
+
 **Auras now survive a logout, proven live (D-H18).** `Player::_LoadAuras` was composed in
 production but nothing anywhere wrote the rows back: `PlayerCharacterSaveRequestLikeCpp` had no
 aura group, and the four `character_aura` statements existed with no caller. Every buff and

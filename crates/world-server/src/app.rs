@@ -5188,6 +5188,11 @@ async fn run_inner(
                 "CONFIG_INSTANCE_IGNORE_RAID",
                 false,
             ),
+            quests_ignore_raid: world_config_bool(
+                &world_configs,
+                "CONFIG_QUEST_IGNORE_RAID",
+                false,
+            ),
             instance_ignore_level: world_config_bool(
                 &world_configs,
                 "CONFIG_INSTANCE_IGNORE_LEVEL",

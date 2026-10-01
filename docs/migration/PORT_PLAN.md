@@ -120,15 +120,32 @@ decides credit or wire bytes, but all 625 rows of the installed `item_template_a
 `0`, so nothing on this installation could have exercised it and no live run distinguishes
 before from after. Its inert plumbing is D-L4.
 
-**Next prepared responsibility, selected by evidence rather than by document order:**
-the `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` boundary noted under D-H4. C++
-`UpdateQuestObjectiveProgress` skips a `QUEST_OBJECTIVE_MONSTER` objective when the quest has
-that flag and the victim GUID is empty (`Entities/Player/Player.cpp:16653-16655`), which is
-how a kill credited by spell damage or by a script differs from a kill credited by a creature.
-RustyCore's kill-credit path does not carry the victim GUID that far, which is the same gap
-the D-H4 repair named and left. It closes the kill-credit lane the way D-M15 closed the
-item-credit one, and it has a live shape that already works: kill with a creature, then credit
-without one, and read `character_queststatus_objectives` back after a clean logout.
+**Auras are also done (D-H18):** the load was composed in production but nothing wrote the
+rows back, so every buff and debuff died at logout. `Player::_SaveAuras` is ported end to end
+and proven live with a fixture a missing save cannot pass.
+
+**The `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` responsibility this section named is done, and it
+was larger than the flag (D-H19).** Reading the whole of
+`Player::UpdateQuestObjectiveProgress` found three refusals in front of progress, not one, and
+the session-side credit path applied none of them: the raid gate, `IsQuestObjectiveCompletable`,
+and the proxy flag. All three are now one pure rule applied where C++ applies it, with
+`Quests.IgnoreRaid` wired through the composition root. The prediction in the earlier wording
+was wrong in one detail worth keeping: the kill-credit path *did* already carry the victim GUID
+to the objective loop and onto the wire — the D-H4 proxy expansion passes `ObjectGuid::Empty`
+exactly as C++ does. What was missing was only the reader. The proxy half is latent on this
+installation (no `quest_template` row carries `0x4000`) and the raid half still needs a
+two-account raid for live acceptance; the live run that was taken proves the three new refusals
+did not break the working credit chain.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** contrast
+the three open HIGH combat entries against current code before implementing any of them. D-H1
+(melee damage has no formula) and D-H2 (melee hit table absent) both point at `session.rs:79xx`,
+a file that no longer exists, and the `#29`/`#61` work recorded in the physical-file policy names
+`MeleeDamageBonusDone`, `RollMeleeOutcomeAgainst`, `CalcArmorReducedDamage`, block percent and
+the critical-damage multiplier as integrated — so those two entries are likely stale notes rather
+than open gaps, and saying so needs a read of the current swing, not a rewrite. D-H3 (spell
+damage and healing use raw base points, with no coefficient, crit or resist) has no such
+contradicting evidence and is the probable implementation target.
 
 ## 1. Direction from here
 

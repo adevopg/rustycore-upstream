@@ -117,6 +117,77 @@ pub(crate) fn stored_progress_only_player_facts_like_cpp()
     }
 }
 
+/// The raid context C++ `Player::UpdateQuestObjectiveProgress` reads at
+/// `Entities/Player/Player.cpp:16644-16646`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RepresentedQuestRaidContextLikeCpp {
+    /// C++ `GetGroup() && GetGroup()->isRaidGroup()`.
+    pub in_raid_group: bool,
+    /// C++ `GetMap()->GetDifficultyID()`.
+    pub map_difficulty_id: u8,
+    /// C++ `CONFIG_QUEST_IGNORE_RAID` (`Quests.IgnoreRaid`).
+    pub quests_ignore_raid: bool,
+}
+
+/// C++ `QuestObjective::CanAlwaysBeProgressedInRaid` (`Quests/QuestDef.h:489-507`):
+/// the objective types a raid group never blocks, because none of them is earned
+/// by being somewhere or killing something.
+pub(crate) fn represented_objective_can_always_be_progressed_in_raid_like_cpp(
+    objective_type: u8,
+) -> bool {
+    matches!(
+        objective_type,
+        QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_CURRENCY_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_LEARNSPELL_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_MIN_REPUTATION_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_MAX_REPUTATION_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_MONEY_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_HAVE_CURRENCY_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP_LOCAL
+    )
+}
+
+/// Every gate C++ `Player::UpdateQuestObjectiveProgress` applies to one matched
+/// objective before it touches its progress (`Entities/Player/Player.cpp:16644-16655`),
+/// in that order:
+///
+/// 1. the raid gate: unless the type can always progress in a raid, a raid group
+///    blocks the objective for a quest that is not allowed in raid;
+/// 2. `IsQuestObjectiveCompletable`, which the sequenced and progress-bar rules own;
+/// 3. `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY`, which refuses a `QUEST_OBJECTIVE_MONSTER`
+///    credit carrying no victim — that empty GUID is exactly how C++
+///    `Player::KilledMonster` (`:16568-16570`) marks the credit it grants for a
+///    `CreatureTemplate::KillCredit` proxy rather than for the unit that died.
+///
+/// Returns true when the objective may take the progress.
+pub(crate) fn represented_quest_objective_progress_allowed_like_cpp(
+    status: &PlayerQuestStatus,
+    quest: &wow_data::quest::QuestTemplate,
+    objective_index: usize,
+    objective: &wow_data::quest::QuestObjective,
+    raid: &RepresentedQuestRaidContextLikeCpp,
+    victim_guid_is_empty: bool,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
+) -> bool {
+    if !represented_objective_can_always_be_progressed_in_raid_like_cpp(objective.obj_type)
+        && raid.in_raid_group
+        && !quest.is_allowed_in_raid_like_cpp(raid.map_difficulty_id, raid.quests_ignore_raid)
+    {
+        return false;
+    }
+    if !represented_quest_objective_completable_like_cpp(status, quest, objective_index, facts) {
+        return false;
+    }
+    if quest.has_no_credit_for_proxy_like_cpp()
+        && objective.obj_type == QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL
+        && victim_guid_is_empty
+    {
+        return false;
+    }
+    true
+}
+
 /// Is this `QUEST_OBJECTIVE_GAMEOBJECT` objective still waiting on the player?
 ///
 /// C++ `Player::HasQuestForGO` asks `IsQuestObjectiveCompletable` and

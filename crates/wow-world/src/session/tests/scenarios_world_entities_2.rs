@@ -915,6 +915,91 @@ async fn creature_kill_credits_the_templates_kill_credit_entries_like_cpp() {
     );
 }
 
+/// C++ `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` is what makes a kill credited through
+/// a `CreatureTemplate::KillCredit` proxy differ from a kill credited by the unit
+/// that died: `UpdateQuestObjectiveProgress` refuses the `QUEST_OBJECTIVE_MONSTER`
+/// credit that carries no victim GUID (`Entities/Player/Player.cpp:16653-16655`),
+/// and the proxy call is exactly the one `KilledMonster` makes with
+/// `ObjectGuid::Empty` (`:16568-16570`).
+///
+/// The same kill therefore credits an objective naming the creature's own entry
+/// and refuses one naming its proxy.
+#[tokio::test]
+async fn a_no_credit_for_proxy_quest_takes_the_kill_but_not_its_proxy_like_cpp() {
+    let (mut session, _pkt_tx, _send_rx) = make_session();
+    let player_guid = ObjectGuid::create_player(1, 45);
+    let creature_guid = test_creature_guid(9_930);
+    let killed_entry = 9_931_u32;
+    let proxy_entry = 9_932_u32;
+    let quest_id = 12_504;
+
+    // Two objectives: one on the entry that dies, one on its credit proxy.
+    let mut quest = test_quest_template(quest_id);
+    quest.flags_ex |= wow_data::quest::QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY_LIKE_CPP;
+    for (storage_index, object_id) in [(0_i8, killed_entry as i32), (1, proxy_entry as i32)] {
+        quest.objectives.push(wow_data::quest::QuestObjective {
+            id: quest_id * 10 + storage_index as u32,
+            quest_id,
+            obj_type: 0, // C++ QUEST_OBJECTIVE_MONSTER
+            order: storage_index as u8,
+            storage_index,
+            object_id,
+            amount: 2,
+            flags: 0,
+            flags2: 0,
+            progress_bar_weight: 0.0,
+            description: String::new(),
+        });
+    }
+    session.set_player_guid(Some(player_guid));
+    session.set_quest_store(Arc::new(wow_data::quest::QuestStore::from_quests_like_cpp(
+        [quest],
+    )));
+    session.player_quests.insert(
+        quest_id,
+        crate::handlers::quest::PlayerQuestStatus {
+            quest_id,
+            status: crate::conditions::QUEST_STATUS_INCOMPLETE_LIKE_CPP,
+            explored: false,
+            accept_time_secs: 0,
+            end_time_secs: 0,
+            objective_counts: vec![0, 0],
+            slot: 0,
+        },
+    );
+    session.set_object_mgr_catalogs_like_cpp(Arc::new(crate::session::ObjectMgrCatalogsLikeCpp {
+        creature: Arc::new(wow_data::CreatureQueryCatalogLikeCpp::from_rows_like_cpp(
+            [wow_data::CreatureQueryTemplateLikeCpp {
+                entry: killed_entry,
+                kill_credits: [proxy_entry as i32, 0],
+                ..Default::default()
+            }],
+            [],
+        )),
+        ..Default::default()
+    }));
+
+    adopt_player_quest_fixture_into_canonical_owner_like_cpp(&mut session);
+    session
+        .on_creature_killed(killed_entry, creature_guid)
+        .await;
+
+    let counts = session
+        .player_quest_gameplay_snapshot_like_cpp()
+        .and_then(|quests| {
+            quests
+                .statuses_like_cpp()
+                .get(&quest_id)
+                .map(|status| status.objective_counts.clone())
+        })
+        .expect("the quest must still be tracked");
+    assert_eq!(
+        counts,
+        vec![1, 0],
+        "the creature that died credits its own objective; its proxy gets nothing"
+    );
+}
+
 /// The same kill with no credit proxies advances nothing beyond its own entry:
 /// C++ skips a zero `KillCredit` slot, so an objective on an unrelated entry
 /// stays where it was.
