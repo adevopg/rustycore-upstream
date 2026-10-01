@@ -167,10 +167,18 @@ the C++ formula exactly: `21 / (21 + 100) = 0.174` average, whose table weights 
 two-tenth buckets, and `13 * 2/10` truncates to the published 2. The new `--spell-damage` bot mode
 drives it and reports every published field without drawing a conclusion.
 
-Two things that run found and the entries now record. **A newly created character has an empty
-spellbook** (D-H22): the `characters` row is right but `character_spell` has no rows, because the
-DB2 side of C++ `Player::LearnDefaultSkills` is not walked, so the character knows nothing and
-every cast is refused as unknown. And **only the first cast of a session reliably completes** while
+Two things that run found. **D-H22 was raised and then withdrawn in part the same day**: an empty
+`character_spell` for a fresh character is *faithful*, because C++ `_SaveSpells` inserts only
+**non-dependent** new spells and `LearnSkillRewardedSpells` learns dependent ones, so C++ does not
+write them either — they are recomputed from `character_skills` at every login, which this port
+does, with the mage's 11 default skills persisted. The first draft also read `default_skill_count=0`
+on a later login as the walk being absent; on the character's first login the same line reads
+`default_skill_count=11`. The code change that diagnosis motivated was reverted before publication.
+What stays open is a question rather than a defect: whether the 43 spells a human mage is granted
+include its class attack spells, which a dump of `SMSG_SEND_KNOWN_SPELLS` against the
+`SkillLineAbility` rows for skills 6 and 8 settles mechanically.
+
+And **only the first cast of a session reliably completes** while
 the world pass runs past its deadline — a condition this host logs continuously and did before any
 of this work — so the critical still has no live sighting: the one captured cast was a normal hit.
 The mode's reference run is therefore a single cast on a freshly started server.

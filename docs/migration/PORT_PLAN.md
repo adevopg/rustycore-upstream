@@ -164,18 +164,24 @@ resistance — the C++ formula to the truncated point. D-H21's roll is settled. 
 not: the captured cast was a normal hit, and seeing a critical needs a sampling run this host does
 not sustain yet.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** the empty
-spellbook a newly created character gets, recorded as **D-H22**. It was found while provisioning
-that caster and it is a blocker in its own right: `CMSG_CREATE_CHARACTER` writes a correct
-`characters` row, but `character_spell` has **no** rows, so the character knows nothing and every
-cast is refused as unknown. C++ `Player::Create` ends in `LearnDefaultSkills`, which walks the
-character's `SkillLineAbility` rows and learns each one marked learned-on-skill-learn, then grants
-each skill's spells; the port reaches the same place with nothing to do
-(`default_skill_count=0`), and `playercreateinfo_spell_custom` is empty because in 3.4.3 the data
-is in DB2 rather than SQL. So the work is the DB2 side of that walk, with
-`playercreateinfo_action`'s starting action bar as the cross-check. It unblocks every caster
-scenario — including D-H20's critical — without another fixture, and it is what a real first login
-needs before anything else in the class lane.
+**D-H22 was taken next and it turned out not to be a defect; the entry records the correction.**
+An empty `character_spell` for a fresh character is faithful: C++ `_SaveSpells` inserts only
+**non-dependent** new spells and `LearnSkillRewardedSpells` learns dependent ones, so C++ does not
+persist them either — they are recomputed from `character_skills` at every login, which this port
+does. The first draft also misread `default_skill_count=0` on a later login as the DB2 walk being
+absent; on the first login that line reads `default_skill_count=11`. The change it motivated was
+reverted before publication, because C++'s `learning`-based state is unfaithful here only in a case
+this evidence does not supply.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** settle the one
+question that investigation left, then pick up the class lane from a verified base. The question is
+mechanical and small: **does the spell set a human mage is granted include its class attack
+spells?** Dump the ids from `SMSG_SEND_KNOWN_SPELLS` — the bot already reads that packet at login —
+and compare them against the `SkillLineAbility` rows for skills 6 and 8 at rank 100, which is what
+`LearnSkillRewardedSpells` walks. `playercreateinfo_action` says the client expects spell 116
+(Frostbolt) on the first action button, so that comparison either closes the caster lane or names
+exactly which rows the walk is dropping. Only after that does a fixture-free caster scenario exist,
+which is what D-H20's critical still needs.
 
 Two conditions found during that run belong with it rather than inside it: **only the first cast of
 a session reliably completes** while the world pass runs past its deadline, which this host has

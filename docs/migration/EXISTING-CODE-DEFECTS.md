@@ -1141,25 +1141,40 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   tests keep both pinned outcomes beside it. Reproduce with
   `--spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6 --spell-damage-casts 1`.
 
-- [ ] **D-H22 A newly created character has an empty spellbook.** Found 2026-10-01 while
-  provisioning the caster the three spell entries needed. `CMSG_CREATE_CHARACTER` writes the
-  `characters` row correctly — a human mage came back `race=1 class=8 level=1 at_login=32` and
-  logged in cleanly — but `character_spell` has **zero** rows for it, so the character knows
-  nothing and `Spell::CheckCast` refuses every cast with `SPELL_FAILED_NOT_KNOWN`.
+- [x] **D-H22 withdrawn in part: an empty `character_spell` is faithful, and the diagnosis behind
+  it was wrong.** Raised and corrected 2026-10-01, the same day, with the code change it motivated
+  reverted before publication.
 
-  C++ `Player::Create` ends in `LearnDefaultSkills`, which walks the character's
-  `SkillLineAbility` rows and learns each one whose `AcquireMethod` is
-  `SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN`, then `LearnDefaultSkill` grants the spells that
-  come with each skill. The server log shows the port reaching the same place with nothing to do:
-  `Applied C++ LearnDefaultSkills and LearnSkillRewardedSpells ... loaded_skill_count=11
-  default_skill_count=0 default_dependent_spell_count=0`. `playercreateinfo_spell_custom` is empty
-  on this installation, which is correct for 3.4.3 — the data is in DB2, not SQL — so the gap is
-  the DB2 side of that walk, not a missing table.
+  The observation stands: a freshly created human mage has **zero** `character_spell` rows, and
+  this port does not write the spells its skills reward. What was wrong was calling that a defect.
+  C++ `Player::_SaveSpells` (`Entities/Player/Player.cpp:20647-20699`) inserts a row only for a
+  **non-dependent** new or changed spell — `// add only changed/new not dependent spells` — and
+  `LearnSkillRewardedSpells` learns through `LearnSpell(ability->Spell, /*dependent*/ true)`
+  (`:24186`), so C++ never writes those rows either. They are recomputed from `character_skills`
+  at every login, which is exactly what this port does: the mage's 11 default skills **are**
+  persisted, and the login log reports `loaded_skill_count=11 ... total_spell_count=43` on every
+  later login. Reading the bare row count as "the character knows nothing" was the error.
 
-  Scope note for whoever takes it: `playercreateinfo_action` does carry the starting action bar
-  (a human mage's button 0 is spell 116, Frostbolt), so the action-bar half has data to check
-  against. Until then, the `--spell-damage` live mode seeds the one spell row it needs and says
-  so in its output.
+  **A second claim in the first draft was also wrong and is worth keeping.** It said the DB2 side
+  of `LearnDefaultSkills` is not walked, citing `default_skill_count=0`. That figure is zero on a
+  *later* login because the skills are already known and C++ skips a known skill
+  (`:23990-23993`). On the character's **first** login the same line reads
+  `default_skill_count=11`, so the walk works.
+
+  The change this drove — marking a login-learned spell `New` rather than `Unchanged` in the
+  post-login spell map — was reverted. C++'s state does follow `learning` rather than loading
+  (`AddSpell`, `:2698`), so the port's `Unchanged` is unfaithful in principle, but every spell the
+  observed path learns is dependent and therefore never written, so the only observable effect
+  would have been an extra favourite-row delete per spell per save. A behaviour change in the save
+  path needs a case where it matters, and this evidence does not supply one.
+
+  **What is genuinely unverified, stated as a question rather than a defect:** whether the 43
+  spells the server grants a level-20 human mage include its class attack spells. The cast that
+  produced D-H21's evidence used a seeded Fireball row, so it proves nothing either way, and
+  `playercreateinfo_action` says a human mage's first action button is spell 116 (Frostbolt) — so
+  the client expects to have it. The next step is mechanical: dump the ids from
+  `SMSG_SEND_KNOWN_SPELLS` and compare them against the `SkillLineAbility` rows for skills 6 and 8
+  at rank 100, which is what `LearnSkillRewardedSpells` walks.
 
 ## MED — wrong values / loose checks / minor loss
 
