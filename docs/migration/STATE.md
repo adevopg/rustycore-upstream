@@ -72,12 +72,30 @@ in the installed world database 3533 of 5746 item objectives carry that bit. The
 removes the split rather than patching one side: one credit path, the item always stored,
 the out-of-range display type deleted, and the `LootQuestBoundProgress` transaction and
 void-storage `QuestBoundNoItem` destination retired with it. The affected tests were
-rewritten to assert the C++ behaviour instead of the imported one. **Live confirmation is
-still outstanding**: the kill needed to reach `CMSG_LOOT_ITEM` did not land in three runs
-today for the separate reason recorded as D-M16, so this repair currently rests on source
-anchors and the library suite, not on the wire. Full detail and anchors in
-[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) under D-H6, with the two divergences
-found alongside it left open as D-M15 and D-M16.
+rewritten to assert the C++ behaviour instead of the imported one.
+
+**And it is proven live, on the same quest, in both classes at once.** Quest 1961
+"Gathering Materials" carries two `QUEST_OBJECTIVE_ITEM` rows: storage index 0 on item 2589
+with `Flags2 = 0`, and storage index 1 on item 7293 with `Flags2 = 1`. One kill of entry 94
+looted both. After the clean logout, `character_queststatus_objectives` holds
+`(1961, 0) = 3` and `(1961, 1) = 1`, and `item_instance` holds `2589 x3` in slot 39 **and
+`7293 x1` in slot 40`. The second row is the one the retired branch could never produce:
+it credited that objective and discarded the item. Full detail and anchors in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) under D-H6; `QuestLogItemId` is left
+open there as D-M15.
+
+**The player swing was blocked for a second reason, now closed as D-M16.** Reaching that
+loot took repairing the global player-melee phase, which used C++
+`Unit::IsWithinBoundaryRadius` as a second *range* requirement instead of as the facing
+exemption `getAutoAttackError` makes it (`Entities/Unit/Unit.cpp:2447-2459`). With the
+runtime combat reaches at zero the boundary term was `2.0`, so a facing attacker measured
+at 4.00 yards was refused with `NotInRange` on every swing, while
+`Unit::GetMeleeRange`'s `5.0` floor hid it from the other half of the condition. The
+session path and the creature tick already had the C++ shape; one site had diverged. The
+phase trace also lied about it — `creature_hits` counted a result with an empty swing list
+as a hit — and now counts only a swing that exists. Live after the repair:
+`player_landed=4 (45 damage) death=true xp=44 loot_coins=9 money 12 -> 21 inv 8 -> 10`.
+The zero combat reaches themselves are left open as D-M17.
 
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to

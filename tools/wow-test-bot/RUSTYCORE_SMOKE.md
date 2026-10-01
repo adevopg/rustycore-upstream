@@ -221,17 +221,22 @@ swing is what the scenario is really waiting for. The target is selected by
 live ObjectGuid must be discovered within 60 yards of that SQL position — the mode
 fails closed rather than attacking a guessed GUID.
 
-Pinning a stationary spawn removes the wander from the picture:
-`creature.guid` 280092, 280093 and 280091 (entry 94) all carry
-`wander_distance = 0` and `MovementType = 0`. On 2026-10-01 that still did not
-make the mode pass — three runs at 4.0 yards from 280092, with
-`SMSG_ATTACK_START` published, saw no `SMSG_ATTACKER_STATE_UPDATE` at all while
-the server's own phase counters reported `creature_hits=1 commands=1
-delivered=1`. That contrast is recorded as **D-M16** in
-`docs/migration/EXISTING-CODE-DEFECTS.md` and is not the wander limitation
-above; `delivered` counts commands the phase handed to the rail, so the phase
-trace now also prints `queued` and `dropped_durable`, which is what separates a
-lost swing from a swing the session never received.
+Pinning a stationary spawn removes the wander from the picture, and it is the
+reliable way to run this mode: `creature.guid` 280092, 280093 and 280091 (entry
+94) all carry `wander_distance = 0` and `MovementType = 0`. Doing that on
+2026-10-01 exposed a real server defect rather than a harness one — three runs
+at 4.0 yards saw no `SMSG_ATTACKER_STATE_UPDATE` at all, because the global
+player-melee phase refused every swing with `NotInRange`. It is closed as
+**D-M16** in `docs/migration/EXISTING-CODE-DEFECTS.md`, and the same run proved
+the fix: `player_landed=4 (45 damage) death=true xp=44 loot_coins=9`.
+
+Read the phase trace, not the summary, when a run lands nothing. `delivered`
+counts commands the phase handed to the rail; `queued` and `dropped_durable` say
+whether the session received one; the arrival line names the gate that dropped
+it; and `ready_attack_without_swing` reports a ready attack that produced no
+swing, with the range, facing and unit-state facts behind it. The old
+`creature_hits` counter was not usable for this: it counted a result with an
+empty swing list as a hit, and now counts only a swing that exists.
 
 A run fails if SMSG_ATTACK_START never arrives or if no player swing lands. The
 retaliation, the death and the XP are reported but not required: a critter neither

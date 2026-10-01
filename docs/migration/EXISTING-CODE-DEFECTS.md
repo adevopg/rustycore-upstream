@@ -903,22 +903,63 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   into that repair. Rust: `handlers/quest/objectives.rs`
   (`apply_quest_item_added_objective_progress_with_generator_like_cpp`'s second objective
   id) and `session_rules/rules_1.rs` (`quest_log_item_id` in the push plan).
-- [ ] **D-M16 A player swing is accounted for server-side without reaching the session, and
-  the victim does not die.** Observed 2026-10-01 on three consecutive live runs against
-  stationary spawn `creature.guid = 280092` (entry 94, `wander_distance = 0`,
-  `MovementType = 0`) at 4.0 yards with `SMSG_ATTACK_START` published. The server's own
-  `RUSTYCORE_PLAYER_MELEE_TRACE=1` phase counters reported `victims_resolved=1
-  swings_ready=1 creature_hits=1 commands=1 delivered=1` on sampled ticks, yet the bot
-  observed no `SMSG_ATTACKER_STATE_UPDATE` (0x2952, the same opcode value the server
-  emits) on either socket across 120 s, the creature never died, and `victims_resolved`
-  fell back to `0` after about 40 s. The opcode constants agree and the bot read both
-  sockets throughout (it answered every `SMSG_TIME_SYNC_REQUEST`), so this is not the
-  documented wandering-spawn limitation in `tools/wow-test-bot/RUSTYCORE_SMOKE.md`.
-  Not yet attributed between `deliver_player_melee_results_like_cpp`
-  (`world-server/src/runtime/delivery.rs`, where `delivered` counts commands *seen*, not
-  commands sent) and the bot's engagement loop. The same chain produced a kill, loot and
-  quest credit on 2026-09-30, so it is a regression or an intermittent condition, not an
-  unimplemented path.
+- [x] **D-M16 The global player-melee phase used the boundary radius as a second range
+  requirement, so a facing attacker four yards away never swung.** Closed 2026-10-01. Found
+  by chasing a swing that three live runs could not land: the phase counted
+  `creature_hits=1 commands=1 delivered=1 queued=1` while the bot saw no
+  `SMSG_ATTACKER_STATE_UPDATE` on either socket and the creature survived. Two things were
+  wrong, one of them in this file's own earlier wording of the symptom.
+
+  The command reached the session and was accepted; it simply carried no swing
+  (`gate="accepted" swings=0`, 38 times in one run). `outcome.creature_hits` was
+  incremented for every result the phase got back from the creature, including a result
+  with an empty swing list, so the trace claimed hits the victim never took. That counter
+  now only counts a swing that exists.
+
+  The swing itself was refused with `AttackSwingErr::NotInRange` at a measured 4.00 yards
+  (character `(-9159.58, 81.79, 77.45)`, `creature.guid = 280092` at
+  `(-9162.37, 84.63, 77.08)`), with facing true. C++
+  `Unit::DoMeleeAttackIfReady`'s `getAutoAttackError`
+  (`Entities/Unit/Unit.cpp:2447-2459`) asks two independent questions:
+  `!IsWithinMeleeRange(victim, IsPlayer())` is `NotInRange`, and
+  `!IsWithinBoundaryRadius(victim) && !HasInArc(2*pi/3, victim)` is `BadFacing`. The
+  boundary radius (`Unit::IsWithinBoundaryRadius`, `:806-814`) therefore **exempts** a very
+  close attacker from the facing arc; it is not a second range test.
+  `legacy_runtime/player_tick.rs` had it as
+  `in_melee_range = IsWithinMeleeRange && IsWithinBoundaryRadius`, which turns the
+  exemption into a requirement and reports the wrong error code. Since the runtime combat
+  reaches are zero here, the boundary term evaluated to `2.0` and refused every swing
+  beyond two yards, while `GetMeleeRange`'s `NOMINAL_MELEE_RANGE` floor of `5.0` hid the
+  problem from the other half of the condition.
+
+  The same C++ shape was already correct in the two sibling implementations — the session
+  path (`session/spell_effects/ticks.rs`, `boundary || facing`) and the creature tick
+  (`legacy_runtime/creature_movement_tick.rs`, `!boundary && !facing => BadFacing`) — so
+  this was one site diverging from its own neighbours, not a missing port.
+  `Unit::DoMeleeAttackIfReady`'s boundary call is `alistar:`-patched out in the pinned
+  reference, so the stock shape was taken from the surrounding code and the untouched
+  `IsWithinBoundaryRadius`/`AttackSwingErr` definitions, not from the patched line.
+
+  Live, after: one 90-second run killed the target — `player_landed=4 (45 damage)`,
+  `death=true`, `xp=44`, `loot_coins=9`, `money 12 -> 21`, `inv 8 -> 10`. Reproduce with
+  `--loot-after-kill --melee-creature-entry 94 --melee-creature-guid 280092`.
+
+  **Still open from the same investigation:** runtime `combat_reach` and `bounding_radius`
+  are zero for the player and for this creature, which is what made the boundary term so
+  small. C++ sets them from the model (`Creature::SetObjectScale`, and the player's
+  `DEFAULT_PLAYER_COMBAT_REACH` by scale), and `Unit::GetMeleeRange`'s `5.0` floor hides
+  the difference for melee but not for the other distance checks that read the same
+  fields. Not repaired here; recorded as D-M17.
+- [ ] **D-M17 Runtime `combat_reach` and `bounding_radius` are zero where C++ derives them
+  from the model.** Observed 2026-10-01 while closing D-M16: the global player-melee phase
+  read `combat_reach = 0` for the QA player and for creature entry 94, which made
+  `Unit::IsWithinBoundaryRadius`'s radius collapse to `MIN_MELEE_REACH` alone. Melee range
+  itself is floored at `NOMINAL_MELEE_RANGE` (`Unit::GetMeleeRange`,
+  `Entities/Unit/Unit.cpp:800-804`), so the melee path tolerates it, but every other
+  consumer of `WorldObject::_IsWithinDist`'s combat-reach term inherits the error. The
+  write paths exist (`wow-entities/src/creature/ops_2.rs:912` sets it from
+  `CreatureModelInfo` by scale; `unit::set_combat_reach`), so the question is which spawn
+  and login paths fail to call them.
 
 ## LOW — non-issues in practice / cosmetic (recorded for completeness)
 

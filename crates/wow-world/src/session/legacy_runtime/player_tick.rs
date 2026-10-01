@@ -385,20 +385,28 @@ pub fn run_legacy_player_melee_tick_once_like_cpp(
             continue;
         };
 
+        // C++ `Unit::DoMeleeAttackIfReady`'s `getAutoAttackError`
+        // (`Entities/Unit/Unit.cpp:2447-2459`) asks two separate questions:
+        // `!IsWithinMeleeRange(victim, IsPlayer())` is `NotInRange`, and
+        // `!IsWithinBoundaryRadius(victim) && !HasInArc(2*pi/3, victim)` is
+        // `BadFacing`. The boundary radius therefore *exempts* a very close
+        // attacker from the facing arc; it is not a second range requirement,
+        // and it is `Unit::IsWithinBoundaryRadius` (`:806-814`) that defines it.
+        // The session path and the creature tick already combine them this way.
         let in_melee_range = is_within_melee_range_like_cpp(
             attacker_position,
             attacker_combat_reach,
             victim_position,
             victim_combat_reach,
-        ) && is_within_target_boundary_radius_like_cpp(
-            attacker_position,
-            attacker_combat_reach,
-            victim_position,
-            victim_combat_reach,
-            victim_bounding_radius,
         );
         let facing_target =
-            is_unit_facing_target_for_melee_like_cpp(attacker_position, victim_position);
+            is_within_target_boundary_radius_like_cpp(
+                attacker_position,
+                attacker_combat_reach,
+                victim_position,
+                victim_combat_reach,
+                victim_bounding_radius,
+            ) || is_unit_facing_target_for_melee_like_cpp(attacker_position, victim_position);
         // C++ `canParryOrBlock`: `victim->HasInArc(M_PI, attacker)`.
         victim_outcome_facts.faces_attacker =
             is_unit_facing_target_for_melee_like_cpp(victim_position, attacker_position);
@@ -586,6 +594,33 @@ pub fn run_legacy_player_melee_tick_once_like_cpp(
         let Some((damages, swing_error_update)) = swing_result else {
             continue;
         };
+        // A ready attack that produces no swing is invisible everywhere
+        // downstream: the command still travels and still arrives, only empty.
+        // `RUSTYCORE_PLAYER_MELEE_TRACE=1` names the gate inside
+        // `take_canonical_player_attack_swings_like_cpp` that skipped it.
+        if damages.is_empty() && std::env::var_os("RUSTYCORE_PLAYER_MELEE_TRACE").is_some() {
+            let unit = player.unit();
+            tracing::info!(
+                ?attacker.player_guid,
+                in_melee_range,
+                facing_target,
+                swing_error_update = ?swing_error_update,
+                pacified = unit
+                    .unit_flags_like_cpp()
+                    .contains(wow_constants::unit::UnitFlags::PACIFIED),
+                controlled_or_charging = unit.has_unit_state(
+                    (wow_constants::unit::UnitState::CONTROLLED
+                        | wow_constants::unit::UnitState::CHARGING)
+                        .bits(),
+                ),
+                has_melee_spell = unit
+                    .current_spell(wow_entities::CurrentSpellSlot::Melee)
+                    .is_some(),
+                can_attacker_state_update = unit.can_attacker_state_update_melee_like_cpp(false),
+                base_attack_timer = unit.attack_timer(wow_constants::unit::WeaponAttackType::BaseAttack),
+                "RUST_PLAYER_MELEE ready_attack_without_swing"
+            );
+        }
 
         let mut command = crate::session::mailbox::ApplyPlayerMeleeResultLikeCppCommand {
             attacker_guid: attacker.player_guid,
@@ -622,7 +657,13 @@ pub fn run_legacy_player_melee_tick_once_like_cpp(
                 outcome.commands.push(command);
                 continue;
             };
-            outcome.creature_hits += 1;
+            // Count a hit only when there is a swing to show. A ready attack
+            // refused for range or facing still reaches the creature and still
+            // returns a result, and counting that as a hit made the phase trace
+            // claim swings the victim never took.
+            if !hit.swings.is_empty() {
+                outcome.creature_hits += 1;
+            }
             command.target_level = hit.level;
             command.swings = hit
                 .swings
