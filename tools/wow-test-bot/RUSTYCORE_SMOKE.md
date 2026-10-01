@@ -62,6 +62,37 @@ This mode writes: it creates an account fixture if missing, writes
 `account.session_key_bnet` and `account.os`, and creates a character. Use it only
 against authorized test identities.
 
+### Looting the kill
+
+`--loot-after-kill` adds the loot phase to `--melee-smoke`: open the corpse, take
+the money, take every item the window offers, close it, then log out cleanly and
+read back what was granted.
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --loot-after-kill --melee-creature-entry 94 --melee-timeout 120
+```
+
+`CMSG_LOOT_ITEM` must quote the **LootObject** guid, which is the *second* guid in
+`SMSG_LOOT_RESPONSE`, not the creature's. The handler resolves the request through
+`active_loot_owner_for_loot_object_like_cpp`, so the creature's own guid finds
+nothing and is answered with a bare `SMSG_LOOT_RELEASE` — no error, no item, and
+nothing in the log. `CMSG_LOOT_RELEASE`, by contrast, carries the owner.
+
+The loot list id is read back from the response rather than assumed: the server
+assigns it over every generated entry (`handlers/loot/generation.rs:172`) and
+resolves the request by it (`handlers/loot/authority.rs:127`), so entries this
+player never sees still consume ids.
+
+Item blocks carrying item bonuses or modifications are refused rather than guessed,
+because their lengths are variable; white loot never produces them.
+
+Pick the target by what it drops. `creature_template_difficulty` holds `GoldMin`,
+`GoldMax` and `LootID`: entry 299 (Diseased Young Wolf) has no gold at all, so
+`coins=0` there is correct data and not a defect, while entry 94 (Defias Cutpurse,
+1-12 copper, spawns 25 yards from the QA start) exercises the money half.
+
 ## The death exit — live and mutating
 
 `--death-smoke` drives the whole corpse circuit and reports what the server

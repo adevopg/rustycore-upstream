@@ -651,6 +651,9 @@ pub(crate) fn print_help() {
     );
     println!("  --melee-creature-entry <id>     creature_template.entry of the target");
     println!(
+        "  --loot-after-kill        With --melee-smoke: loot the corpse and verify what it granted"
+    );
+    println!(
         "  --death-smoke            Release the spirit, run back to the corpse and reclaim it (used alone)"
     );
     println!("  --death-timeout <secs>          budget for the corpse run and the reclaim delay");

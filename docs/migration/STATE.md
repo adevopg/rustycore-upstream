@@ -25,6 +25,20 @@ clause that demanded hostility from a participant the creature was already engag
 Both, with their C++ anchors and the traced ordering, are in
 [EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
 
+**Creature loot is proven live on 2026-10-01, in both halves.** `--loot-after-kill` kills a
+creature and loots it: against entry 299 the window offered `item_id 4865 x1` with
+`loot_list_id 0`, and after the clean logout `item_instance` carries that entry with a fresh
+guid in `character_inventory` (5 rows to 6); against entry 94 the window offered `coins=3`
+and `characters.money` went 0 to 3. `coins=0` for entry 299 is correct data, not a defect:
+`creature_template_difficulty` gives it `GoldMin = GoldMax = 0`. No server defect was found in
+this path — the chain was already implemented and unit-tested, and this moves it from
+implemented to proven over the wire. The one defect was in the harness: `CMSG_LOOT_ITEM` must
+quote the LootObject guid from `SMSG_LOOT_RESPONSE`, not the creature's, and quoting the
+creature is answered with a bare `SMSG_LOOT_RELEASE` — silent, with no item and nothing in the
+log. Observed in passing and not separately verified: the QA character reached level 2 from
+accumulated kills, and a level-1 target at player level 2 paid 44 XP, which is the `ml < pl`
+branch of the gain formula.
+
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to
 the Elwynn graveyard, the corpse run brings it back, the reclaim is refused while the C++

@@ -116,6 +116,7 @@ pub(crate) struct CliOptions {
     pub(crate) melee_creature_entry: Option<u32>,
     pub(crate) melee_creature_spawn_guid: Option<u64>,
     pub(crate) melee_timeout_secs: u64,
+    pub(crate) loot_after_kill: bool,
     pub(crate) death_smoke: bool,
     pub(crate) death_smoke_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
@@ -591,6 +592,10 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(DEFAULT_MELEE_SMOKE_TIMEOUT_SECS),
+        loot_after_kill: std::env::var("WOW_BOT_LOOT_AFTER_KILL")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
         death_smoke: std::env::var("WOW_BOT_DEATH_SMOKE")
             .ok()
             .map(|v| is_truthy(&v))
@@ -912,6 +917,10 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             "--delete-characters" => {
                 opts.delete_character_guids =
                     parse_character_guid_list(&next_arg(&mut args, "--delete-characters")?)?;
+            }
+            "--loot-after-kill" => {
+                opts.melee_smoke = true;
+                opts.loot_after_kill = true;
             }
             "--death-smoke" => opts.death_smoke = true,
             "--death-timeout" => {

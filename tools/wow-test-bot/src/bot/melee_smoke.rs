@@ -29,6 +29,8 @@ pub(crate) struct MeleeSmokeOptions {
     pub(crate) creature_entry: u32,
     pub(crate) creature_spawn_guid: Option<u64>,
     pub(crate) timeout_secs: u64,
+    /// Loot the corpse the kill leaves behind and verify what it granted.
+    pub(crate) loot_after_kill: bool,
 }
 
 /// What the server published during the engagement. Every field is an
@@ -50,6 +52,14 @@ pub(crate) struct MeleeSmokeOutcome {
     pub(crate) target_death_seen: bool,
     pub(crate) xp_gain_seen: bool,
     pub(crate) xp_gained: u32,
+    pub(crate) loot_response_seen: bool,
+    pub(crate) loot_coins: u32,
+    pub(crate) loot_items_offered: u32,
+    pub(crate) loot_item_requests: u32,
+    pub(crate) money_before: Option<u64>,
+    pub(crate) money_after: Option<u64>,
+    pub(crate) inventory_items_before: Option<u32>,
+    pub(crate) inventory_items_after: Option<u32>,
 }
 
 /// One `world.creature` spawn plus the template facts the report needs.
@@ -651,9 +661,57 @@ pub(crate) async fn run_melee_smoke(
         }
     }
 
+    if options.loot_after_kill && outcome.target_death_seen {
+        let (money, items) = character_money_and_item_count_like_cpp(bot.character_guid)?;
+        outcome.money_before = Some(money);
+        outcome.inventory_items_before = Some(items);
+        loot_the_corpse_like_cpp(
+            bot_index,
+            bot.character_guid,
+            &mut connection,
+            target_guid,
+            deadline,
+            clock_origin,
+            &mut outcome,
+        )
+        .await?;
+        // The grants are persisted by the save a clean logout performs, so read
+        // them back from the columns `Player::SaveToDB` writes rather than
+        // decoding an update block.
+        send_encrypted_packet(
+            &mut connection.stream,
+            &mut connection.crypt,
+            CMSG_LOGOUT_REQUEST,
+            &[0],
+        )
+        .await?;
+        let logout_deadline =
+            std::time::Instant::now() + Duration::from_secs(NORMAL_LOGOUT_COMPLETE_WAIT_SECS);
+        let logout_route = realm_connection.as_mut().unwrap_or(&mut connection);
+        expect_encrypted_opcode(
+            logout_route,
+            SMSG_LOGOUT_COMPLETE,
+            logout_deadline,
+            "SMSG_LOGOUT_COMPLETE",
+        )
+        .await?;
+        let (money, items) = character_money_and_item_count_like_cpp(bot.character_guid)?;
+        outcome.money_after = Some(money);
+        outcome.inventory_items_after = Some(items);
+        info!(
+            "[Bot {}] ✅ logged out: money {} -> {}, inventory rows {} -> {}",
+            bot_index,
+            outcome.money_before.unwrap_or(0),
+            money,
+            outcome.inventory_items_before.unwrap_or(0),
+            items
+        );
+    }
+
     info!(
         "[Bot {}] melee summary: attack_start={} player_landed={} ({} damage) avoided={} \
-         creature_landed={} ({} damage) avoided={} resent={} death={} xp={}",
+         creature_landed={} ({} damage) avoided={} resent={} death={} xp={} \
+         loot_coins={} loot_items={} money={:?}->{:?} inv={:?}->{:?}",
         bot_index,
         outcome.attack_start_seen,
         outcome.player_swings_landed,
@@ -664,7 +722,13 @@ pub(crate) async fn run_melee_smoke(
         outcome.creature_swings_avoided,
         outcome.swings_resent,
         outcome.target_death_seen,
-        outcome.xp_gained
+        outcome.xp_gained,
+        outcome.loot_coins,
+        outcome.loot_items_offered,
+        outcome.money_before,
+        outcome.money_after,
+        outcome.inventory_items_before,
+        outcome.inventory_items_after
     );
 
     if !outcome.attack_start_seen {
@@ -686,6 +750,281 @@ enum MeleeReadSource {
     Instance,
     Realm,
     Quiet,
+}
+
+/// CMSG_LOOT_UNIT.
+const CMSG_LOOT_UNIT: u16 = 0x320F;
+/// CMSG_LOOT_MONEY.
+const CMSG_LOOT_MONEY: u16 = 0x3210;
+/// CMSG_LOOT_ITEM.
+const CMSG_LOOT_ITEM: u16 = 0x3211;
+/// CMSG_LOOT_RELEASE.
+const CMSG_LOOT_RELEASE: u16 = 0x3213;
+/// SMSG_LOOT_RESPONSE.
+const SMSG_LOOT_RESPONSE: u16 = 0x2614;
+
+/// One entry of a loot window: the id the client must quote back, and what it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LootWindowItem {
+    pub(crate) loot_list_id: u8,
+    pub(crate) item_id: i32,
+    pub(crate) quantity: u32,
+}
+
+/// Decode C++ `LootResponse::Write`.
+///
+/// The prefix is two packed guids, four `uint8` reasons, the coins and the two
+/// list counts, then a bit byte. Each `LootItemData` block is its own packed bits
+/// (`item_type`, `ui_type`, `can_trade_to_tap_list`), an `ItemInstance`, the
+/// quantity, the loot item type and finally the loot list id.
+///
+/// The id matters: `handlers/loot/authority.rs:127` resolves the client's request
+/// against `loot.items` by that stored id, and
+/// `handlers/loot/generation.rs:172` assigns it over **every** generated entry,
+/// including ones this player never sees. Assuming `0..count` instead of reading
+/// it back asks for the wrong slot, and the server declines in silence.
+///
+/// A block carrying item bonuses or modifications is refused rather than guessed:
+/// their lengths are variable and nothing in a white-loot scenario produces them.
+fn parse_loot_response_like_cpp(payload: &[u8]) -> Result<((u64, u64), u32, Vec<LootWindowItem>)> {
+    let mut offset = 0usize;
+    let (owner_len, _, _) = parse_packed_guid(payload.get(offset..).unwrap_or_default())
+        .context("SMSG_LOOT_RESPONSE is missing its owner guid")?;
+    offset += owner_len;
+    // The second guid is the LootObject, which is what `CMSG_LOOT_ITEM` must
+    // quote back: the handler resolves the request through
+    // `active_loot_owner_for_loot_object_like_cpp`, so sending the creature's own
+    // guid there finds nothing and is answered with a bare SMSG_LOOT_RELEASE.
+    let (loot_obj_len, loot_obj_low, loot_obj_high) =
+        parse_packed_guid(payload.get(offset..).unwrap_or_default())
+            .context("SMSG_LOOT_RESPONSE is missing its loot object guid")?;
+    offset += loot_obj_len;
+    offset += 4; // failure_reason, acquire_reason, loot_method, threshold
+    let read_u32 = |at: usize| -> Result<u32> {
+        let bytes = payload
+            .get(at..at + 4)
+            .context("SMSG_LOOT_RESPONSE ended inside a u32")?;
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    };
+    let coins = read_u32(offset)?;
+    let item_count = read_u32(offset + 4)?;
+    let currency_count = read_u32(offset + 8)?;
+    offset += 12;
+    offset += 1; // the `acquired`/`ae_looting` bit byte
+
+    let mut items = Vec::with_capacity(item_count as usize);
+    for index in 0..item_count {
+        offset += 1; // item_type, ui_type and can_trade_to_tap_list, flushed
+        let item_id = {
+            let bytes = payload
+                .get(offset..offset + 4)
+                .with_context(|| format!("loot item {index} has no item id"))?;
+            i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        };
+        offset += 12; // item id, random properties seed and id
+        let bonus_byte = *payload
+            .get(offset)
+            .with_context(|| format!("loot item {index} has no bonus flag"))?;
+        offset += 1;
+        if bonus_byte & 0x01 != 0 {
+            bail!("loot item {index} carries item bonuses, which this mode does not decode");
+        }
+        let mod_byte = *payload
+            .get(offset)
+            .with_context(|| format!("loot item {index} has no modification count"))?;
+        offset += 1;
+        if mod_byte & 0x3F != 0 {
+            bail!("loot item {index} carries item modifications, which this mode does not decode");
+        }
+        let quantity = read_u32(offset)?;
+        offset += 4;
+        offset += 1; // loot_item_type
+        let loot_list_id = *payload
+            .get(offset)
+            .with_context(|| format!("loot item {index} has no loot list id"))?;
+        offset += 1;
+        items.push(LootWindowItem {
+            loot_list_id,
+            item_id,
+            quantity,
+        });
+    }
+    if currency_count != 0 {
+        bail!(
+            "the loot window offered {currency_count} currencies, which this mode does not decode"
+        );
+    }
+    Ok(((loot_obj_low, loot_obj_high), coins, items))
+}
+
+fn character_money_and_item_count_like_cpp(character_guid: u64) -> Result<(u64, u32)> {
+    use mysql::prelude::Queryable;
+    let url = characters_db_url()?;
+    let mut conn = mysql::Conn::new(qa_mysql_opts(&url, "characters")?)
+        .map_err(|error| anyhow!("Connect to characters DB failed: {error}"))?;
+    let money: Option<u64> = conn
+        .exec_first(
+            "SELECT money FROM characters WHERE guid = ?",
+            (character_guid,),
+        )
+        .map_err(|error| anyhow!("Read money for {character_guid}: {error}"))?;
+    let items: Option<u32> = conn
+        .exec_first(
+            "SELECT COUNT(*) FROM character_inventory WHERE guid = ?",
+            (character_guid,),
+        )
+        .map_err(|error| anyhow!("Count inventory for {character_guid}: {error}"))?;
+    Ok((money.unwrap_or(0), items.unwrap_or(0)))
+}
+
+/// Open the corpse, take the money and every item, then close the window.
+///
+/// C++ order: `CMSG_LOOT_UNIT` answers with `SMSG_LOOT_RESPONSE`, then
+/// `CMSG_LOOT_MONEY` and one `CMSG_LOOT_ITEM` per entry, and `CMSG_LOOT_RELEASE`
+/// closes it. Nothing here is asserted beyond the response arriving: the grants
+/// are checked against the database the caller reads after a clean logout.
+#[allow(clippy::too_many_arguments)]
+async fn loot_the_corpse_like_cpp(
+    bot_index: usize,
+    character_guid: u64,
+    connection: &mut EncryptedWorldConnection,
+    target_guid: (u64, u64),
+    deadline: std::time::Instant,
+    clock_origin: tokio::time::Instant,
+    outcome: &mut MeleeSmokeOutcome,
+) -> Result<()> {
+    let packed_target = build_packed_guid(target_guid.0, target_guid.1);
+    send_encrypted_packet(
+        &mut connection.stream,
+        &mut connection.crypt,
+        CMSG_LOOT_UNIT,
+        &packed_target,
+    )
+    .await?;
+    info!("[Bot {}] ✅ CMSG_LOOT_UNIT sent", bot_index);
+
+    let mut window_items: Vec<LootWindowItem> = Vec::new();
+    let mut loot_object: Option<(u64, u64)> = None;
+    let loot_deadline = deadline.min(std::time::Instant::now() + Duration::from_secs(10));
+    while std::time::Instant::now() < loot_deadline && !outcome.loot_response_seen {
+        match read_encrypted_packet_if_ready(
+            &mut connection.stream,
+            &mut connection.crypt,
+            &mut connection.inflater,
+            Duration::from_millis(500),
+            Duration::from_secs(5),
+            "loot window",
+        )
+        .await
+        {
+            Ok(Some((opcode, payload))) => {
+                if opcode == SMSG_TIME_SYNC_REQUEST {
+                    respond_to_detour_time_sync_like_cpp(
+                        bot_index,
+                        &mut connection.stream,
+                        &mut connection.crypt,
+                        &payload,
+                        clock_origin,
+                        "loot window",
+                    )
+                    .await?;
+                } else if opcode == SMSG_LOOT_RESPONSE {
+                    let (loot_obj, coins, items) = parse_loot_response_like_cpp(&payload)
+                        .with_context(|| format!("SMSG_LOOT_RESPONSE ({} bytes)", payload.len()))?;
+                    loot_object = Some(loot_obj);
+                    outcome.loot_response_seen = true;
+                    outcome.loot_coins = coins;
+                    outcome.loot_items_offered = items.len() as u32;
+                    info!(
+                        "[Bot {}] ✅ SMSG_LOOT_RESPONSE coins={} items={:?}",
+                        bot_index, coins, items
+                    );
+                    window_items = items;
+                }
+            }
+            Ok(None) => {}
+            Err(error) => bail!("read error while opening the loot: {error}"),
+        }
+    }
+    if !outcome.loot_response_seen {
+        bail!("the server never answered CMSG_LOOT_UNIT with SMSG_LOOT_RESPONSE");
+    }
+
+    if outcome.loot_coins > 0 {
+        // C++ reads one bit (`is_soft_interact`).
+        send_encrypted_packet(
+            &mut connection.stream,
+            &mut connection.crypt,
+            CMSG_LOOT_MONEY,
+            &[0u8],
+        )
+        .await?;
+        info!("[Bot {}] ✅ CMSG_LOOT_MONEY sent", bot_index);
+    }
+
+    let packed_loot_object = loot_object
+        .map(|(low, high)| build_packed_guid(low, high))
+        .unwrap_or_else(|| packed_target.clone());
+    for item in &window_items {
+        let mut body = 1u32.to_le_bytes().to_vec();
+        body.extend_from_slice(&packed_loot_object);
+        body.push(item.loot_list_id);
+        body.push(0); // is_soft_interact
+        send_encrypted_packet(
+            &mut connection.stream,
+            &mut connection.crypt,
+            CMSG_LOOT_ITEM,
+            &body,
+        )
+        .await?;
+        outcome.loot_item_requests += 1;
+    }
+    if outcome.loot_item_requests > 0 {
+        info!(
+            "[Bot {}] ✅ {} CMSG_LOOT_ITEM sent",
+            bot_index, outcome.loot_item_requests
+        );
+    }
+
+    send_encrypted_packet(
+        &mut connection.stream,
+        &mut connection.crypt,
+        CMSG_LOOT_RELEASE,
+        &packed_target,
+    )
+    .await?;
+    info!("[Bot {}] ✅ CMSG_LOOT_RELEASE sent", bot_index);
+
+    // Drain briefly so the grants are processed before the caller logs out.
+    let settle = std::time::Instant::now() + Duration::from_secs(3);
+    while std::time::Instant::now() < settle {
+        match read_encrypted_packet_if_ready(
+            &mut connection.stream,
+            &mut connection.crypt,
+            &mut connection.inflater,
+            Duration::from_millis(300),
+            Duration::from_secs(5),
+            "loot settle",
+        )
+        .await
+        {
+            Ok(Some((opcode, payload))) if opcode == SMSG_TIME_SYNC_REQUEST => {
+                respond_to_detour_time_sync_like_cpp(
+                    bot_index,
+                    &mut connection.stream,
+                    &mut connection.crypt,
+                    &payload,
+                    clock_origin,
+                    "loot settle",
+                )
+                .await?;
+            }
+            Ok(_) => {}
+            Err(error) => bail!("read error while the loot settled: {error}"),
+        }
+    }
+    let _ = character_guid;
+    Ok(())
 }
 
 fn parse_log_xp_gain_amount(payload: &[u8]) -> Option<u32> {
@@ -726,6 +1065,7 @@ pub(crate) async fn run_melee_smoke_mode(
         creature_entry,
         creature_spawn_guid: cli.melee_creature_spawn_guid,
         timeout_secs: cli.melee_timeout_secs,
+        loot_after_kill: cli.loot_after_kill,
     };
     // A creature that kills the QA character leaves it unable to swing, and the
     // rejection is invisible on the wire, so this is checked and reported before
