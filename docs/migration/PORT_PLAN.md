@@ -253,6 +253,77 @@ evidence is therefore four deterministic scenarios and the regression that pins 
 live run owed as soon as creature spell effects land. It is recorded that way in STATE.md instead of
 being called live.
 
+### Analysis of that macro before it is decomposed — 2026-10-02
+
+Read before defining slices, as this plan requires. What follows is what the code and the reference
+actually say, not an estimate.
+
+**What the tick already does.** `run_legacy_creature_spell_tick_once_like_cpp` is not a stub around
+the hard part: it owns the AI decision, the cooldown mutation, the target preconditions, the
+range/LOS gates, the spell-disable context, the power-cost representability check, and the START/GO
+wire. It also already resolves hit or miss — `CreatureSpellHitProfileLikeCpp`, counted in
+`spell_hits`/`spell_misses`. `creature_ai_spell_single_unit_topology_like_cpp`
+(`session/mod.rs:17739`) narrows what it will emit at all to **one instant, single-target
+`SPELL_EFFECT_SCHOOL_DAMAGE` effect with `TargetA = TARGET_UNIT_TARGET_ENEMY`, no TargetB, no chain,
+no radius, no trigger**. So the missing piece is narrow and well fenced: give that one effect its
+damage and deliver it.
+
+**The C++ owners of the missing piece**, in call order: `Spell::handle_immediate`
+(`Spells/Spell.cpp:4081`) → `_handle_immediate_phase` (`:4258`) → `DoProcessTargetContainer`
+(`:4067`) → `TargetInfo::DoTargetSpellHit` (`:2794`), where `EffectSchoolDMG` accumulates
+`m_damage` → `TargetInfo::DoDamageAndTriggers` (`:2823`), whose damage arm (`:2960-2985`) is
+`CalculateSpellDamageTaken` → `DealSpellDamage` → `SendSpellNonMeleeDamageLog`. The last three
+stages are the chain this session already built; they only ever ran with a creature victim.
+
+**The real blocker is data, and the tick's own comment names it: "raw EffectBasePoints is not
+CalcValue."** `SpellEffectInfo::CalcValue` (`SpellInfo.cpp:496-597`) has five arms and this port
+carries one:
+
+| C++ arm | State here |
+| --- | --- |
+| `BasePoints` + `DieSides` roll (`:519-526`) | ported, `calc_value_no_caster_with_die_roll_like_cpp` |
+| `RealPointsPerLevel` with the `BaseLevel`/`MaxLevel`/`SpellLevel` clamp (`:506-517`) | **absent from `SpellEffectInfo`**, though `SpellEffectDb2Entry::effect_real_points_per_level` is already read (`spell_db2/state_2.rs:387`) and the serverside record already has it |
+| `PointsPerResource` × combo points (`:534-535`) | absent, and inert for a creature caster, which has none |
+| `ApplyEffectModifiers` spellmods (`:538-539`) | no represented owner; null-caster-equivalent |
+| `GtNpcManaCostScaler` creature-level scaling under `SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL` (`:541-594`) | **no GameTable reader exists at all** |
+
+The level clamp needs `SpellInfo::BaseLevel`, `MaxLevel` and `SpellLevel`. `SpellLevelsStore` is
+loaded and keyed (`spell_db2/state_2.rs:616`) but its values never reach the runtime `SpellInfo`, so
+the plumbing is one more store in `EffectiveCoreSpellDb2StoresLikeCpp` (`spell/stores/state_3.rs:676`)
+and its composition root, not a new DB2 reader.
+
+**The victim side needs no new arithmetic, only a new owner.** A player victim's crit-taken, resist
+and absorb all exist: the melee creature tick already runs the school-absorb and mana-shield loops
+against a canonical player in its own map phase (`apply_melee_absorb_to_canonical_player_like_cpp`)
+and hands the victim session the publication half through
+`CreatureMeleeDeliveryCommandLikeCpp`'s `absorbed`/`mana_spent`/`absorb_consumptions`. The spell
+tick needs the same shape for its own log, which is `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` rather than
+`SMSG_ATTACKERSTATEUPDATE`.
+
+**Slices, in dependency order.** Each is a bounded deliverable with its own acceptance; none is
+useful before the one above it, which is why they are not all one commit:
+
+1. **`CalcValue` with its caster.** Carry `effect_real_points_per_level` and
+   `effect_points_per_resource` into `SpellEffectInfo` from both hydration arms, plumb
+   `SpellLevels` into the spell store, and implement the level-scaling and combo arms as a rule over
+   explicit inputs. The `NpcManaCostScaler` arm stays a named boundary until a GameTable reader
+   exists, and the gate that reaches it (`SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL` with
+   `SpellLevel != caster level`) must be *observable*, not silently skipped.
+2. **The player-victim hit chain as a map-owned stage.** Crit, resist, absorb and mana shield
+   against the canonical player, committed in the same phase as the health write, mirroring the
+   melee stage rather than duplicating its arithmetic.
+3. **Delivery and publication.** A spell-damage delivery command for the victim session, the
+   `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` in C++'s order after the absorb logs, and the death cascade
+   the existing player-damage owner already has.
+4. **Wire the tick** to slices 1-3 behind the topology gate it already enforces, with the
+   `spell_effects_unrepresented` counters kept for everything still outside it.
+5. **Live acceptance**, which this macro finally makes reachable: a creature casting a damage spell
+   at the QA character, and the same run proves the absorb stage that D-H3 left owed.
+
+Not started in this pass, deliberately. Slice 1 crosses two crates' store composition, and a
+half-plumbed spell store is worse than none; it is the next thing to cut, with the inventory above
+as its starting evidence rather than a re-derivation.
+
 One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
 a previous run can leave the nearest spawn of that entry dead.
 
