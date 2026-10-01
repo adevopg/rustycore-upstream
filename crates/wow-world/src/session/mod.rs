@@ -325,7 +325,6 @@ const QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP: u8 = 18;
 #[cfg(test)]
 const DEFAULT_VISIBILITY_DISTANCE_YARDS_LIKE_CPP: u32 = 100;
 const QUEST_OBJECTIVE_FLAG_KILL_PLAYERS_SAME_FACTION_LIKE_CPP: u32 = 0x0080;
-const QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP: u32 = 0x1;
 const QUEST_FLAGS_PLAYER_CAST_ACCEPT_LIKE_CPP: u32 = 0x0010_0000;
 const QUEST_FLAGS_EX_RECAST_ACCEPT_SPELL_ON_LOGIN_LIKE_CPP: u32 = 0x0000_1000;
 const MAX_GAMEOBJECT_SLOT_LIKE_CPP: usize = 4;
@@ -1851,7 +1850,6 @@ pub(crate) enum RepresentedQuestConfirmAcceptOutcomeReasonLikeCpp {
     ReceiverGiveQuestSourceItemStartQuestNoGrant,
     ReceiverGiveQuestSourceItemMaxCountNoGrant,
     ReceiverGiveQuestSourceItemStoredNewItem,
-    ReceiverGiveQuestSourceItemBoundObjectiveNoGrant,
     GiveQuestSourceItemStoreNewItemUnrepresented,
     ReceiverAddQuestLocalStateRepresented,
     #[allow(dead_code)]

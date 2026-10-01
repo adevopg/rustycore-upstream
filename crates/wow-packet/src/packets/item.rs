@@ -92,13 +92,15 @@ impl ItemInstance {
     }
 }
 
+/// C++ `WorldPackets::Item::ItemPushResult::DisplayType`
+/// (`Server/Packets/ItemPackets.h:328-332`). The target build defines exactly
+/// these three values; there is no fourth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ItemPushResultDisplayType {
     Hidden = 0,
     Normal = 1,
     EncounterLoot = 2,
-    QuestUpdateAddItem = 3,
 }
 
 impl Default for ItemPushResultDisplayType {

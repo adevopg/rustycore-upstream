@@ -125,13 +125,6 @@ pub struct LootDisenchantBatchPersistenceLikeCpp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LootQuestBoundProgressPersistenceLikeCpp {
-    pub owner_guid: u64,
-    pub quest_statuses: Vec<QuestStatusPersistenceLikeCpp>,
-    pub stored_item_source: Option<StoredItemLootSourcePersistenceLikeCpp>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LootDirectItemGrantPersistenceLikeCpp {
     pub existing_stacks: Vec<LootExistingStackPersistenceLikeCpp>,
     pub new_stacks: Vec<LootNewStackPersistenceLikeCpp>,
@@ -185,7 +178,6 @@ pub enum PlayerInventoryPersistenceRequestLikeCpp {
     PartialDestroy(InventoryPartialDestroyPersistenceLikeCpp),
     GraphDestroy(InventoryGraphDestroyPersistenceLikeCpp),
     LootDisenchantBatch(LootDisenchantBatchPersistenceLikeCpp),
-    LootQuestBoundProgress(LootQuestBoundProgressPersistenceLikeCpp),
     LootDirectItemGrant(LootDirectItemGrantPersistenceLikeCpp),
     QuestItemGrant(QuestItemGrantPersistenceLikeCpp),
     QuestTurnIn(QuestTurnInPersistenceLikeCpp),

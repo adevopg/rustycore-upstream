@@ -135,7 +135,11 @@ fn mixed_item_transfer_quest_plan_applies_withdrawal_after_deposit() {
     assert_eq!(planned[0].objective_counts, vec![1]);
 }
 #[test]
-fn quest_bound_withdrawal_plan_consumes_credit_without_physical_item() {
+/// C++ `Player::ItemAddedQuestCheck` has no branch that trades the item for
+/// credit: `BankHandler.cpp:104` calls it *after* `StoreItem` succeeded, so the
+/// withdrawal plans the objective change and the item still arrives.
+#[test]
+fn withdrawal_plan_credits_the_item_objective_and_still_stores_the_item_like_cpp() {
     let (mut session, _send_rx) = make_session();
     let quest_id = 7_404;
     let item_id = 19_904;
@@ -149,7 +153,9 @@ fn quest_bound_withdrawal_plan_consumes_credit_without_physical_item() {
         object_id: item_id,
         amount: 1,
         flags: 0,
-        flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+        // The target build never reads Flags2; set the bit the retired import
+        // treated as "quest bound" and the outcome must be identical.
+        flags2: 0x1,
         progress_bar_weight: 0.0,
         description: String::new(),
     }];
@@ -158,24 +164,26 @@ fn quest_bound_withdrawal_plan_consumes_credit_without_physical_item() {
     let mut plan = session.begin_item_transfer_quest_persistence_like_cpp(&[], &[]);
 
     assert!(
-        session.plan_item_transfer_withdrawal_quest_persistence_like_cpp(
+        !session.plan_item_transfer_withdrawal_quest_persistence_like_cpp(
             &mut plan,
             item_id as u32,
             0,
             1,
-        )
+        ),
+        "no objective may consume the withdrawal instead of storing its item"
     );
     let planned = session.finish_item_transfer_quest_persistence_like_cpp(plan);
     assert_eq!(planned.len(), 1);
     assert_eq!(planned[0].status, QUEST_STATUS_COMPLETE_LIKE_CPP);
     assert_eq!(planned[0].objective_counts, vec![1]);
 }
+/// C++ `UpdateQuestObjectiveProgress` (`Player.cpp:16637-16767`) walks the whole
+/// `(QUEST_OBJECTIVE_ITEM, objectId)` range and credits every objective in it.
 #[tokio::test]
-async fn bank_withdrawal_credits_only_first_matching_bound_item_objective_like_cpp() {
+async fn bank_withdrawal_credits_every_matching_item_objective_like_cpp() {
     let (mut session, send_rx) = make_session();
-    let player_guid = session.player_guid().unwrap();
     let item_id = 19_901;
-    let bound_quest = |quest_id: u32| {
+    let quest_on_the_same_item = |quest_id: u32| {
         let mut quest = quest_template(quest_id);
         quest.objectives = vec![QuestObjective {
             id: quest_id * 10,
@@ -186,28 +194,36 @@ async fn bank_withdrawal_credits_only_first_matching_bound_item_objective_like_c
             object_id: item_id,
             amount: 2,
             flags: 0,
-            flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+            flags2: 0x1,
             progress_bar_weight: 0.0,
             description: String::new(),
         }];
         quest
     };
     session.set_quest_store(Arc::new(QuestStore::from_quests_like_cpp([
-        bound_quest(7_401),
-        bound_quest(7_402),
+        quest_on_the_same_item(7_401),
+        quest_on_the_same_item(7_402),
     ])));
     add_active_quest_in_slot(&mut session, 7_401, 0);
     add_active_quest_in_slot(&mut session, 7_402, 1);
 
     let planned = session.plan_bank_item_quest_persistence_like_cpp(item_id as u32, 0, false, 1, 1);
-    assert_eq!(planned.len(), 1);
-    assert_eq!(planned[0].objective_counts, vec![1]);
-    let planned_quest_id = planned[0].quest_id;
+    assert_eq!(
+        planned.len(),
+        2,
+        "both objectives are in the credited range"
+    );
+    assert!(
+        planned
+            .iter()
+            .all(|status| status.objective_counts == vec![1])
+    );
 
-    let changed = session
+    let mut changed = session
         .apply_quest_item_added_objective_progress_like_cpp(item_id as u32, 0, 1)
         .await;
-    assert_eq!(changed, vec![planned_quest_id]);
+    changed.sort_unstable();
+    assert_eq!(changed, vec![7_401, 7_402]);
     assert_eq!(
         session
             .player_quests
@@ -215,36 +231,24 @@ async fn bank_withdrawal_credits_only_first_matching_bound_item_objective_like_c
             .flat_map(|status| status.objective_counts.iter())
             .copied()
             .sum::<i32>(),
-        1,
-        "C++ UpdateQuestObjectiveProgress breaks after the first credited quest-bound item objective"
+        2
     );
 
-    let bytes = send_rx
-        .try_recv()
-        .expect("single quest-bound item objective should send ItemPushResult");
-    let mut packet = WorldPacket::from_bytes(&bytes);
-    assert_eq!(
-        packet.read_uint16().unwrap(),
-        wow_constants::ServerOpcodes::ItemPushResult as u16
-    );
-    assert_eq!(packet.read_packed_guid().unwrap(), player_guid);
-    assert_eq!(
-        packet.read_uint8().unwrap(),
-        u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
-    );
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 0);
-    assert_eq!(packet.read_int32().unwrap(), 1);
-    assert_eq!(packet.read_int32().unwrap(), 1);
+    // `QUEST_OBJECTIVE_ITEM` is the one type whose credit message C++ skips
+    // ("case handled by SMSG_ITEM_PUSH_RESULT", `Player.cpp:16676-16678`): the
+    // objective update itself publishes nothing.
     assert!(send_rx.try_recv().is_err());
 }
+/// Rust keeps quest statuses in a `HashMap`, so the plan and the post-commit
+/// mutation could disagree if either depended on iteration order. Both must
+/// credit the same complete set whatever the quest-log slots are.
 #[tokio::test]
-async fn bound_item_durable_plan_and_apply_use_the_same_quest_log_order_like_cpp() {
+async fn item_objective_plan_and_apply_are_slot_order_independent_like_cpp() {
     let (mut session, _send_rx) = make_session();
     let item_id = 19_950;
     let early_slot_quest_id = 7_452;
     let late_slot_quest_id = 7_451;
-    let bound_quest = |quest_id: u32| {
+    let quest_on_the_same_item = |quest_id: u32| {
         let mut quest = quest_template(quest_id);
         quest.objectives = vec![QuestObjective {
             id: quest_id * 10,
@@ -255,48 +259,54 @@ async fn bound_item_durable_plan_and_apply_use_the_same_quest_log_order_like_cpp
             object_id: item_id,
             amount: 2,
             flags: 0,
-            flags2: QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP_LOCAL,
+            flags2: 0x1,
             progress_bar_weight: 0.0,
             description: String::new(),
         }];
         quest
     };
     let quest_store = Arc::new(QuestStore::from_quests_like_cpp([
-        bound_quest(late_slot_quest_id),
-        bound_quest(early_slot_quest_id),
+        quest_on_the_same_item(late_slot_quest_id),
+        quest_on_the_same_item(early_slot_quest_id),
     ]));
     session.set_quest_store(Arc::clone(&quest_store));
     // Insert the numerically smaller quest first, but give it the later
-    // quest-log slot. HashMap bucket/insertion order must affect neither
-    // the pre-SQL plan nor the post-COMMIT mutation.
+    // quest-log slot.
     add_active_quest_in_slot(&mut session, late_slot_quest_id, 9);
     add_active_quest_in_slot(&mut session, early_slot_quest_id, 2);
 
-    let planned = session
-        .plan_quest_source_item_bound_objective_persistence_like_cpp(item_id as u32, 0, 1)
-        .expect("one bound objective should be planned");
-    assert_eq!(planned.statuses.len(), 1);
-    assert_eq!(planned.statuses[0].quest_id, early_slot_quest_id);
-
-    let applied = session
-        .apply_quest_source_item_bound_objective_progress_for_object_like_cpp(
-            quest_store.as_ref(),
-            item_id,
+    let mut plan = session.begin_item_transfer_quest_persistence_like_cpp(&[], &[]);
+    assert!(
+        !session.plan_item_transfer_withdrawal_quest_persistence_like_cpp(
+            &mut plan,
+            item_id as u32,
+            0,
             1,
         )
+    );
+    let mut planned_ids: Vec<_> = session
+        .finish_item_transfer_quest_persistence_like_cpp(plan)
+        .into_iter()
+        .map(|status| status.quest_id)
+        .collect();
+    planned_ids.sort_unstable();
+    assert_eq!(planned_ids, vec![late_slot_quest_id, early_slot_quest_id]);
+
+    let mut applied = session
+        .apply_quest_item_added_objective_progress_like_cpp(item_id as u32, 0, 1)
         .await;
-    assert_eq!(applied, vec![(early_slot_quest_id, 1)]);
+    applied.sort_unstable();
+    assert_eq!(applied, planned_ids);
     assert_eq!(
         session.player_quests[&early_slot_quest_id].objective_counts,
         vec![1]
     );
-    assert!(
-        session.player_quests[&late_slot_quest_id]
-            .objective_counts
-            .is_empty()
+    assert_eq!(
+        session.player_quests[&late_slot_quest_id].objective_counts,
+        vec![1]
     );
 }
-#[tokio::test]
+
 async fn bank_withdrawal_item_objective_never_sends_generic_credit_like_cpp() {
     let (mut session, send_rx) = make_session();
     let item_id = 19_902;

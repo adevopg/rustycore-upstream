@@ -86,18 +86,23 @@ loose end — `dbe66f01` added `CMSG_WHO` to `world-handler-contract.tsv` withou
 `runtime-ownership-ledger.json` — and is fixed; the hotspot margins are the same unrecorded
 feature line and belong to #584 C4 with the three physical ceilings.
 
-**Previous next responsibility — done.** The live player-melee blocker is repaired and the
-loop closes end to end; see STATE.md and the closed entry in
-[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md).
+**Previous next responsibilities — done.** The live player-melee blocker, the death exit
+and `CMSG_RECLAIM_CORPSE`, creature loot, quest kill credit and passive-creature melee are
+all repaired, each with live before/after evidence; see STATE.md and the closed entries in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md). Item-objective credit (D-H6) is
+repaired against the target C++ with the library suite green, but its live confirmation is
+still outstanding and is named as such there.
 
 **Next prepared responsibility, selected by evidence rather than by document order:**
-the death exit, `CMSG_RECLAIM_CORPSE` and what it needs around it. Combat now kills the
-QA character routinely, which made the gap unmissable: the handler was a represented
-slice that cleared the ghost flag and resurrected with **no corpse, no reclaim delay and
-no distance check**, so a released spirit could resurrect instantly, anywhere, and the
-corpse it left behind carried no owner at all. That is the M5 lifecycle exit's core and it
-sits on the same #584 C0/C3 axis as the melee work: the canonical map is the authority for
-a corpse, and the session may only read it.
+**D-M16** — restore the live player swing. The repair chain above now depends on it:
+three runs on 2026-10-01 against a stationary spawn could not land a swing the bot could
+see, while the server's own phase counters claimed the hit, and every remaining M3/M4
+acceptance that needs a kill (item-objective credit above all) is blocked behind it.
+This is a runtime-delivery question on the same #584 C0/C3 axis, not new gameplay: the
+phase produces the command and counts it as `delivered`, and what is unproven is whether
+the session's bounded rail accepted it. The extended phase trace now prints `queued` and
+`dropped_durable` for exactly that, and the first task is to read it on a live run before
+changing anything.
 
 ## 1. Direction from here
 

@@ -6,14 +6,14 @@
 use super::*;
 
 #[tokio::test]
-async fn failed_quest_bound_loot_persistence_rolls_back_credit_and_claim_like_cpp() {
+async fn failed_loot_persistence_rolls_back_item_credit_and_claim_like_cpp() {
     let (mut first, first_rx, _second, _second_rx, owner, first_guid, _) =
         two_sessions_with_authoritative_creature_loot_like_cpp(authoritative_test_loot_like_cpp(
             0, true,
         ));
     let _ = drain_server_opcodes_like_cpp(&first_rx);
     let quest_id = 8_336;
-    install_quest_bound_loot_objective_like_cpp(&mut first, quest_id, 25, 5, 6);
+    install_item_loot_objective_like_cpp(&mut first, quest_id, 25, 5, 6);
     let grants = Arc::new(AtomicUsize::new(0));
     first.set_loot_item_store_test_seam_like_cpp(Arc::clone(&grants), false);
 

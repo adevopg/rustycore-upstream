@@ -2348,7 +2348,6 @@ impl SendNewItemArgs {
 pub enum SendNewItemDisplayText {
     Normal,
     EncounterLoot,
-    QuestUpdateAddItem,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

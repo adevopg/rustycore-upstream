@@ -55,6 +55,30 @@ log. Observed in passing and not separately verified: the QA character reached l
 accumulated kills, and a level-1 target at player level 2 paid 44 XP, which is the `ml < pl`
 branch of the gain formula.
 
+**Item-objective credit was repaired on 2026-10-01 against the target C++, with unit
+evidence but no live confirmation yet.** The old one-line D-H6 note ("loot path doesn't
+advance collect X") was wrong in its diagnosis and understated the consequence. The loot
+path did credit item objectives, but it split them in two with a flag the target build
+never reads: for an objective whose `quest_objectives.Flags2` had bit 0 set, RustyCore
+credited the objective, skipped creating the item and emitted
+`SMSG_ITEM_PUSH_RESULT` with display type `3`. In
+`/home/server/woltk-trinity-legacy` there is no `QUEST_OBJECTIVE_FLAG_2` identifier at
+all, `ItemAddedQuestCheck` takes two arguments and not the four the Rust comment quoted,
+`StoreNewItem` always creates and stores the Item before calling it, and
+`ItemPushResult::DisplayType` has exactly three values. The consequence was worse than a
+missing count: `Player::CanRewardQuest` requires the item in the bags for **every**
+`QUEST_OBJECTIVE_ITEM`, so a credited-but-itemless objective is an unturnable quest — and
+in the installed world database 3533 of 5746 item objectives carry that bit. The repair
+removes the split rather than patching one side: one credit path, the item always stored,
+the out-of-range display type deleted, and the `LootQuestBoundProgress` transaction and
+void-storage `QuestBoundNoItem` destination retired with it. The affected tests were
+rewritten to assert the C++ behaviour instead of the imported one. **Live confirmation is
+still outstanding**: the kill needed to reach `CMSG_LOOT_ITEM` did not land in three runs
+today for the separate reason recorded as D-M16, so this repair currently rests on source
+anchors and the library suite, not on the wire. Full detail and anchors in
+[EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) under D-H6, with the two divergences
+found alongside it left open as D-M15 and D-M16.
+
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to
 the Elwynn graveyard, the corpse run brings it back, the reclaim is refused while the C++

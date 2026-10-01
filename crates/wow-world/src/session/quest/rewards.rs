@@ -426,17 +426,16 @@ impl WorldSession {
         let Some(inventory_item_counts) = self.represented_inventory_item_counts_like_cpp() else {
             return false;
         };
-        let mut saw_non_bound_item_objective = false;
+        let mut saw_item_objective = false;
         for objective in &quest.objectives {
             if objective.obj_type != QUEST_OBJECTIVE_ITEM_LIKE_CPP {
                 return false;
             }
 
-            if (objective.flags2 & QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM_LIKE_CPP) != 0 {
-                continue;
-            }
-
-            saw_non_bound_item_objective = true;
+            // C++ `Player::CanRewardQuest` (`Entities/Player/Player.cpp:14659-14674`)
+            // requires `GetItemCount(obj.ObjectID) >= obj.Amount` for every
+            // `QUEST_OBJECTIVE_ITEM` and exempts none of them.
+            saw_item_objective = true;
             let Ok(item_id) = u32::try_from(objective.object_id) else {
                 return false;
             };
@@ -450,7 +449,7 @@ impl WorldSession {
 
         // Item counts are represented only as partial evidence. Do not return true until the
         // remaining C++ CanRewardQuest blockers are represented in this runtime path.
-        let _ = saw_non_bound_item_objective;
+        let _ = saw_item_objective;
         false
     }
     pub(crate) fn can_reward_quest_represented_bounded_like_cpp(

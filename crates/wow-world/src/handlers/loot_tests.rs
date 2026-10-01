@@ -854,7 +854,11 @@ fn represented_disenchant_test_outputs_like_cpp(
         .collect()
 }
 
-fn install_quest_bound_loot_objective_like_cpp(
+/// A `QUEST_OBJECTIVE_ITEM` fixture. `flags2` carries bit 0, which the target
+/// build loads (`Quests/QuestDef.cpp:262`) and forwards to the client
+/// (`Server/Packets/QuestPackets.cpp:208`) without ever reading it, so it must
+/// change nothing here.
+fn install_item_loot_objective_like_cpp(
     session: &mut WorldSession,
     quest_id: u32,
     item_id: u32,

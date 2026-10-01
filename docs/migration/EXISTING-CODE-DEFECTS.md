@@ -756,8 +756,44 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   observable aggro behaviour matches; the react-state field itself is still unset for them.
 - [ ] **D-H5 Quest area-trigger (explore) objectives not wired.** Type 10 falls to `_=>false`;
   "explore Y" uncompletable. `handlers/quest.rs:653`.
-- [ ] **D-H6 Quest item-loot objectives not credited.** Loot path doesn't advance "collect X"
-  objectives. `handlers/loot.rs:6786`.
+- [x] **D-H6 Quest item-loot objectives: the credit existed, the item did not.** Closed
+  2026-10-01 after reading the whole operation instead of the old one-line note. The loot
+  path did advance "collect X", but only for objectives the Rust side classified as
+  *non-bound*, and for the other class it credited the objective and threw the item away.
+
+  The classifier was an import from a later TrinityCore, not from the target build.
+  `QuestObjective::Flags2` exists in 3.4.3 and RustyCore read bit 0 as
+  `QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM`, but in
+  `/home/server/woltk-trinity-legacy` that field is loaded in
+  `src/server/game/Quests/QuestDef.cpp:262`, written to the client in
+  `src/server/game/Server/Packets/QuestPackets.cpp:208` and read nowhere else — the whole
+  tree has no `QUEST_OBJECTIVE_FLAG_2` identifier at all. Three further anchors contradict
+  the imported design:
+  `Player::ItemAddedQuestCheck` takes two arguments (`Entities/Player/Player.h:1557`),
+  not the four the Rust comment quoted; `Player::StoreNewItem`
+  (`Entities/Player/Player.cpp:11590-11636`) always creates the Item, stores it and *then*
+  calls `ItemAddedQuestCheck`, with no early `nullptr` for a quest objective; and
+  `ItemPushResult::DisplayType` has exactly three values
+  (`Server/Packets/ItemPackets.h:328-332`), so the display type `3`
+  (`SendQuestUpdateAddItem`, a function this build does not contain) that the bound path
+  emitted is not a value of the target enum. `UpdateQuestObjectiveProgress`
+  (`Player.cpp:16631-16772`) credits every objective in the `(type, objectId)` range and
+  never breaks early.
+
+  The consequence was not a missing count but an unrewardable quest:
+  `Player::CanRewardQuest` (`Player.cpp:14659-14674`) requires
+  `GetItemCount(obj.ObjectID) >= obj.Amount` for **every** `QUEST_OBJECTIVE_ITEM` and
+  exempts none, so an objective credited without its item can never be turned in. In the
+  installed world database the affected class is the majority: of 5746 `Type = 1`
+  objectives, **3533 carry `Flags2 & 1`**.
+
+  The repair removes the partition rather than patching one side of it: one credit path
+  (`apply_quest_item_added_objective_progress_with_generator_like_cpp` →
+  `apply_quest_item_added_to_statuses_like_cpp`), the item always stored, and the
+  out-of-range display type deleted from `ItemPushResultDisplayType`. The
+  `LootQuestBoundProgress` inventory transaction and the void-storage
+  `QuestBoundNoItem` withdrawal destination existed only to serve the removed branch and
+  went with it.
 - [ ] **D-H7 Auras not saved at logout.** All buffs/debuffs reset on relog. `session.rs:21656`.
   C++ `Player::_SaveAuras`.
 - [ ] **D-H8 Periodic save represented-partial + incomplete logout save.** Issue #17 adds a
@@ -850,6 +886,39 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `wow-database/src/hotfix/skill_catalog_adapter.rs::load_skill_relation_hotfix_rows_like_cpp`.
   The wider #524 family remains open because Rust does not yet load and consume
   `SkillLineXTraitTree` through a `TraitMgr`-equivalent production authority.
+
+- [ ] **D-M15 `QuestLogItemId` is credited and put on the wire, which the target build
+  does neither.** RustyCore reads `item_template_addon.QuestLogItemId`, credits
+  `QUEST_OBJECTIVE_ITEM` objectives keyed on it in addition to the item entry, and writes it
+  into `SMSG_ITEM_PUSH_RESULT.QuestLogItemID`. In
+  `/home/server/woltk-trinity-legacy` the field appears exactly once in the whole server,
+  as the commented-out line
+  `//packet.QuestLogItemID = item->GetTemplate()->QuestLogItemId;`
+  (`src/server/game/Entities/Player/Player.cpp:13869`), so stock
+  `Player::SendNewItem` ships `0` and `ItemAddedQuestCheck(entry, count)`
+  (`:16533-16536`) only ever passes the item entry to
+  `UpdateQuestObjectiveProgress`. Two consequences: an item-push byte divergence, and
+  credit for objectives the target build would not credit. Found while closing D-H6, which
+  removed a separate invented objective gate in the same code; left open rather than folded
+  into that repair. Rust: `handlers/quest/objectives.rs`
+  (`apply_quest_item_added_objective_progress_with_generator_like_cpp`'s second objective
+  id) and `session_rules/rules_1.rs` (`quest_log_item_id` in the push plan).
+- [ ] **D-M16 A player swing is accounted for server-side without reaching the session, and
+  the victim does not die.** Observed 2026-10-01 on three consecutive live runs against
+  stationary spawn `creature.guid = 280092` (entry 94, `wander_distance = 0`,
+  `MovementType = 0`) at 4.0 yards with `SMSG_ATTACK_START` published. The server's own
+  `RUSTYCORE_PLAYER_MELEE_TRACE=1` phase counters reported `victims_resolved=1
+  swings_ready=1 creature_hits=1 commands=1 delivered=1` on sampled ticks, yet the bot
+  observed no `SMSG_ATTACKER_STATE_UPDATE` (0x2952, the same opcode value the server
+  emits) on either socket across 120 s, the creature never died, and `victims_resolved`
+  fell back to `0` after about 40 s. The opcode constants agree and the bot read both
+  sockets throughout (it answered every `SMSG_TIME_SYNC_REQUEST`), so this is not the
+  documented wandering-spawn limitation in `tools/wow-test-bot/RUSTYCORE_SMOKE.md`.
+  Not yet attributed between `deliver_player_melee_results_like_cpp`
+  (`world-server/src/runtime/delivery.rs`, where `delivered` counts commands *seen*, not
+  commands sent) and the bot's engagement loop. The same chain produced a kill, loot and
+  quest credit on 2026-09-30, so it is a regression or an intermittent condition, not an
+  unimplemented path.
 
 ## LOW — non-issues in practice / cosmetic (recorded for completeness)
 

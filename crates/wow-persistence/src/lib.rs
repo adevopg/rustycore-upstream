@@ -210,11 +210,10 @@ pub use player::{
     InventoryStorageMovePersistenceLikeCpp, InventorySwapPersistenceLikeCpp,
     LootDirectItemGrantPersistenceLikeCpp, LootDisenchantBatchPersistenceLikeCpp,
     LootExistingStackPersistenceLikeCpp, LootNewStackPersistenceLikeCpp,
-    LootQuestBoundProgressPersistenceLikeCpp, PlayerInventoryPersistencePortLikeCpp,
-    PlayerInventoryPersistenceRequestLikeCpp, QuestItemExistingStackPersistenceLikeCpp,
-    QuestItemGrantPersistenceLikeCpp, QuestItemNewStackPersistenceLikeCpp,
-    QuestTurnInItemPersistenceLikeCpp, QuestTurnInPersistenceLikeCpp,
-    StoredItemLootSourcePersistenceLikeCpp,
+    PlayerInventoryPersistencePortLikeCpp, PlayerInventoryPersistenceRequestLikeCpp,
+    QuestItemExistingStackPersistenceLikeCpp, QuestItemGrantPersistenceLikeCpp,
+    QuestItemNewStackPersistenceLikeCpp, QuestTurnInItemPersistenceLikeCpp,
+    QuestTurnInPersistenceLikeCpp, StoredItemLootSourcePersistenceLikeCpp,
 };
 pub use player::{
     PLAYER_PRIMARY_STAT_COUNT_LIKE_CPP, PlayerBaseStatsLoadOutcomeLikeCpp,

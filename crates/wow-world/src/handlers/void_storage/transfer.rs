@@ -256,20 +256,12 @@ impl WorldSession {
             let quest_log_item_id = self
                 .quest_source_item_quest_log_item_id_like_cpp(void_item.item_entry)
                 .await;
-            if self.plan_item_transfer_withdrawal_quest_persistence_like_cpp(
+            self.plan_item_transfer_withdrawal_quest_persistence_like_cpp(
                 &mut quest_persistence_plan,
                 void_item.item_entry,
                 quest_log_item_id,
                 1,
-            ) {
-                planned_withdrawals.push(PlannedVoidWithdrawalLikeCpp {
-                    old_void_slot,
-                    void_item,
-                    quest_log_item_id,
-                    destination: PlannedVoidWithdrawalDestinationLikeCpp::QuestBoundNoItem,
-                });
-                continue;
-            }
+            );
             let Some((db_guid, item_guid)) = self
                 .allocate_item_instance_guids_with_generator_like_cpp(generators.item.as_ref(), 1)
                 .and_then(|mut ids| ids.pop())
@@ -550,9 +542,6 @@ impl WorldSession {
         let mut withdrawals = Vec::with_capacity(planned_withdrawals.len());
         for withdrawal in &planned_withdrawals {
             let inventory_write = match &withdrawal.destination {
-                PlannedVoidWithdrawalDestinationLikeCpp::QuestBoundNoItem => {
-                    wow_persistence::VoidStorageWithdrawalInventoryWriteLikeCpp::None
-                }
                 PlannedVoidWithdrawalDestinationLikeCpp::New {
                     bag,
                     slot,
@@ -704,15 +693,6 @@ impl WorldSession {
                 self.delete_represented_void_storage_item_like_cpp(withdrawal.old_void_slot);
             debug_assert_eq!(removed.as_ref(), Some(&withdrawal.void_item));
             match &withdrawal.destination {
-                PlannedVoidWithdrawalDestinationLikeCpp::QuestBoundNoItem => {
-                    added_changed_quest_ids.extend(
-                        self.apply_quest_item_added_bound_state_like_cpp(
-                            withdrawal.void_item.item_entry,
-                            withdrawal.quest_log_item_id,
-                            1,
-                        ),
-                    );
-                }
                 PlannedVoidWithdrawalDestinationLikeCpp::New {
                     bag,
                     slot,
@@ -800,18 +780,11 @@ impl WorldSession {
                     );
                 }
             }
-            if !matches!(
-                &withdrawal.destination,
-                PlannedVoidWithdrawalDestinationLikeCpp::QuestBoundNoItem
-            ) {
-                added_changed_quest_ids.extend(
-                    self.apply_quest_item_added_non_bound_state_like_cpp(
-                        withdrawal.void_item.item_entry,
-                        withdrawal.quest_log_item_id,
-                        1,
-                    ),
-                );
-            }
+            added_changed_quest_ids.extend(self.apply_quest_item_added_state_like_cpp(
+                withdrawal.void_item.item_entry,
+                withdrawal.quest_log_item_id,
+                1,
+            ));
             removed_items.push(wow_core::ObjectGuid::create_item(
                 self.realm_id(),
                 withdrawal.void_item.item_id as i64,
