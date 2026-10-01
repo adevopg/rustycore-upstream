@@ -424,7 +424,11 @@ fn represented_quest_objective_completable_accepts_cpp_storing_value_previous_ty
 
     assert!(
         crate::handlers::quest_rules::represented_quest_objective_completable_like_cpp(
-            &status, &quest, 1
+            &status,
+            &quest,
+            1,
+            &crate::handlers::quest::ResolvedQuestObjectivePlayerFactsLikeCpp::default()
+                .borrow_like_cpp(),
         )
     );
 }

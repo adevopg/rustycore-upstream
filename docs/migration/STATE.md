@@ -127,8 +127,22 @@ Jasperlode Mine" incomplete published `SMSG_QUEST_UPDATE_ADD_CREDIT_SIMPLE` and 
 `status = 1` and `explored = 1`. That run also caught a divergence the scenario tests could
 not see: the first attempt sent **two** completion packets, where C++ sends one, because
 `Player::CompleteQuest` publishes nothing and the single packet belongs to
-`AreaExploredOrEventHappens`. The four live-state objective types in the same `match` remain
-open as D-H17.
+`AreaExploredOrEventHappens`. The five live-state objective types in the same `match` are repaired too, as
+D-H17.
+
+**And with them, every objective type the M3/M4 exit needs is live.** C++
+`Player::IsQuestObjectiveComplete` decides five of its branches by asking the Player rather
+than reading stored progress — reputation twice, money, a known spell and a currency
+(`Entities/Player/Player.cpp:16970-16998`) — and the Rust rule, being pure, failed all five
+closed. That is 256 quests in the installed world database: 165 `MIN_REPUTATION`, 90 `MONEY`
+and one `MAX_REPUTATION`. The rule stays pure: one borrowed snapshot carries exactly what
+C++ asks the Player for, resolved by the owner for the ids that quest's own objectives name,
+and a quest with none of those types costs no session read at all. Live: quest 13265 "Cloth
+Scavenging", whose only objective is money for 50000, seeded incomplete with 49995 in hand;
+looting 11 copper from one kill took it to 50006 and the persisted quest status went from
+incomplete to complete, through the real `MoneyChanged` drain. One adjacent reader is left
+open as D-M18: `reputation_for_faction_like_cpp` reports a base standing where C++ reports
+zero for a faction with no `FactionState`.
 
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to

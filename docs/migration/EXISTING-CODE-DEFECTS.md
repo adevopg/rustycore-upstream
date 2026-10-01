@@ -820,81 +820,62 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   (`Player.cpp:16970-16998`). The Rust rule is pure — status and quest only — so each needs
   that state threaded in. They still fail closed, which leaves a quest incomplete rather
   than completing it on an unchecked condition. Recorded as D-H17.
-- [ ] **D-H17 Four objective types cannot complete because the completion rule carries no
-  live player state.** `represented_quest_objective_complete_like_cpp` is pure, so
-  `QUEST_OBJECTIVE_MIN_REPUTATION` (6), `MAX_REPUTATION` (7), `MONEY` (8) and `CURRENCY` (4)
-  — plus `LEARNSPELL` (5) — fail closed where C++ `Player::IsQuestObjectiveComplete`
-  (`Entities/Player/Player.cpp:16970-16998`) asks `GetReputationMgr`, `HasEnoughMoney`,
-  `HasSpell` and `HasCurrency`. Found while closing D-H5, which repaired the flag-storing
-  group in the same `match`. Failing closed keeps a quest incomplete rather than completing
-  it on an unchecked condition, so this is a missing feature rather than a wrong grant, but
-  any quest whose completion depends on one of those five types cannot be finished.
-- [x] **D-H6 Quest item-loot objectives: the credit existed, the item did not.** Closed
-  2026-10-01 after reading the whole operation instead of the old one-line note. The loot
-  path did advance "collect X", but only for objectives the Rust side classified as
-  *non-bound*, and for the other class it credited the objective and threw the item away.
+- [x] **D-H17 Five objective types could not complete, because the completion rule carried no
+  live player state.** Closed 2026-10-01. C++ `Player::IsQuestObjectiveComplete`
+  (`Entities/Player/Player.cpp:16970-16998`) decides five of its branches by asking the
+  Player directly rather than reading stored progress: `MIN_REPUTATION` (6) and
+  `MAX_REPUTATION` (7) ask `GetReputationMgr().GetReputation(ObjectID)`, `MONEY` (8) asks
+  `HasEnoughMoney(Amount)`, `LEARNSPELL` (5) asks `HasSpell(ObjectID)` and `CURRENCY` (4)
+  asks `HasCurrency(ObjectID, Amount)`. `represented_quest_objective_complete_like_cpp` is
+  pure — status and quest only — so all five fell to its `_ => false`, and any quest whose
+  completion depended on one of them could never be finished.
 
-  The classifier was an import from a later TrinityCore, not from the target build.
-  `QuestObjective::Flags2` exists in 3.4.3 and RustyCore read bit 0 as
-  `QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM`, but in
-  `/home/server/woltk-trinity-legacy` that field is loaded in
-  `src/server/game/Quests/QuestDef.cpp:262`, written to the client in
-  `src/server/game/Server/Packets/QuestPackets.cpp:208` and read nowhere else — the whole
-  tree has no `QUEST_OBJECTIVE_FLAG_2` identifier at all. Three further anchors contradict
-  the imported design:
-  `Player::ItemAddedQuestCheck` takes two arguments (`Entities/Player/Player.h:1557`),
-  not the four the Rust comment quoted; `Player::StoreNewItem`
-  (`Entities/Player/Player.cpp:11590-11636`) always creates the Item, stores it and *then*
-  calls `ItemAddedQuestCheck`, with no early `nullptr` for a quest objective; and
-  `ItemPushResult::DisplayType` has exactly three values
-  (`Server/Packets/ItemPackets.h:328-332`), so the display type `3`
-  (`SendQuestUpdateAddItem`, a function this build does not contain) that the bound path
-  emitted is not a value of the target enum. `UpdateQuestObjectiveProgress`
-  (`Player.cpp:16631-16772`) credits every objective in the `(type, objectId)` range and
-  never breaks early.
+  In the installed world database that is **256 quests**: 165 objectives on
+  `MIN_REPUTATION`, 90 on `MONEY` and one on `MAX_REPUTATION`. `CURRENCY` and `LEARNSPELL`
+  have no rows in 3.4.3 data, and are ported anyway because C++ has them.
 
-  The consequence was not a missing count but an unrewardable quest:
-  `Player::CanRewardQuest` (`Player.cpp:14659-14674`) requires
-  `GetItemCount(obj.ObjectID) >= obj.Amount` for **every** `QUEST_OBJECTIVE_ITEM` and
-  exempts none, so an objective credited without its item can never be turned in. In the
-  installed world database the affected class is the majority: of 5746 `Type = 1`
-  objectives, **3533 carry `Flags2 & 1`**.
+  The rule stays pure. `RepresentedQuestObjectivePlayerFactsLikeCpp` is one borrowed
+  snapshot of exactly what C++ asks the Player for, resolved by the owner before the rule
+  runs and only for the ids that quest's own objectives name — one or two entries, not the
+  whole reputation list. A quest with none of those five types resolves to the default and
+  costs no session read at all. No trait per helper, no universal context, no second mirror:
+  the facts are a value, and the four readers behind them
+  (`resolved_player_money_like_cpp`, `with_reputation_mgr_like_cpp`,
+  `known_spells_like_cpp`, `player_currencies_like_cpp`) already had owners.
+  `stored_progress_only_player_facts_like_cpp` names the case where a caller provably cannot
+  need them, which is how `Player::HasQuestForGO`'s gameobject scan avoids paying for one;
+  that pairing moved into the rules as
+  `represented_gameobject_objective_is_pending_like_cpp`, which took three lines *out* of
+  `session/mod.rs`.
 
-  The repair removes the partition rather than patching one side of it: one credit path
-  (`apply_quest_item_added_objective_progress_with_generator_like_cpp` →
-  `apply_quest_item_added_to_statuses_like_cpp`), the item always stored, and the
-  out-of-range display type deleted from `ItemPushResultDisplayType`. The
-  `LootQuestBoundProgress` inventory transaction and the void-storage
-  `QuestBoundNoItem` withdrawal destination existed only to serve the removed branch and
-  went with it.
-- [ ] **D-H7 Auras not saved at logout.** All buffs/debuffs reset on relog. `session.rs:21656`.
-  C++ `Player::_SaveAuras`.
-- [ ] **D-H8 Periodic save represented-partial + incomplete logout save.** Issue #17 adds a
-  `CONFIG_INTERVAL_SAVE` / `PlayerSaveInterval` session timer for represented `Player::SaveToDB`,
-  but full inventory / mid-quest progress / newly-learned spells may still be outside the Rust
-  save surface; first-save randomization, capture diff, and manual live-client QA remain pending.
-  The installed runtime passed bot login/logout and action/travel/quest-objective preservation QA.
-  (Pairs with M0.4.)
-- [ ] **D-H9 Trainer skips req-skill-rank + prerequisite-spell checks.** Loaded but ignored →
-  learn spells you shouldn't. `handlers/trainer.rs:405-463`. C++ `Trainer.cpp:195-200`.
-- [ ] **D-H10 Movement trusts client position.** Only NaN/map-bounds checks; no speed/teleport
-  validation → speed/teleport hacking. `handlers/movement.rs:310-356`.
-- [ ] **D-H11 Vendor stock-limit TOCTOU → oversell.** Count read then commit without re-check.
-  `handlers/character.rs:10056-10070`.
-- [ ] **D-H12 Buyback slot TOCTOU + overwrite without cleanup → item loss.** `character.rs:10781-10882`.
-- [ ] **D-H13 Group created without leader in member list** on a creation-fail path → runtime/DB
-  mismatch. `handlers/group.rs:1050-1074`.
-- [ ] **D-H14 Duplicate-CREATE crash: async race window.** Fix relies on `client_visible_guids`
-  diff, but the set is mutated *after* send; async concurrency can resend CREATE (client
-  crash). `handlers/character.rs:6485-6488,7713-7716`.
-- [ ] **D-H15 Creature DESTROY_OBJECT deferred to player movement.** Creature that walks away
-  stays a phantom (targetable, not rendered) until the player moves. `handlers/movement.rs:274`.
-- [ ] **D-H16 PartyUpdate omits offline group members.** C++
-  `Group::SendUpdateToPlayer` serializes every `m_memberSlots` entry and marks disconnected
-  members through `PartyPlayerInfo.Connected`; Rust builds `PlayerList` with
-  `filter_map(PlayerRegistry::get)` but computes `MyIndex` from the complete member vector. The
-  issue #110 live race observed a two-entry leader/winner list and complete-list `MyIndex=4` for
-  a five-member persisted party. `handlers/group.rs:505-512`; C++ `Group.cpp:820-873`.
+  Each of the five branches has a positive and a negative test, including the two boundaries
+  C++ states precisely: `HasEnoughMoney(int64)` treats a negative requirement as satisfied
+  (`Entities/Player/Player.h:1663-1664`), and `HasCurrency` needs the currency to be present
+  *and* at least the amount (`Entities/Player/Player.cpp:7250-7254`).
+
+  Live: quest 13265 "Cloth Scavenging", whose only objective is `MONEY` for 50000, seeded
+  incomplete with the character holding 49995. Looting 11 copper from one kill took it to
+  50006 and the quest's persisted status went from `3` (incomplete) to `1` (complete). The
+  path is the real one — the loot-money change enqueues
+  `RepresentedQuestObjectiveProgressEventLikeCpp::MoneyChanged`, whose drain asks
+  `represented_can_complete_quest_after_objective_like_cpp` — and before this repair that
+  call could not return true for a money objective.
+
+  **Noticed in passing, not repaired here:** `reputation_for_faction_like_cpp` returns
+  `base_reputation + standing.unwrap_or(0)`, where C++ `ReputationMgr::GetReputation`
+  returns `0` outright for a faction the player has no `FactionState` for
+  (`Reputation/ReputationMgr.cpp:183-193`). For a faction whose race/class base is non-zero
+  the two disagree. It is pre-existing and shared with every other reputation consumer, so
+  it belongs to its own change rather than to this one; recorded as D-M18.
+- [ ] **D-M18 `reputation_for_faction_like_cpp` reports a base standing where C++ reports
+  zero.** C++ `ReputationMgr::GetReputation(FactionEntry const*)`
+  (`Reputation/ReputationMgr.cpp:183-193`) returns `GetBaseReputation + state->Standing`
+  **only when the player has a `FactionState` for that faction**, and `0` otherwise. Rust
+  returns `base_reputation_like_cpp(...) + standing.unwrap_or(0)`, so for a faction the
+  player has never interacted with and whose race/class base is non-zero it over-reports.
+  Found while closing D-H17, which made that reader decide quest completion for 166
+  reputation objectives; every other reputation consumer shares it.
+  Rust `wow-world/src/reputation/mgr/state_2_ops_1.rs:20-34`.
 
 ## MED — wrong values / loose checks / minor loss
 

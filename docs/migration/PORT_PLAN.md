@@ -105,16 +105,19 @@ could read as complete. See the closed entry for each anchor.
 87 is proven live; it caught a wire divergence the scenario tests could not. Every objective
 type the M3/M4 exit needs — kill, item and explore — now has wire evidence.
 
+**D-H17 is done as well:** the five live-state branches of
+`Player::IsQuestObjectiveComplete` are ported, which unblocks 256 quests in the installed
+world database, and the money branch is proven live. With it, **every objective type the
+M3/M4 exit needs has wire evidence**: kill, item, explore, and now money.
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-**D-H17** — four objective types cannot complete because
-`represented_quest_objective_complete_like_cpp` is pure and C++
-`Player::IsQuestObjectiveComplete` asks the player for reputation, money, spells and
-currency (`Entities/Player/Player.cpp:16970-16998`). It is the last structural hole in the
-objective `match` after today's two repairs to it, the state it needs already has owners in
-the session, and the live acceptance has a shape that now works three times over: seed the
-objective, satisfy it, read `character_queststatus_objectives` back after a clean logout.
-After it, the lane's remaining items are D-M15 (`QuestLogItemId` credited and put on the wire
-where the target build does neither) and the `NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
+**D-M18** — `reputation_for_faction_like_cpp` reports a base standing where C++
+`ReputationMgr::GetReputation` reports zero for a faction the player has no `FactionState`
+for. It was found while closing D-H17, which put that reader in charge of deciding
+completion for 166 reputation objectives, and every other reputation consumer already shares
+it, so it is both small and load-bearing. After it, the quest lane's remaining items are
+D-M15 (`QuestLogItemId` credited and put on the wire where the target build does neither)
+and the `NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
 
 ## 1. Direction from here
 

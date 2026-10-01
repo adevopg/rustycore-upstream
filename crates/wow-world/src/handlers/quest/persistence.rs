@@ -106,6 +106,7 @@ impl WorldSession {
         let Some(state) = self.player_quest_gameplay_snapshot_like_cpp() else {
             return planned;
         };
+        let player_facts = self.resolved_quest_objective_player_facts_for_quest_log_like_cpp();
 
         if moving_to_bank {
             let new_item_count = i32::try_from(post_move_non_bank_count).unwrap_or(i32::MAX);
@@ -122,6 +123,7 @@ impl WorldSession {
                             &status,
                             quest,
                             objective_index,
+                            &player_facts.borrow_like_cpp(),
                         )
                     {
                         continue;
@@ -173,6 +175,7 @@ impl WorldSession {
                         &status,
                         quest,
                         objective_index,
+                        &player_facts.borrow_like_cpp(),
                     )
                 {
                     continue;
@@ -205,6 +208,7 @@ impl WorldSession {
                     quest,
                     *objective_id,
                     quest_already_rewarded,
+                    &player_facts.borrow_like_cpp(),
                 )
             }) {
                 status.status = QUEST_STATUS_COMPLETE_LIKE_CPP;
@@ -233,6 +237,7 @@ impl WorldSession {
         let Some(quest_store) = self.quests.store.as_ref() else {
             return plan;
         };
+        let player_facts = self.resolved_quest_objective_player_facts_for_quest_log_like_cpp();
         let post_removal_counts = post_removal_non_bank_counts
             .iter()
             .copied()
@@ -247,6 +252,7 @@ impl WorldSession {
                     &mut plan.statuses,
                     entry_id,
                     new_non_bank_item_count,
+                    &player_facts.borrow_like_cpp(),
                 ),
             );
         }
@@ -266,6 +272,7 @@ impl WorldSession {
         let Some(state) = self.player_quest_gameplay_snapshot_like_cpp() else {
             return false;
         };
+        let player_facts = self.resolved_quest_objective_player_facts_for_quest_log_like_cpp();
         let rewarded: HashSet<u32> = state
             .rewarded_quest_ids_like_cpp()
             .iter()
@@ -279,6 +286,7 @@ impl WorldSession {
                 entry_id,
                 quest_log_item_id,
                 count,
+                &player_facts.borrow_like_cpp(),
             ),
         );
         false

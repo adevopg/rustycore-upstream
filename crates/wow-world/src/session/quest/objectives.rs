@@ -173,12 +173,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push(quest_id);
@@ -288,12 +290,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));
@@ -402,12 +406,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));
@@ -539,12 +545,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));
@@ -693,12 +701,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));

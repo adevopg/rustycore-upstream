@@ -95,8 +95,24 @@ impl WorldSession {
             objective_ids.push(i32::try_from(quest_log_item_id).unwrap_or(i32::MAX));
         }
 
+        // The loop below walks the whole quest log, so the live state its
+        // completion rules read is resolved for every quest in it, once, before the
+        // owner is borrowed mutably.
+        let active_quests: Vec<_> = self
+            .player_quest_gameplay_snapshot_like_cpp()
+            .map(|state| {
+                state
+                    .statuses_like_cpp()
+                    .keys()
+                    .filter_map(|quest_id| quest_store.get(*quest_id).cloned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let player_facts =
+            self.resolved_quest_objective_player_facts_for_quests_like_cpp(active_quests.iter());
         let Some((changed_quest_ids, quests_to_complete)) = self
             .mutate_player_quest_gameplay_like_cpp(|state| {
+                let player_facts = player_facts.borrow_like_cpp();
                 let rewarded_quest_ids = state.rewarded_quest_ids_like_cpp().clone();
                 let mut changed_quest_ids = Vec::new();
                 let mut quests_to_complete = Vec::new();
@@ -120,6 +136,7 @@ impl WorldSession {
                             status,
                             quest,
                             objective_index,
+                            &player_facts,
                         ) {
                             continue;
                         }
@@ -148,6 +165,7 @@ impl WorldSession {
                                 quest,
                                 objective.id,
                                 quest_already_rewarded,
+                                &player_facts,
                             )
                         {
                             quests_to_complete.push(status.quest_id);
@@ -196,6 +214,7 @@ impl WorldSession {
             return Some(Vec::new());
         };
         let new_non_bank_item_count = self.represented_non_bank_item_count_like_cpp(entry_id)?;
+        let player_facts = self.resolved_quest_objective_player_facts_for_quest_log_like_cpp();
         let changed_quest_ids = self.mutate_player_quest_gameplay_like_cpp(|state| {
             let mut statuses = state
                 .statuses_like_cpp()
@@ -208,6 +227,7 @@ impl WorldSession {
                     &mut statuses,
                     entry_id,
                     new_non_bank_item_count,
+                    &player_facts.borrow_like_cpp(),
                 );
             state.replace_statuses_like_cpp(
                 statuses.into_iter().collect(),
@@ -243,6 +263,7 @@ impl WorldSession {
         let Some(quest_store) = self.quests.store.clone() else {
             return Vec::new();
         };
+        let player_facts = self.resolved_quest_objective_player_facts_for_quest_log_like_cpp();
         self.mutate_player_quest_gameplay_like_cpp(|state| {
             let rewarded = state
                 .rewarded_quest_ids_like_cpp()
@@ -261,6 +282,7 @@ impl WorldSession {
                 entry_id,
                 quest_log_item_id,
                 count,
+                &player_facts.borrow_like_cpp(),
             );
             state.replace_statuses_like_cpp(
                 statuses.into_iter().collect(),
