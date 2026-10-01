@@ -118,9 +118,9 @@ use crate::session_policy::{
 use wow_ai::{
     CURRENT_EXPANSION_LIKE_CPP, CreatureAiCanAttackInputLikeCpp, CreatureAiKindLikeCpp,
     CreatureAiSelectionInputLikeCpp, CreatureAttackDistanceInputLikeCpp,
-    creature_ai_can_attack_like_cpp, creature_ai_uses_base_move_in_line_of_sight_like_cpp,
-    creature_attack_distance_like_cpp, max_level_for_expansion_like_cpp,
-    select_creature_ai_like_cpp,
+    creature_ai_can_attack_like_cpp, creature_ai_sets_no_melee_like_cpp,
+    creature_ai_uses_base_move_in_line_of_sight_like_cpp, creature_attack_distance_like_cpp,
+    max_level_for_expansion_like_cpp, select_creature_ai_like_cpp,
 };
 use wow_constants::creature::{CreatureFlagsExtra, CreatureType, CreatureTypeFlags};
 use wow_constants::item::{

@@ -32,9 +32,14 @@ gap, now repaired: C++ `Player::KilledMonster` credits the creature's entry **an
 `CreatureTemplate::KillCredit` proxy, where RustyCore credited only the entry, so an objective
 naming a proxy could never advance. A kill by spell damage still passes no proxies, because
 that path has no ObjectMgr catalog in scope and the composition root keeps those out of
-`WorldSession` by design; it is named at the call site. Also observed and **not** concluded: a
-critter swung back at the player 47 times, recorded as a ⚠VERIFY entry with the three C++
-places to check.
+`WorldSession` by design; it is named at the call site. The critter that swung back 47 times is also repaired:
+the only thing that stops a passive creature meleeing in C++ is
+`Unit::DoMeleeAttackIfReady`'s early return on `!Creature::CanMelee()`, and the flag behind it
+is written by the AI constructors that call `SetCanMelee(false)`. RustyCore enforced that for
+`TurretAI` by matching the database `AIName` string, which a critter — empty `AIName`,
+`CritterAI` by Permissible scoring — could never match; the gate now asks the resolved AI kind.
+Live: `creature_landed` went from 47 to 0 for a Rabbit, while entry 94 still retaliates, dies,
+pays XP and drops 9 copper plus two items in the same session.
 
 **Creature loot is proven live on 2026-10-01, in both halves.** `--loot-after-kill` kills a
 creature and loots it: against entry 299 the window offered `item_id 4865 x1` with

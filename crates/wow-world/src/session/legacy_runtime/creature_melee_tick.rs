@@ -412,11 +412,22 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
                 if !creature.can_swing() {
                     continue;
                 }
-                // C++ `TurretAI` calls `SetCanMelee(false)` in its
-                // constructor. The transitional selector stores the explicit
-                // DB AIName rather than a live AI object, so enforce that
-                // constructor side effect at the global melee boundary.
-                if creature.creature.lifecycle_metadata().ai_name == "TurretAI" {
+                // Several C++ AI constructors call `SetCanMelee(false)`, which is
+                // the whole mechanism that keeps a passive creature from swinging:
+                // `Creature::Update` reaches `DoMeleeAttackIfReady()` centrally for
+                // every creature, and that function returns immediately on the
+                // flag (`Entities/Unit/Unit.cpp:2433-2434`). The transitional
+                // selector stores template facts rather than a live AI object, so
+                // the side effect is enforced here.
+                //
+                // This used to compare the DB `AIName` against "TurretAI", which
+                // only sees an AI named explicitly in the database. A critter has
+                // an empty `AIName` and receives `CritterAI` from the Permissible
+                // scoring (`AI/CoreAI/PassiveAI.cpp:95-100`), so it slipped through
+                // and a Rabbit traded blows with the player.
+                if creature_ai_sets_no_melee_like_cpp(
+                    &legacy_creature_ai_selection_decision_like_cpp(creature, config),
+                ) {
                     outcome.melee_precondition_rejections += 1;
                     continue;
                 }
@@ -483,7 +494,9 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
 
         if !attacker.can_swing()
             || attacker.creature.ai_ownership().combat_target != Some(swing.victim_guid)
-            || attacker.creature.lifecycle_metadata().ai_name == "TurretAI"
+            || creature_ai_sets_no_melee_like_cpp(&legacy_creature_ai_selection_decision_like_cpp(
+                attacker, config,
+            ))
             || !attacker.creature.can_melee_like_cpp()
         {
             outcome.melee_precondition_rejections += 1;

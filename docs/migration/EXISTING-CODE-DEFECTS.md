@@ -721,17 +721,39 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `session_resources_requires_named_capability_bundles` — and that path has no catalog in
   scope. Written on the call site rather than left silent.
 
-- [ ] **⚠VERIFY 2026-10-01, live: a critter melees the player back.** Observed while verifying
-  the kill credit: a Rabbit (entry 721, `creature_template.type = 8`
-  `CREATURE_TYPE_CRITTER`, faction 31) published 47 `SMSG_ATTACKER_STATE_UPDATE` against the
-  player over 120 seconds, 50 damage in total, after the player attacked it. **Not yet a
-  defect:** in this reference `ThreatManager::CanHaveThreatList`
+- [x] **2026-10-01, live: a critter meleed the player back — repaired.** A Rabbit (entry 721,
+  `creature_template.type = 8` `CREATURE_TYPE_CRITTER`) published 47
+  `SMSG_ATTACKER_STATE_UPDATE` against the player over 120 seconds after being attacked.
+
+  The mechanism, read rather than assumed: `ThreatManager::CanHaveThreatList`
   (`Combat/ThreatManager.cpp:172-190`) does **not** exclude critters, and
-  `Creature::SelectVictim` reads the threat manager on that branch, so what is supposed to
-  keep a critter from swinging is its `REACT_PASSIVE` from
-  `Creature::InitializeReactState` plus whichever AI `FactorySelector::SelectAI` gives an
-  empty `AIName`. Check those three before concluding, and contrast with a capture: a critter
-  that fights back is wrong in the game, but the mechanism matters for the repair.
+  `Creature::Update` reaches `DoMeleeAttackIfReady()` centrally for every creature
+  (`Entities/Creature/Creature.cpp:921-932` — a region the fork patches, but only to collapse
+  a pet branch into the same unconditional call), so neither the threat list nor the AI's
+  `UpdateAI` is what stops the swing. The one thing that does is
+  `Unit::DoMeleeAttackIfReady`'s early return on `!Creature::CanMelee()`
+  (`Entities/Unit/Unit.cpp:2433-2434`), and the flag behind it is written by the AI
+  constructors that call `SetCanMelee(false)`: `TurretAI` (`AI/CoreAI/CombatAI.cpp:200`),
+  `VehicleAI` (`:234`), `PassiveAI` (`AI/CoreAI/PassiveAI.cpp:25`) and `NullCreatureAI`
+  (`:36`), with `CritterAI` deriving from `PassiveAI` and `TriggerAI`/`TotemAI` from
+  `NullCreatureAI`. `PossessedAI` sets only `REACT_PASSIVE` and is excluded.
+
+  RustyCore already enforced one of those at the global melee boundary, but by comparing the
+  database `AIName` against the string `"TurretAI"`. A critter's row leaves `AIName` empty and
+  receives `CritterAI` from the Permissible scoring (`AI/CoreAI/PassiveAI.cpp:95-100`), so it
+  was invisible to a string match. The gate now asks the resolved AI kind through
+  `creature_ai_sets_no_melee_like_cpp`, which covers every one of those constructors and
+  subsumes the old string test.
+
+  Live, before and after: `creature_landed=47` became `creature_landed=0`, with one player
+  swing killing the rabbit. Regression on an ordinary hostile creature in the same session:
+  entry 94 still retaliates (`creature_landed=3`), dies, pays 44 XP and drops 9 copper plus
+  two items. Reproduce with `--loot-after-kill --melee-creature-entry 721` and `… 94`.
+
+  **Not ported here:** `Creature::InitializeReactState` (`Creature.cpp:1357-1367`), which also
+  makes totems, triggers, critters and spirit services `REACT_PASSIVE`. RustyCore already
+  suppresses their `MoveInLineOfSight` aggro through the same AI-kind selection, so the
+  observable aggro behaviour matches; the react-state field itself is still unset for them.
 - [ ] **D-H5 Quest area-trigger (explore) objectives not wired.** Type 10 falls to `_=>false`;
   "explore Y" uncompletable. `handlers/quest.rs:653`.
 - [ ] **D-H6 Quest item-loot objectives not credited.** Loot path doesn't advance "collect X"

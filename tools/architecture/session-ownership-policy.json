@@ -33711,7 +33711,7 @@
           "kind": "method",
           "name": "on_creature_killed_with_generator_like_cpp",
           "visibility": "pub (crate)",
-          "signature": "async fn on_creature_killed_with_generator_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator , creature_entry : u32 , creature_guid : wow_core :: ObjectGuid ,)",
+          "signature": "async fn on_creature_killed_with_generator_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator , creature_entry : u32 , creature_guid : wow_core :: ObjectGuid , kill_credits : [i32 ; 2] ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -36080,7 +36080,7 @@
           "kind": "method",
           "name": "process_pending_creature_kills_with_generator_like_cpp",
           "visibility": "pub (in crate :: session)",
-          "signature": "async fn process_pending_creature_kills_with_generator_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator ,)",
+          "signature": "async fn process_pending_creature_kills_with_generator_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator , creature_catalog : & wow_data :: CreatureQueryCatalogLikeCpp ,)",
           "cfg": [],
           "source_class": "production",
           "guards": [
@@ -59798,6 +59798,19 @@
             "setter",
             "visible"
           ]
+        },
+        {
+          "module": "crate::session",
+          "trait_path": null,
+          "kind": "method",
+          "name": "killed_monster_credit_like_cpp",
+          "visibility": "pub (in crate :: session)",
+          "signature": "async fn killed_monster_credit_like_cpp (& mut self , item_guid_generator : & wow_core :: ObjectGuidGenerator , entry : u32 , credit_guid : wow_core :: ObjectGuid ,)",
+          "cfg": [],
+          "source_class": "production",
+          "guards": [
+            "visible"
+          ]
         }
       ]
     },
@@ -80671,13 +80684,6 @@
             {
               "side": "legacy",
               "kind": "field_access",
-              "symbol": "ai_name",
-              "fingerprint": "fnv1a64x2:8e9e3bd806fe2d44f6ffb5d59cb105ff:len=99",
-              "multiplicity": 2
-            },
-            {
-              "side": "legacy",
-              "kind": "field_access",
               "symbol": "applied_auras",
               "fingerprint": "fnv1a64x2:8d55243ee55a8b78c7c7e48e7d232a33:len=99",
               "multiplicity": 2
@@ -80700,8 +80706,8 @@
               "side": "legacy",
               "kind": "field_access",
               "symbol": "creature",
-              "fingerprint": "fnv1a64x2:231c8097cf3b80a7b0771386a7742728:len=1549",
-              "multiplicity": 31
+              "fingerprint": "fnv1a64x2:394d31b36af535fc9be72f4224ff473f:len=1449",
+              "multiplicity": 29
             },
             {
               "side": "legacy",
@@ -80854,8 +80860,8 @@
               "side": "legacy",
               "kind": "method_call",
               "symbol": "lifecycle_metadata",
-              "fingerprint": "fnv1a64x2:b21afea87a82696cc6c6a6d1e09dd3ff:len=299",
-              "multiplicity": 6
+              "fingerprint": "fnv1a64x2:cf19ccec1b89af582b9ebdedac7734d3:len=199",
+              "multiplicity": 4
             },
             {
               "side": "legacy",
@@ -80963,7 +80969,7 @@
               "multiplicity": 2
             }
           ],
-          "fingerprint": "signature=fn run_legacy_creature_melee_tick_once_like_cpp (legacy_map_manager : & crate :: map_manager :: SharedMapManager , canonical_map_manager : Option < & SharedCanonicalMapManager > , config : & crate :: session :: LegacyCreatureAggroConfigLikeCpp ,) -> LegacyCreatureMeleeTickOutcomeLikeCpp|body=fnv1a64x2:be36d9c117f6c4bebd8fa971411b1d21:len=40572|evidence=fnv1a64x2:bbbfcaea9aa9f180658073fe79ada153:len=31419",
+          "fingerprint": "signature=fn run_legacy_creature_melee_tick_once_like_cpp (legacy_map_manager : & crate :: map_manager :: SharedMapManager , canonical_map_manager : Option < & SharedCanonicalMapManager > , config : & crate :: session :: LegacyCreatureAggroConfigLikeCpp ,) -> LegacyCreatureMeleeTickOutcomeLikeCpp|body=fnv1a64x2:1ddaacccf2d704bcef66066faa50357f:len=40652|evidence=fnv1a64x2:05bd96ed33b8b09df101189fd7b07532:len=30935",
           "cfg": [],
           "multiplicity": 1
         },
