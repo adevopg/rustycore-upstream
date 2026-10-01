@@ -110,14 +110,25 @@ type the M3/M4 exit needs — kill, item and explore — now has wire evidence.
 world database, and the money branch is proven live. With it, **every objective type the
 M3/M4 exit needs has wire evidence**: kill, item, explore, and now money.
 
+**D-M18 was withdrawn the same day it was raised**: the Rust reputation reader is faithful,
+because `ReputationMgr::Initialize` gives every faction with a reputation index a
+`FactionState` with `Standing = 0`, which makes the C++ `return 0` it was compared against
+unreachable. The correction is recorded beside the claim.
+
+**D-M15 is done, and recorded as latent rather than live**: `QuestLogItemId` no longer
+decides credit or wire bytes, but all 625 rows of the installed `item_template_addon` hold
+`0`, so nothing on this installation could have exercised it and no live run distinguishes
+before from after. Its inert plumbing is D-L4.
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-**D-M18** — `reputation_for_faction_like_cpp` reports a base standing where C++
-`ReputationMgr::GetReputation` reports zero for a faction the player has no `FactionState`
-for. It was found while closing D-H17, which put that reader in charge of deciding
-completion for 166 reputation objectives, and every other reputation consumer already shares
-it, so it is both small and load-bearing. After it, the quest lane's remaining items are
-D-M15 (`QuestLogItemId` credited and put on the wire where the target build does neither)
-and the `NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
+the `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` boundary noted under D-H4. C++
+`UpdateQuestObjectiveProgress` skips a `QUEST_OBJECTIVE_MONSTER` objective when the quest has
+that flag and the victim GUID is empty (`Entities/Player/Player.cpp:16653-16655`), which is
+how a kill credited by spell damage or by a script differs from a kill credited by a creature.
+RustyCore's kill-credit path does not carry the victim GUID that far, which is the same gap
+the D-H4 repair named and left. It closes the kill-credit lane the way D-M15 closed the
+item-credit one, and it has a live shape that already works: kill with a creature, then credit
+without one, and read `character_queststatus_objectives` back after a clean logout.
 
 ## 1. Direction from here
 

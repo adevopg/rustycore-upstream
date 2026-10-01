@@ -82,8 +82,11 @@ impl RepresentedQuestObjectivePlayerFactsLikeCpp<'_> {
             .is_some_and(|quantity| i64::from(*quantity) >= i64::from(amount))
     }
 
-    /// C++ `ReputationMgr::GetReputation` returns `0` for a faction the player has
-    /// no state for (`Reputation/ReputationMgr.cpp:183-193`).
+    /// A faction the owner could not resolve reads as `0`, which is what C++
+    /// `ReputationMgr::GetReputation(uint32)` returns for an id that is not in
+    /// `FactionStore` (`Reputation/ReputationMgr.cpp:114-125`). For a faction that
+    /// *is* in the store the owner always resolves a value, because
+    /// `ReputationMgr::Initialize` gives every one of them a `FactionState`.
     fn reputation_like_cpp(&self, faction_id: i32) -> i32 {
         self.reputation_standings
             .get(&faction_id)
@@ -153,10 +156,9 @@ pub(crate) fn apply_quest_item_added_to_statuses_like_cpp(
     facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
 ) -> Vec<u32> {
     let entry_object_id = i32::try_from(entry_id).unwrap_or(i32::MAX);
-    let mut objective_ids = vec![entry_object_id];
-    if quest_log_item_id != 0 {
-        objective_ids.push(i32::try_from(quest_log_item_id).unwrap_or(i32::MAX));
-    }
+    // C++ `ItemAddedQuestCheck` credits the item entry only; see D-M15.
+    let objective_ids = [entry_object_id];
+    let _ = quest_log_item_id;
     let count = i32::try_from(count).unwrap_or(i32::MAX);
     let mut changed_quest_ids = Vec::new();
     let mut quests_to_complete = Vec::new();

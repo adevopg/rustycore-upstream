@@ -140,9 +140,22 @@ C++ asks the Player for, resolved by the owner for the ids that quest's own obje
 and a quest with none of those types costs no session read at all. Live: quest 13265 "Cloth
 Scavenging", whose only objective is money for 50000, seeded incomplete with 49995 in hand;
 looting 11 copper from one kill took it to 50006 and the persisted quest status went from
-incomplete to complete, through the real `MoneyChanged` drain. One adjacent reader is left
-open as D-M18: `reputation_for_faction_like_cpp` reports a base standing where C++ reports
-zero for a faction with no `FactionState`.
+incomplete to complete, through the real `MoneyChanged` drain. One adjacent reader was raised as D-M18 and
+**withdrawn the same day**: `reputation_for_faction_like_cpp` is faithful, because
+`ReputationMgr::Initialize` gives every faction with a reputation index a `FactionState` with
+`Standing = 0`, which makes the C++ `return 0` it was compared against unreachable. The
+correction is recorded beside the claim rather than deleted, since the claim had already been
+published in a commit message and a PR.
+
+**`QuestLogItemId` no longer decides anything, and the divergence was latent (D-M15).** The
+port read `item_template_addon.QuestLogItemId`, credited item objectives keyed on it and wrote
+it into `SMSG_ITEM_PUSH_RESULT`; in the target build the field appears exactly once, as a
+commented-out packet assignment (`Entities/Player/Player.cpp:13869`), and
+`ItemAddedQuestCheck` takes only the item entry. Both halves now match, with a positive and a
+negative test. It is stated as latent rather than fixed-in-play because all 625 rows of the
+installed `item_template_addon` hold `0`: no item here could have exercised it, so no live run
+distinguishes before from after and none was staged. The ~89 inert references that still carry
+the value are recorded as D-L4 for the next change that owns that table.
 
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to

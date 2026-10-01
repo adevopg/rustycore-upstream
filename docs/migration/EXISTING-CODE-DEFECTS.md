@@ -867,15 +867,26 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   (`Reputation/ReputationMgr.cpp:183-193`). For a faction whose race/class base is non-zero
   the two disagree. It is pre-existing and shared with every other reputation consumer, so
   it belongs to its own change rather than to this one; recorded as D-M18.
-- [ ] **D-M18 `reputation_for_faction_like_cpp` reports a base standing where C++ reports
-  zero.** C++ `ReputationMgr::GetReputation(FactionEntry const*)`
-  (`Reputation/ReputationMgr.cpp:183-193`) returns `GetBaseReputation + state->Standing`
-  **only when the player has a `FactionState` for that faction**, and `0` otherwise. Rust
-  returns `base_reputation_like_cpp(...) + standing.unwrap_or(0)`, so for a faction the
-  player has never interacted with and whose race/class base is non-zero it over-reports.
-  Found while closing D-H17, which made that reader decide quest completion for 166
-  reputation objectives; every other reputation consumer shares it.
-  Rust `wow-world/src/reputation/mgr/state_2_ops_1.rs:20-34`.
+- [x] **D-M18 withdrawn: it was a misreading, and the Rust reputation reader is faithful.**
+  Raised and withdrawn 2026-10-01, the same day. The claim was that
+  `reputation_for_faction_like_cpp` over-reports because it returns
+  `base_reputation + standing.unwrap_or(0)` where C++
+  `ReputationMgr::GetReputation(FactionEntry const*)` returns `0` outright for a faction with
+  no `FactionState` (`Reputation/ReputationMgr.cpp:183-193`).
+
+  That `return 0` is unreachable for any faction the comparison is about.
+  `ReputationMgr::Initialize` (`:395-426`) inserts a `FactionState` with `Standing = 0` for
+  **every** faction whose `CanHaveReputation()` holds, and `CanHaveReputation()` is exactly
+  `ReputationIndex >= 0` (`DataStores/DB2Structure.h:1280-1283`) — the same predicate as
+  Rust's `can_have_reputation_like_cpp`. So for a faction the player has never touched, C++
+  computes `GetBaseReputation + 0`, which is precisely what Rust's `unwrap_or(0)` computes.
+  The Rust port also calls its own `initialize_like_cpp` in production
+  (`session/progression/reputation.rs:243`), with its own regressions for the
+  reputation-faction-only state list, the race/class slot choice, friendship factions and
+  paragon flags.
+
+  Recorded rather than deleted: the finding was published in a commit message and a PR
+  before it was checked, and the correction belongs next to it.
 
 ## MED — wrong values / loose checks / minor loss
 
@@ -941,22 +952,44 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   The wider #524 family remains open because Rust does not yet load and consume
   `SkillLineXTraitTree` through a `TraitMgr`-equivalent production authority.
 
-- [ ] **D-M15 `QuestLogItemId` is credited and put on the wire, which the target build
-  does neither.** RustyCore reads `item_template_addon.QuestLogItemId`, credits
-  `QUEST_OBJECTIVE_ITEM` objectives keyed on it in addition to the item entry, and writes it
-  into `SMSG_ITEM_PUSH_RESULT.QuestLogItemID`. In
-  `/home/server/woltk-trinity-legacy` the field appears exactly once in the whole server,
-  as the commented-out line
+- [x] **D-M15 `QuestLogItemId` was credited and put on the wire, and the target build does
+  neither. Latent, not live.** Closed 2026-10-01.
+
+  RustyCore read `item_template_addon.QuestLogItemId`, credited `QUEST_OBJECTIVE_ITEM`
+  objectives keyed on it in addition to the item entry, and wrote it into
+  `SMSG_ITEM_PUSH_RESULT.QuestLogItemID`. In `/home/server/woltk-trinity-legacy` the field
+  appears exactly once in the whole server, as the commented-out line
   `//packet.QuestLogItemID = item->GetTemplate()->QuestLogItemId;`
-  (`src/server/game/Entities/Player/Player.cpp:13869`), so stock
-  `Player::SendNewItem` ships `0` and `ItemAddedQuestCheck(entry, count)`
-  (`:16533-16536`) only ever passes the item entry to
-  `UpdateQuestObjectiveProgress`. Two consequences: an item-push byte divergence, and
-  credit for objectives the target build would not credit. Found while closing D-H6, which
-  removed a separate invented objective gate in the same code; left open rather than folded
-  into that repair. Rust: `handlers/quest/objectives.rs`
-  (`apply_quest_item_added_objective_progress_with_generator_like_cpp`'s second objective
-  id) and `session_rules/rules_1.rs` (`quest_log_item_id` in the push plan).
+  (`Entities/Player/Player.cpp:13869`), so stock `Player::SendNewItem` ships the packet
+  default for every push; and `ItemAddedQuestCheck(uint32 entry, uint32 count)`
+  (`Entities/Player/Player.h:1557`, body at `:16533-16536`) hands
+  `UpdateQuestObjectiveProgress` the item entry and nothing else.
+
+  Both halves are repaired at the one point each becomes observable: the push-result
+  conversion writes `0`, and the credit paths key on the item entry alone. A positive and a
+  negative test pin it — an objective on the stored item's entry advances, one on the
+  template's `QuestLogItemId` is left untouched — and the `SMSG_ITEM_PUSH_RESULT` mapping test
+  now asserts `0` however the plan was filled.
+
+  **It could not have shown up in play, and that is worth stating rather than dressing up.**
+  All 625 rows of the installed `item_template_addon` have `QuestLogItemId = 0`, so no item on
+  this installation could produce a non-zero credit id or a non-zero wire field. There is
+  therefore no live run that distinguishes before from after, and none was staged. The
+  evidence is the source, which is conclusive on its own, plus the capture-diff semantic rule
+  for the issue-106 `ItemPushResult`, which already requires `QuestLogItemID == 0` from the
+  real byte stream (`capture-diff/src/semantic/state_4.rs:358,388`).
+
+  **Deliberately not done:** retiring the ~89 remaining references that compute and carry the
+  value through the loot, item-store, void-storage and spell paths. With both decision points
+  faithful and every data row zero, they are inert rather than wrong, and removing them is a
+  twenty-file mechanical change with no behaviour at stake. It belongs with the next change
+  that owns `item_template_addon`, not bolted onto this one. Recorded as D-L4.
+- [ ] **D-L4 The inert `QuestLogItemId` plumbing should be retired.** After D-M15 the value is
+  read from `item_template_addon`, cached, threaded through the loot, item-store,
+  void-storage, spell and quest paths and then ignored at both points where it used to be
+  observable. About 89 non-test references across twenty files carry a number nothing
+  consumes, which is how the original divergence survived unnoticed. No behaviour depends on
+  it, so this is cleanup to fold into the next change that owns `item_template_addon`.
 - [x] **D-M16 The global player-melee phase used the boundary radius as a second range
   requirement, so a facing attacker four yards away never swung.** Closed 2026-10-01. Found
   by chasing a swing that three live runs could not land: the phase counted

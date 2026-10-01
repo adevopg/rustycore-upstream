@@ -243,3 +243,47 @@ fn a_money_objective_can_complete_the_quest_like_cpp() {
     assert!(!can_complete(&Facts::for_test_like_cpp(299, [], [], [])));
     assert!(can_complete(&Facts::for_test_like_cpp(300, [], [], [])));
 }
+
+/// C++ `ItemAddedQuestCheck(entry, count)` passes the item entry and nothing else
+/// (`Entities/Player/Player.cpp:16533-16536`), so an objective keyed on the
+/// template's `QuestLogItemId` is never credited by storing that item. The field
+/// appears exactly once in the target build, as a commented-out packet assignment
+/// at `:13869`; D-M15 has the detail.
+#[tokio::test]
+async fn an_item_objective_keyed_on_quest_log_item_id_is_not_credited_like_cpp() {
+    let (mut session, _send_rx) = make_session();
+    let quest_id = 7_208;
+    let stored_item_id = 9_401_u32;
+    let quest_log_item_id = 9_501_u32;
+    let mut quest = quest_template(quest_id);
+    for (storage_index, object_id) in [(0_i8, stored_item_id), (1_i8, quest_log_item_id)] {
+        quest.objectives.push(QuestObjective {
+            id: quest_id * 10 + storage_index as u32,
+            quest_id,
+            obj_type: QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL,
+            order: storage_index as u8,
+            storage_index,
+            object_id: object_id as i32,
+            amount: 1,
+            flags: 0,
+            flags2: 0,
+            progress_bar_weight: 0.0,
+            description: String::new(),
+        });
+    }
+    session.set_quest_store(Arc::new(QuestStore::from_quests_like_cpp([quest])));
+    add_active_quest_in_slot(&mut session, quest_id, 0);
+
+    let changed = session
+        .apply_quest_item_added_objective_progress_like_cpp(stored_item_id, quest_log_item_id, 1)
+        .await;
+
+    assert_eq!(changed, vec![quest_id]);
+    // Only storage index 0 is written. Index 1 is not even allocated, because
+    // nothing credited it: C++ would have passed only the entry too.
+    assert_eq!(
+        session.player_quests[&quest_id].objective_counts,
+        vec![1],
+        "the entry's objective advances and the QuestLogItemId one is untouched"
+    );
+}

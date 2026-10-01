@@ -90,10 +90,13 @@ impl WorldSession {
         };
         let count = i32::try_from(count).unwrap_or(i32::MAX);
         let entry_object_id = i32::try_from(entry_id).unwrap_or(i32::MAX);
-        let mut objective_ids = vec![entry_object_id];
-        if quest_log_item_id != 0 {
-            objective_ids.push(i32::try_from(quest_log_item_id).unwrap_or(i32::MAX));
-        }
+        // C++ `ItemAddedQuestCheck(entry, count)` passes the item entry and nothing
+        // else (`Entities/Player/Player.cpp:16533-16536`). `QuestLogItemId` never
+        // reaches `UpdateQuestObjectiveProgress`: the field appears exactly once in
+        // the target build, as a commented-out packet assignment at `:13869`. See
+        // D-M15 for why the parameter is still carried here.
+        let objective_ids = [entry_object_id];
+        let _ = quest_log_item_id;
 
         // The loop below walks the whole quest log, so the live state its
         // completion rules read is resolved for every quest in it, once, before the

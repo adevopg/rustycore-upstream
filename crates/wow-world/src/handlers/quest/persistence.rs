@@ -152,10 +152,9 @@ impl WorldSession {
             return planned;
         }
 
-        let mut objective_ids = vec![entry_object_id];
-        if quest_log_item_id != 0 {
-            objective_ids.push(i32::try_from(quest_log_item_id).unwrap_or(i32::MAX));
-        }
+        // C++ `ItemAddedQuestCheck` credits the item entry only; see D-M15.
+        let objective_ids = [entry_object_id];
+        let _ = quest_log_item_id;
         let added_count = i32::try_from(added_count).unwrap_or(i32::MAX);
 
         for current_status in state.statuses_like_cpp().values() {

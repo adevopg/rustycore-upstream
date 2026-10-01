@@ -259,7 +259,12 @@ pub(crate) fn item_push_result_from_send_new_item_plan(plan: &SendNewItemPlan) -
                     .collect(),
             },
         },
-        quest_log_item_id: plan.quest_log_item_id as i32,
+        // C++ `Player::SendNewItem` leaves `QuestLogItemID` at its packet default:
+        // the only assignment in the target build is commented out
+        // (`Entities/Player/Player.cpp:13869`), so stock ships `0` for every item
+        // push. The plan still carries the `item_template_addon` value because the
+        // item-store paths read it for their own logging and caches; it stops here.
+        quest_log_item_id: 0,
         quantity: plan.quantity as i32,
         quantity_in_inventory: plan.quantity_in_inventory as i32,
         dungeon_encounter_id: plan.dungeon_encounter_id as i32,
