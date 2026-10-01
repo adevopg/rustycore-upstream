@@ -6,6 +6,7 @@
 use super::*;
 
 mod area_trigger_smoke;
+mod aura_save_smoke;
 mod character;
 mod cli;
 mod create_character;
@@ -40,6 +41,7 @@ mod world_handshake;
 
 #[allow(unused_imports)]
 pub(crate) use area_trigger_smoke::*;
+pub(crate) use aura_save_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use character::*;
 #[allow(unused_imports)]

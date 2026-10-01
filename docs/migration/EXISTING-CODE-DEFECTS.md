@@ -887,6 +887,79 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
   Recorded rather than deleted: the finding was published in a commit message and a PR
   before it was checked, and the correction belongs next to it.
+- [x] **D-H18 Player auras were loaded but never saved, so every buff and debuff died at
+  logout.** Opened and implemented 2026-10-01; live evidence below.
+
+  `Player::_LoadAuras` is composed in production — `handlers/character/world_entry.rs:2447`
+  reads `character_aura` and `character_aura_effect` and installs the applications — but there
+  was no write side anywhere. The only `save_auras` in the tree was the pet's
+  (`pet/ops_2.rs:207`), `PlayerCharacterSaveRequestLikeCpp` had no aura group, and the
+  `CharStatements::{DEL_CHAR_AURA, DEL_CHAR_AURA_EFFECT, INS_AURA, INS_AURA_EFFECT}`
+  statements existed with no caller. A character therefore logged back in with exactly the
+  auras of its last successful *write*, which was never, so with none.
+
+  Ported as C++ builds it, in the layers that own each part:
+
+  * `Aura::CanBeSaved` (`Spells/Auras/SpellAuras.cpp:1172-1209`) and `Aura::GenerateKey`
+    (`:1262-1281`) as pure rules in `wow-entities/src/unit_subsystems/aura_save.rs`, with the
+    two masks **derived** from the live effect list the way `GenerateKey` derives them, so a
+    caller cannot hand in a mask that disagrees with the effect rows beside it.
+  * `Player::_SaveAuras`'s statement order (`Entities/Player/Player.cpp:20089-20146`) as the
+    plan: `DEL_CHAR_AURA_EFFECT`, `DEL_CHAR_AURA`, then each kept aura followed by its own
+    effect rows. Both deletes are appended before C++ reads `m_ownedAuras`, so an empty aura
+    list still clears the stored rows; a group that could not be read is `None` and touches
+    neither table.
+  * the group's place in the transaction: between the action buttons and the equipment sets,
+    which is C++'s `_SaveActions` → `_SaveAuras` (`Player.cpp:19947-19948`). The frozen
+    statement-order fixture gained exactly those four entries at that point and nothing moved.
+  * the three `SpellInfo` predicates `CanBeSaved` consults, none of which existed:
+    `IsSingleTarget` (`SpellInfo.cpp:1789-1796`, `SPELL_ATTR5_LIMIT_N` alone), the
+    area-effect loop (`IsTargetingArea` + `IsAreaAuraEffect`, `SpellInfo.cpp:452-489`,
+    including the complete `AREA`/`CONE` set from `SpellImplicitTargetInfo::_data`), and
+    `SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED`. The last has no `AttributesCu` field here, so its
+    rules are read off the stores at the point of use: the aura-type list at
+    `SpellMgr.cpp:3340-3362` and the `LeaveWorld` interrupt flag at `:3604-3605`.
+
+  **Named boundaries, written at the call site rather than left silent.** Each is a fact the
+  represented runtime does not carry, not a choice:
+
+  * `castItemId` / `castItemLevel` are written as zero, because the represented aura carries
+    neither. The load side ignores both columns too, so the round trip is self-consistent.
+  * `remainCharges` is written as zero, because charge consumption is not tracked for Player
+    auras. `_LoadAuras` restores the spell's full `ProcCharges` for a stored zero, which is
+    the same branch it takes for a C++ aura that never spent a charge.
+  * per-effect `baseAmount` is the effect's `BasePoints`, which is what
+    `AuraEffect::AuraEffect` (`SpellAuraEffects.cpp:620`) computes when no stored base amount
+    was loaded. The port's `_LoadAuras` does not retain loaded base amounts, so a saved aura
+    comes back with the data value rather than its own.
+  * `recalculateMask` is the full effect mask, because `AuraEffect::m_canBeRecalculated`
+    starts true (`:622`) and is only cleared by a script amount handler this port does not run.
+  * the third source of `SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED`, liquid auras
+    (`SpellMgr.cpp:3649-3655`), reads `LiquidType.db2::SpellID`, which no store here loads.
+  * the installed `character_aura` has thirteen columns; the reference fork also writes
+    `critChance` and `applyResilience`. The port writes the thirteen that exist.
+
+  A permanent aura round-trips through the C++ `-1` marker: this port represents a permanent
+  aura as `duration_total == 0` (`spell_state/aura_application.rs:880-882`) and writes `-1` for
+  both duration columns, which is the value the loader's own permanent branch reads back
+  (`session/mod.rs:1586-1602`).
+
+  **Live evidence, 2026-10-01** (`tools/wow-test-bot --aura-save 6673`, exit 0, reproduced
+  twice). Seeding and then finding the row still present proves nothing — that is also what a
+  missing save looks like — so the fixture seeds two rows and the check is the difference
+  between them. A row for spell `90000001`, which no `Spell.db2` carries and `_LoadAuras`
+  therefore drops, **did not survive** the logout: the table really was cleared and rewritten.
+  The Battle Shout row survived with every seeded value replaced by the live one:
+  `recalculateMask` 0 → 1, `remainCharges` 5 → 0, and the effect's `baseAmount` 777777 → **14**,
+  which is that effect's `BasePoints`. `casterGuid` came back as 16 binary bytes. The relog
+  published `SMSG_AURA_UPDATE` twice, so what the save wrote came back as a live aura.
+
+  **A defect this introduced, caught by the tests before it reached the server.** The first
+  wiring asked the session for the Player again from inside the save projection. That
+  projection already runs with the canonical map mutex held — it is handed the `&Player` — and
+  `with_owned_player_like_cpp` locks the same mutex, so sixteen test threads deadlocked on it.
+  The aura rows are now built from the `Player` the projection was given; the session-based
+  wrapper is kept for callers that do not hold the lock, and says so.
 
 ## MED — wrong values / loose checks / minor loss
 

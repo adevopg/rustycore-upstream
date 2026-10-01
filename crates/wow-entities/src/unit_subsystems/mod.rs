@@ -10,6 +10,7 @@
 //! `Unit` itself keeps its own module.
 
 mod aura;
+mod aura_save;
 mod combat;
 mod control;
 mod movement;
@@ -17,6 +18,7 @@ mod spell;
 mod threat;
 
 pub use aura::*;
+pub use aura_save::*;
 pub use combat::*;
 pub use control::*;
 pub use movement::*;

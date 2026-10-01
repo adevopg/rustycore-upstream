@@ -493,6 +493,7 @@ impl WorldSession {
             spell_cooldowns,
             spell_charges,
             action_buttons,
+            auras: self.player_aura_save_rows_like_cpp(),
             equipment_sets,
             void_storage,
             tutorials,

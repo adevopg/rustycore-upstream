@@ -22,6 +22,10 @@ pub struct PlayerCharacterSaveRequestLikeCpp {
     pub spell_cooldowns: Option<Vec<PlayerSpellCooldownSaveLikeCpp>>,
     pub spell_charges: Option<Vec<PlayerSpellChargeSaveLikeCpp>>,
     pub action_buttons: Option<PlayerActionButtonsSaveLikeCpp>,
+    /// C++ `Player::_SaveAuras`, appended between `_SaveActions` and
+    /// `_SaveSkills` (`Player.cpp:19947-19949`). `Some(empty)` still clears the
+    /// stored rows, because C++ appends both deletes before it reads the aura map.
+    pub auras: Option<Vec<PlayerAuraSaveLikeCpp>>,
     pub equipment_sets: Option<Vec<PlayerEquipmentSetSaveLikeCpp>>,
     pub void_storage: Option<Vec<PlayerVoidStorageSlotSaveLikeCpp>>,
     pub tutorials: Option<PlayerTutorialsSaveLikeCpp>,
@@ -54,6 +58,7 @@ impl PlayerCharacterSaveRequestLikeCpp {
                 .tutorials
                 .as_ref()
                 .is_some_and(|tutorials| !tutorials.already_persisted),
+            auras: self.auras.is_some(),
             reputation: !self.reputations.is_empty(),
         }
     }
@@ -67,6 +72,7 @@ pub struct PlayerCharacterCommittedGroupsLikeCpp {
     pub equipment_sets: bool,
     pub tutorials_changed: bool,
     pub tutorials_insert: bool,
+    pub auras: bool,
     pub reputation: bool,
 }
 
@@ -198,6 +204,39 @@ pub struct PlayerActionButtonsSaveLikeCpp {
 pub struct PlayerActionButtonSaveLikeCpp {
     pub button: u8,
     pub packed_action: u32,
+}
+
+/// One `character_aura` row as C++ `_SaveAuras` binds it
+/// (`Player.cpp:20108-20126`). The two GUIDs are the raw binary values C++
+/// writes with `setBinary(ObjectGuid::GetRawValue())`, so they round-trip with
+/// the login rows that read the same columns.
+///
+/// The installed `character_aura` has thirteen columns; the reference fork also
+/// writes `critChance` and `applyResilience`, which this schema does not have.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerAuraSaveLikeCpp {
+    pub caster_guid_binary: Vec<u8>,
+    pub item_guid_binary: Vec<u8>,
+    pub spell_id: u32,
+    pub effect_mask: u32,
+    pub recalculate_mask: u32,
+    pub difficulty: u8,
+    pub stack_count: u8,
+    pub max_duration_ms: i32,
+    pub remain_time_ms: i32,
+    pub remain_charges: u8,
+    pub cast_item_id: u32,
+    pub cast_item_level: i32,
+    pub effects: Vec<PlayerAuraEffectSaveRowLikeCpp>,
+}
+
+/// One `character_aura_effect` row (`Player.cpp:20128-20143`). It repeats the
+/// owning aura's key columns, which the adapter copies from the aura row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerAuraEffectSaveRowLikeCpp {
+    pub effect_index: u8,
+    pub amount: i32,
+    pub base_amount: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

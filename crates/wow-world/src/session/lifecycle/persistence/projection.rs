@@ -452,6 +452,14 @@ pub(super) fn request(
         spell_cooldowns,
         spell_charges,
         action_buttons,
+        // The canonical map lock is already held here, so the aura rows come
+        // from the Player in hand rather than from another session lookup.
+        auras: Some(crate::session::spell_state::player_aura_save_rows_like_cpp(
+            snapshot.guid,
+            &player.unit().subsystems().auras,
+            session.spell_store().map(std::sync::Arc::as_ref),
+            session.difficulty_store().map(std::sync::Arc::as_ref),
+        )),
         equipment_sets,
         void_storage,
         tutorials,

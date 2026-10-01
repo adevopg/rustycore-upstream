@@ -151,6 +151,42 @@ if it is zero, and moves the character into the trigger — all fixtures to colu
 passes or fails; the quest rows are left as the server wrote them, because they are
 the evidence.
 
+## Aura persistence across a logout — live and mutating
+
+`--aura-save` drives C++ `Player::_SaveAuras` (`Entities/Player/Player.cpp:20089-20146`),
+which the full save reaches right after `_SaveActions` (`:19948`).
+
+The hard part of this check is that the obvious observation proves nothing. Seeding a
+`character_aura` row, logging in and out, and finding the row still there looks exactly
+the same whether the save rewrote it or never ran at all — and never running was the
+actual defect. So the fixture seeds **two** rows and the assertions are about the
+difference between them:
+
+* the spell you pass, with stored values the save cannot reproduce: `remainCharges = 5`
+  and `baseAmount = 777777`. After the logout both must be gone, because `_SaveAuras`
+  rewrites every row from the live aura.
+* spell `90000001`, which no `Spell.db2` row can carry. `_LoadAuras` drops a stored aura
+  whose `SpellInfo` is missing, so it is not in the live aura map and the save must not
+  write it back. If that row survives, the table was never cleared.
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local --aura-save 6673
+```
+
+The sequence is `seed -> login -> count SMSG_AURA_UPDATE -> clean logout -> read
+character_aura and character_aura_effect back -> login again -> count SMSG_AURA_UPDATE`.
+A run fails if the unknown-spell row survived, if the seeded `remainCharges` or
+`baseAmount` is still there, if the spell is missing from the table, or if the relog
+published no aura update.
+
+Pick a spell the character actually knows nothing about — the aura is restored from the
+row, not cast, so any spell with a `Spell.db2` entry works.
+
+This mode writes: it clears and seeds both aura tables for the QA character and restores
+one a previous run left dead. The rows after the run are left as the server wrote them,
+because they are the evidence.
+
 ## The death exit — live and mutating
 
 `--death-smoke` drives the whole corpse circuit and reports what the server

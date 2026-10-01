@@ -115,6 +115,32 @@ fn character_save_adapter_preserves_the_frozen_statement_order_like_cpp() {
                 packed_action: 0x0100_0064,
             }],
         }),
+        auras: Some(vec![PlayerAuraSaveLikeCpp {
+            caster_guid_binary: vec![1; 16],
+            item_guid_binary: vec![0; 16],
+            spell_id: 700,
+            effect_mask: 0b11,
+            recalculate_mask: 0b11,
+            difficulty: 0,
+            stack_count: 1,
+            max_duration_ms: 60_000,
+            remain_time_ms: 42_000,
+            remain_charges: 0,
+            cast_item_id: 0,
+            cast_item_level: 0,
+            effects: vec![
+                PlayerAuraEffectSaveRowLikeCpp {
+                    effect_index: 0,
+                    amount: 7,
+                    base_amount: 5,
+                },
+                PlayerAuraEffectSaveRowLikeCpp {
+                    effect_index: 1,
+                    amount: 9,
+                    base_amount: 9,
+                },
+            ],
+        }]),
         equipment_sets: Some(vec![
             equipment_insert,
             equipment_update,
@@ -327,4 +353,138 @@ fn the_full_save_persists_the_absolute_at_login_flags_like_cpp() {
         !CharStatements::UPD_CHAR_AT_LOGIN_FLAGS.sql().contains('|'),
         "the full save is an absolute assignment, not an OR mask"
     );
+}
+
+#[test]
+fn the_aura_group_writes_both_deletes_then_each_aura_with_its_own_effects_like_cpp() {
+    // C++ `Player::_SaveAuras` (`Player.cpp:20089-20146`) appends
+    // `CHAR_DEL_CHAR_AURA_EFFECT`, then `CHAR_DEL_CHAR_AURA`, then for each
+    // saveable aura one `CHAR_INS_AURA` immediately followed by that aura's own
+    // `CHAR_INS_AURA_EFFECT` rows. The group sits between the action buttons and
+    // the skills (`Player.cpp:19947-19949`).
+    let mut request = minimal_character_request();
+    request.auras = Some(vec![
+        PlayerAuraSaveLikeCpp {
+            caster_guid_binary: vec![1; 16],
+            item_guid_binary: vec![0; 16],
+            spell_id: 101,
+            effect_mask: 0b101,
+            recalculate_mask: 0b100,
+            difficulty: 0,
+            stack_count: 1,
+            max_duration_ms: 60_000,
+            remain_time_ms: 42_000,
+            remain_charges: 0,
+            cast_item_id: 0,
+            cast_item_level: 0,
+            effects: vec![
+                PlayerAuraEffectSaveRowLikeCpp {
+                    effect_index: 0,
+                    amount: 7,
+                    base_amount: 5,
+                },
+                PlayerAuraEffectSaveRowLikeCpp {
+                    effect_index: 2,
+                    amount: -3,
+                    base_amount: -3,
+                },
+            ],
+        },
+        PlayerAuraSaveLikeCpp {
+            caster_guid_binary: vec![2; 16],
+            item_guid_binary: vec![0; 16],
+            spell_id: 202,
+            effect_mask: 0b1,
+            recalculate_mask: 0,
+            difficulty: 0,
+            stack_count: 3,
+            max_duration_ms: -1,
+            remain_time_ms: -1,
+            remain_charges: 0,
+            cast_item_id: 0,
+            cast_item_level: 0,
+            effects: Vec::new(),
+        },
+    ]);
+    let statements = player_character_save_statements_like_cpp(&request);
+    let sql = statements
+        .iter()
+        .map(PreparedStatement::sql)
+        .collect::<Vec<_>>();
+    let position = |needle: &str| {
+        sql.iter()
+            .position(|candidate| *candidate == needle)
+            .unwrap_or_else(|| panic!("missing statement: {needle}"))
+    };
+
+    let delete_effects = position(CharStatements::DEL_CHAR_AURA_EFFECT.sql());
+    let delete_auras = position(CharStatements::DEL_CHAR_AURA.sql());
+    let first_aura = position(CharStatements::INS_AURA.sql());
+    let first_effect = position(CharStatements::INS_AURA_EFFECT.sql());
+    assert!(delete_effects < delete_auras, "effects are deleted first");
+    assert!(delete_auras < first_aura, "both deletes precede any insert");
+    assert!(
+        first_aura < first_effect,
+        "an aura precedes its own effects"
+    );
+    assert_eq!(
+        sql.iter()
+            .filter(|candidate| **candidate == CharStatements::INS_AURA.sql())
+            .count(),
+        2
+    );
+    assert_eq!(
+        sql.iter()
+            .filter(|candidate| **candidate == CharStatements::INS_AURA_EFFECT.sql())
+            .count(),
+        2,
+        "only the first aura carries effect rows"
+    );
+    // The second aura's row follows the first aura's effects, not before them.
+    assert!(
+        sql.iter()
+            .skip(first_effect)
+            .any(|candidate| *candidate == CharStatements::INS_AURA.sql())
+    );
+
+    // Both GUID columns are bound as the raw binary C++ writes with
+    // `setBinary(ObjectGuid::GetRawValue())`, not as text.
+    let aura_params = statements[first_aura].params();
+    assert_eq!(aura_params.len(), 13);
+    assert_eq!(aura_params[1], crate::params::SqlParam::Bytes(vec![1; 16]));
+    assert_eq!(aura_params[2], crate::params::SqlParam::Bytes(vec![0; 16]));
+    let effect_params = statements[first_effect].params();
+    assert_eq!(effect_params.len(), 8);
+    assert_eq!(
+        effect_params[1],
+        crate::params::SqlParam::Bytes(vec![1; 16])
+    );
+}
+
+#[test]
+fn an_empty_aura_group_still_clears_the_stored_rows_like_cpp() {
+    // C++ appends both deletes before it reads `m_ownedAuras` at all, so a
+    // Player who dropped every aura clears the table.
+    let mut request = minimal_character_request();
+    request.auras = Some(Vec::new());
+    let statements = player_character_save_statements_like_cpp(&request);
+    let sql = statements
+        .iter()
+        .map(PreparedStatement::sql)
+        .collect::<Vec<_>>();
+    assert!(sql.contains(&CharStatements::DEL_CHAR_AURA_EFFECT.sql()));
+    assert!(sql.contains(&CharStatements::DEL_CHAR_AURA.sql()));
+    assert!(!sql.contains(&CharStatements::INS_AURA.sql()));
+}
+
+#[test]
+fn a_missing_aura_group_touches_neither_aura_table_like_cpp() {
+    let request = minimal_character_request();
+    let statements = player_character_save_statements_like_cpp(&request);
+    let sql = statements
+        .iter()
+        .map(PreparedStatement::sql)
+        .collect::<Vec<_>>();
+    assert!(!sql.contains(&CharStatements::DEL_CHAR_AURA.sql()));
+    assert!(!sql.contains(&CharStatements::DEL_CHAR_AURA_EFFECT.sql()));
 }

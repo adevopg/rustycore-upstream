@@ -157,6 +157,23 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**Auras now survive a logout, proven live (D-H18).** `Player::_LoadAuras` was composed in
+production but nothing anywhere wrote the rows back: `PlayerCharacterSaveRequestLikeCpp` had no
+aura group, and the four `character_aura` statements existed with no caller. Every buff and
+debuff therefore died at logout. `Player::_SaveAuras` is now ported end to end — the
+`Aura::CanBeSaved` filter and `Aura::GenerateKey` masks as pure rules, the plan's
+delete-both-then-rewrite order, the group between the action buttons and the equipment sets
+where C++ puts it, and the three `SpellInfo` predicates the filter needs, none of which existed.
+
+The live check is built so that a missing save cannot pass it: the fixture seeds one row the
+save must rewrite and one for a spell no store knows, which the save must drop. The unknown row
+did not survive, Battle Shout's row came back with `recalculateMask` 0 → 1, `remainCharges`
+5 → 0 and the effect's `baseAmount` 777777 → 14 (that effect's real `BasePoints`), the caster
+GUID as 16 binary bytes, and the relog published `SMSG_AURA_UPDATE`. Reproduce with
+`--aura-save 6673`. Six named boundaries — cast-item identity, charges, loaded base amounts,
+the recalculate default, liquid auras and the fork's two extra columns — are written at their
+call sites and listed in [EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md) under D-H18.
+
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to
 the Elwynn graveyard, the corpse run brings it back, the reclaim is refused while the C++

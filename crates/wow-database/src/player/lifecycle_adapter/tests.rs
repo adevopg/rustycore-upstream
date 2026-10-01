@@ -56,6 +56,7 @@ fn minimal_character_request() -> PlayerCharacterSaveRequestLikeCpp {
         spell_cooldowns: None,
         spell_charges: None,
         action_buttons: None,
+        auras: None,
         equipment_sets: None,
         void_storage: None,
         tutorials: None,

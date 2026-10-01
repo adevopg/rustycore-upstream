@@ -228,6 +228,42 @@ pub(super) fn player_character_save_statements_like_cpp(
             action_type: (button.packed_action >> 24) as u8,
         }));
     }
+    // C++ appends `_SaveAuras` right after `_SaveActions` (`Player.cpp:19947-19948`),
+    // and appends both of its deletes before it reads the aura map at all, so an
+    // empty group still clears the stored rows.
+    if let Some(auras) = &request.auras {
+        steps.push(Step::DeleteAuraEffects { guid });
+        steps.push(Step::DeleteAuras { guid });
+        for aura in auras {
+            steps.push(Step::InsertAura {
+                guid,
+                caster_guid_binary: aura.caster_guid_binary.clone(),
+                item_guid_binary: aura.item_guid_binary.clone(),
+                spell_id: aura.spell_id,
+                effect_mask: aura.effect_mask,
+                recalculate_mask: aura.recalculate_mask,
+                difficulty: aura.difficulty,
+                stack_count: aura.stack_count,
+                max_duration_ms: aura.max_duration_ms,
+                remain_time_ms: aura.remain_time_ms,
+                remain_charges: aura.remain_charges,
+                cast_item_id: aura.cast_item_id,
+                cast_item_level: aura.cast_item_level,
+            });
+            for effect in &aura.effects {
+                steps.push(Step::InsertAuraEffect {
+                    guid,
+                    caster_guid_binary: aura.caster_guid_binary.clone(),
+                    item_guid_binary: aura.item_guid_binary.clone(),
+                    spell_id: aura.spell_id,
+                    effect_mask: aura.effect_mask,
+                    effect_index: effect.effect_index,
+                    amount: effect.amount,
+                    base_amount: effect.base_amount,
+                });
+            }
+        }
+    }
     if let Some(equipment_sets) = &request.equipment_sets {
         for row in equipment_sets {
             let step = match (row.state, row.set_type) {

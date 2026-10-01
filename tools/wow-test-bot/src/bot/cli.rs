@@ -125,6 +125,9 @@ pub(crate) struct CliOptions {
     pub(crate) area_trigger_map_id: u16,
     pub(crate) area_trigger_at: Option<String>,
     pub(crate) area_trigger_timeout_secs: u64,
+    pub(crate) aura_save_smoke: bool,
+    pub(crate) aura_save_spell_id: Option<u32>,
+    pub(crate) aura_save_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
 }
 /// The post-login workflow modes that are exclusive with each other and with
@@ -177,6 +180,7 @@ pub(crate) fn any_exclusive_workflow_mode_selected(cli: &CliOptions) -> bool {
         || cli.group_capacity_race_smoke
         || cli.quest_smoke
         || cli.area_trigger_smoke
+        || cli.aura_save_smoke
 }
 pub(crate) fn parse_cli() -> Result<CliOptions> {
     let stand_state = std::env::var("WOW_BOT_STAND_STATE")
@@ -635,6 +639,19 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(DEFAULT_AREA_TRIGGER_SMOKE_TIMEOUT_SECS),
+        aura_save_smoke: std::env::var("WOW_BOT_AURA_SAVE_SMOKE")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        aura_save_spell_id: std::env::var("WOW_BOT_AURA_SAVE_SPELL")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?,
+        aura_save_timeout_secs: std::env::var("WOW_BOT_AURA_SAVE_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_AURA_SAVE_SMOKE_TIMEOUT_SECS),
         report_path: std::env::var("WOW_BOT_REPORT").ok(),
     };
 
@@ -966,6 +983,14 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             }
             "--area-trigger-map" => {
                 opts.area_trigger_map_id = next_arg(&mut args, "--area-trigger-map")?.parse()?;
+            }
+            "--aura-save" => {
+                opts.aura_save_smoke = true;
+                opts.aura_save_spell_id = Some(next_arg(&mut args, "--aura-save")?.parse()?);
+            }
+            "--aura-save-timeout" => {
+                opts.aura_save_timeout_secs =
+                    next_arg(&mut args, "--aura-save-timeout")?.parse()?;
             }
             "--area-trigger-timeout" => {
                 opts.area_trigger_timeout_secs =

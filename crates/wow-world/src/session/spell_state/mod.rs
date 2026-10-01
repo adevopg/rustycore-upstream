@@ -7,6 +7,7 @@ mod acquisition;
 mod aura;
 mod aura_application;
 mod aura_publication;
+mod aura_save;
 mod cast;
 mod catalog;
 mod cooldown;
@@ -15,6 +16,7 @@ mod mount_aura;
 mod shapeshift;
 
 pub(crate) use aura::RepresentedShapeshiftMutationLikeCpp;
+pub(crate) use aura_save::player_aura_save_rows_like_cpp;
 mod spell;
 mod spell_click;
 mod spell_publication;
