@@ -96,7 +96,9 @@ use wow_constants::{
     BagFamilyMask, EnchantmentSlot, Gender, InventoryResult, InventoryType, ItemBondingType,
     ItemClass, ItemEnchantmentType, ItemFieldFlags, ItemFieldFlags2, ItemModType, ItemModifier,
     ItemSubClassContainer, ItemSubClassQuiver, ItemSubClassWeapon, ItemSubclassProfession,
-    ItemUpdateState, PowerType, Stats, TypeId, TypeMask, WeaponAttackType, spell::SpellSchools,
+    ItemUpdateState, PowerType, Stats, TypeId, TypeMask, WeaponAttackType,
+    object::{DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP, DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP},
+    spell::SpellSchools,
 };
 use wow_core::{ObjectGuid, Position};
 

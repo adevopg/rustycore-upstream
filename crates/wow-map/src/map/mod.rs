@@ -106,6 +106,11 @@ pub type CreatureVisibilityDestroyRecipientsLikeCpp = ObjectVisibilityDestroyRec
 const GRID_SLOT_COUNT: usize = (MAX_NUMBER_OF_GRIDS * MAX_NUMBER_OF_GRIDS) as usize;
 #[cfg(test)]
 const GAMEOBJECT_TYPE_GENERIC_LIKE_CPP: u32 = 5;
+/// C++ `DEFAULT_PLAYER_BOUNDING_RADIUS` (`Entities/Object/ObjectDefines.h:39`).
+///
+/// Repeated here rather than used from `wow_constants::object`, which is where
+/// the define lives: `wow-map` does not depend on `wow-constants`, and one float
+/// is not worth a new crate edge.
 pub const DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP: f32 = 0.388_999_998_569_489;
 /// C++ `DynamicTree.cpp:34-38` `CHECK_TREE_PERIOD = 200`.
 const DYNAMIC_MAP_TREE_CHECK_PERIOD_MS_LIKE_CPP: u32 = 200;

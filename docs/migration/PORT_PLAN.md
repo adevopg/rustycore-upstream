@@ -93,16 +93,19 @@ repaired, each with live evidence; see STATE.md and the closed entries in
 [EXISTING-CODE-DEFECTS.md](EXISTING-CODE-DEFECTS.md). One kill now produces XP, money, two
 looted items and two advanced quest objectives, persisted across a clean logout.
 
+**D-M17 is also done:** a logged-in player had no `BoundingRadius` and no `CombatReach` at
+all, because the port had no equivalent of C++ `Player::SetObjectScale`. See the closed
+entry for why neither the wire nor the one masking consumer could show it.
+
 **Next prepared responsibility, selected by evidence rather than by document order:**
-**D-M17** — runtime `combat_reach` and `bounding_radius` are zero where C++ derives them
-from the model. It surfaced as the reason D-M16's misplaced boundary term refused swings at
-four yards, and it is the kind of defect that hides: `Unit::GetMeleeRange`'s
-`NOMINAL_MELEE_RANGE` floor absorbs it for melee, so every *other* consumer of
-`WorldObject::_IsWithinDist`'s combat-reach term is silently wrong by the same amount. The
-write paths already exist (`creature/ops_2.rs:912` from `CreatureModelInfo` by scale,
-`unit::set_combat_reach`), so this is a question of which spawn and login paths never call
-them, and it sits on the same #584 C0/C3 axis: the canonical map owns the field and the
-session may only read it.
+**D-H5** — quest area-trigger (explore) objectives are not wired, so "explore Y" cannot be
+completed. It is the last of the M3/M4 objective types still missing after kill credit and
+item credit were closed today, it is bounded (one objective type, one handler), and the
+live acceptance is the same shape that worked for the other two: seed the objective, trip
+the trigger, read `character_queststatus_objectives` back after a clean logout. The two
+divergences this session left open, D-M15 (`QuestLogItemId` credited and put on the wire
+where the target build does neither) and the `NO_CREDIT_FOR_PROXY` boundary noted under
+D-H4, are smaller and belong to the same quest-objective lane.
 
 ## 1. Direction from here
 

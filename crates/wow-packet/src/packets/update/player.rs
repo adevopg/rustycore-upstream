@@ -6,6 +6,9 @@
 //! ActivePlayer and Player update blocks.
 
 use super::*;
+use wow_constants::object::{
+    DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP, DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP,
+};
 
 mod state_1;
 mod state_2;

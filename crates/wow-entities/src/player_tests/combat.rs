@@ -284,3 +284,49 @@ fn feral_form_blocks_offhand_attacks_like_cpp() {
     player.set_shapeshift_form_id_like_cpp(16);
     assert!(player.is_in_feral_form_like_cpp());
 }
+
+/// C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1586`) is the
+/// only writer of a player's `BoundingRadius` and `CombatReach`, and every
+/// server-side distance check reads them: `Unit::GetMeleeRange` (`:800-804`),
+/// `Unit::IsWithinBoundaryRadius` (`:806-814`) and `WorldObject::_IsWithinDist`.
+#[test]
+fn set_object_scale_derives_bounding_radius_and_combat_reach_like_cpp() {
+    let mut player = Player::new(None, false);
+    assert_eq!(
+        (
+            player.unit().data().bounding_radius,
+            player.unit().data().combat_reach
+        ),
+        (0.0, 0.0),
+        "a freshly constructed Player has neither until the scale is set"
+    );
+
+    player.set_object_scale_like_cpp(1.0);
+
+    assert_eq!(player.unit().world().object().scale(), 1.0);
+    assert_eq!(
+        player.unit().data().bounding_radius,
+        DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP
+    );
+    assert_eq!(
+        player.unit().data().combat_reach,
+        DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP
+    );
+}
+
+/// Both values are `scale * DEFAULT`, not the bare default.
+#[test]
+fn set_object_scale_multiplies_both_derived_values_like_cpp() {
+    let mut player = Player::new(None, false);
+    player.set_object_scale_like_cpp(2.0);
+
+    assert_eq!(player.unit().world().object().scale(), 2.0);
+    assert_eq!(
+        player.unit().data().bounding_radius,
+        2.0 * DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP
+    );
+    assert_eq!(
+        player.unit().data().combat_reach,
+        2.0 * DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP
+    );
+}

@@ -1379,7 +1379,6 @@ fn quest_giver_creature_id_from_source_like_cpp(source_guid: ObjectGuid) -> i32 
     }
 }
 const ATTACK_DISPLAY_DELAY_LIKE_CPP_MS: u32 = 200;
-const DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP: f32 = 1.5;
 const MIN_MELEE_REACH_LIKE_CPP: f32 = 2.0;
 const NOMINAL_MELEE_RANGE_LIKE_CPP: f32 = 5.0;
 const SUMMON_PROPERTIES_ONLY_VISIBLE_TO_SUMMONER_LIKE_CPP: u32 = 0x0000_0010;
@@ -9208,6 +9207,15 @@ impl WorldSession {
         let bootstrap_phase_shift = self.represented_player_phase_shift.clone();
         *player.unit_mut().world_mut().phase_shift_mut() = bootstrap_phase_shift;
         player.unit_mut().world_mut().object_mut().add_to_world();
+        // C++ `Player::LoadFromDB` calls `SetObjectScale(1.0f)`
+        // (`Entities/Player/Player.cpp:17645`), as `Player::Create` does at
+        // `:439`. That is the only writer of the player's `BoundingRadius` and
+        // `CombatReach`, and every server-side distance check reads them:
+        // `Unit::GetMeleeRange`, `Unit::IsWithinBoundaryRadius` and
+        // `WorldObject::_IsWithinDist`'s combat-reach term all do. Without it
+        // the fields stayed at zero while the CREATE packet sent the correct
+        // literals, so the client and the server disagreed about every reach.
+        player.set_object_scale_like_cpp(1.0);
         player.set_race_class_gender(
             self.player_race_like_cpp(),
             self.player_class_like_cpp(),

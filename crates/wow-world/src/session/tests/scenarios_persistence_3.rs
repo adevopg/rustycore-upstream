@@ -770,6 +770,38 @@ fn saved_raf_linked_rest_state_is_preserved_until_bonus_is_normalized_like_cpp()
     );
     assert_eq!(session.represented_xp_rest_bonus_like_cpp(), 25.0);
 }
+/// C++ `Player::LoadFromDB` calls `SetObjectScale(1.0f)`
+/// (`Entities/Player/Player.cpp:17645`), which is what gives a loaded character
+/// its `BoundingRadius` and `CombatReach`. Leaving them at zero is invisible on
+/// the wire — the CREATE block reports the defaults either way — and silently
+/// shortens every server-side distance check that reads them, including
+/// `Unit::IsWithinBoundaryRadius` in `DoMeleeAttackIfReady`.
+#[test]
+fn login_bootstrap_player_has_the_cpp_bounding_radius_and_combat_reach() {
+    let (mut session, _, _) = make_session();
+    let player_guid = ObjectGuid::create_player(1, 0xE102);
+    session.ensure_login_player_controller_like_cpp(
+        player_guid,
+        "Reacher".to_string(),
+        Position::new(1.0, 2.0, 3.0, 0.0),
+        0,
+        1,
+        1,
+        1,
+        0,
+    );
+
+    let player = session
+        .initial_player_fixture_like_cpp()
+        .expect("login bootstrap builds a canonical player");
+
+    assert_eq!(player.unit().world().object().scale(), 1.0);
+    assert_eq!(
+        player.unit().data().bounding_radius,
+        wow_map::map::DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP
+    );
+    assert_eq!(player.unit().data().combat_reach, 1.5);
+}
 #[test]
 fn represented_explored_zones_load_preserves_canonical_snapshot_like_cpp() {
     let (mut session, _, _) = make_session();

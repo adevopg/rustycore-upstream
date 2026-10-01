@@ -171,3 +171,16 @@ pub enum ServerSideVisibilityType {
     GM = 0,
     Ghost = 1,
 }
+
+/// C++ `DEFAULT_PLAYER_BOUNDING_RADIUS` (`Entities/Object/ObjectDefines.h:39`).
+///
+/// `Player::SetObjectScale` writes `scale * this` into `UnitData::BoundingRadius`
+/// (`Entities/Player/Player.cpp:1582-1586`).
+pub const DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP: f32 = 0.388_999_998_569_489;
+
+/// C++ `DEFAULT_PLAYER_COMBAT_REACH` (`Entities/Object/ObjectDefines.h:40`).
+///
+/// `Player::SetObjectScale` writes `scale * this` into `UnitData::CombatReach`,
+/// and `ObjectMgr` substitutes it for any `creature_model_info.combat_reach`
+/// below `0.1` (`Globals/ObjectMgr.cpp:1789-1790`).
+pub const DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP: f32 = 1.5;

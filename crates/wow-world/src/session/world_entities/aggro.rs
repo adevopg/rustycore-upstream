@@ -63,13 +63,15 @@ impl WorldSession {
         self.canonical_player_snapshot_like_cpp(|player| player.unit().data().combat_reach)
             .unwrap_or(0.0)
     }
+    /// C++ reads `GetCombatReach()` straight off the Unit
+    /// (`WorldObject::_IsWithinDist`, `Entities/Object/Object.cpp:1066-1086`).
+    ///
+    /// This used to substitute `DEFAULT_PLAYER_COMBAT_REACH` whenever the
+    /// canonical value was zero, which is what hid the real defect: nothing
+    /// wrote the field at login at all. `Player::set_object_scale_like_cpp` now
+    /// does, so the substitution is gone and a zero here would be visible.
     pub(in crate::session) fn player_interaction_combat_reach_like_cpp(&self) -> f32 {
-        let canonical_reach = self.canonical_player_combat_reach_snapshot_like_cpp();
-        if canonical_reach > 0.0 {
-            canonical_reach
-        } else {
-            DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP
-        }
+        self.canonical_player_combat_reach_snapshot_like_cpp()
     }
     pub fn set_spell_threat_store(&mut self, store: Arc<SpellThreatStoreLikeCpp>) {
         self.spell_catalogs.spell_threat_store = Some(store);

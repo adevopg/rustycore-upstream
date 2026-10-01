@@ -39,6 +39,27 @@ impl Player {
         self.unit.data().sex
     }
 
+    /// C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1589`).
+    ///
+    /// The scale itself is `Unit::SetObjectScale`'s field, and the two derived
+    /// values are what every server-side distance check reads: `BoundingRadius`
+    /// is `scale * DEFAULT_PLAYER_BOUNDING_RADIUS` and `CombatReach` is
+    /// `scale * DEFAULT_PLAYER_COMBAT_REACH`. C++ calls this at
+    /// `Player::Create` (`:439`), when resetting stats before reapplying auras
+    /// (`:2312`) and at `Player::LoadFromDB` (`:17645`), which is why a loaded
+    /// character is never left with a zero reach.
+    ///
+    /// Not ported here: `SendMovementSetCollisionHeight`, which C++ sends when
+    /// the scale changes on an in-world player. This port is called at the
+    /// bootstrap scale of `1.0`, before the player is visible to anyone.
+    pub fn set_object_scale_like_cpp(&mut self, scale: f32) {
+        self.unit.world_mut().object_mut().set_scale(scale);
+        self.unit
+            .set_bounding_radius(scale * DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP);
+        self.unit
+            .set_combat_reach(scale * DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP);
+    }
+
     pub fn set_race_class_gender(&mut self, race: u8, class_id: u8, gender: Gender) {
         self.unit.set_race(race);
         self.unit.set_class(class_id);

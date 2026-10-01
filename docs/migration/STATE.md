@@ -95,7 +95,18 @@ session path and the creature tick already had the C++ shape; one site had diver
 phase trace also lied about it — `creature_hits` counted a result with an empty swing list
 as a hit — and now counts only a swing that exists. Live after the repair:
 `player_landed=4 (45 damage) death=true xp=44 loot_coins=9 money 12 -> 21 inv 8 -> 10`.
-The zero combat reaches themselves are left open as D-M17.
+The zero combat reaches themselves are also repaired, as D-M17: nothing in RustyCore ever
+wrote a player's `BoundingRadius` or `CombatReach`, because the port had no equivalent of
+C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1586`), which is its only
+writer and which `Player::LoadFromDB` calls at `:17645`. Both fields stayed at `0.0` for
+the whole session while the CREATE packet wrote the correct literals straight to the client,
+so only the server disagreed — and the one consumer that would have shown it substituted the
+default on a zero, which hid it. `Unit::GetMeleeRange`'s `NOMINAL_MELEE_RANGE` floor
+absorbed the loss for melee range, so nothing failed outright until D-M16 turned the
+boundary radius into a range gate. The field now flows, which is what made one existing
+bad-facing test change behaviour: its victim stood at 2.0 yards, inside the boundary radius
+once the player has a reach, and C++ exempts the facing arc there, so the fixture moved to
+the 3.5-to-5.0 band where bad facing is actually what refuses the swing.
 
 **The death circuit closes end to end as of 2026-10-01, and repeatably.** Six consecutive
 `--death-smoke` runs: the spirit release writes a `corpse` row and teleports the ghost to

@@ -950,16 +950,55 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `DEFAULT_PLAYER_COMBAT_REACH` by scale), and `Unit::GetMeleeRange`'s `5.0` floor hides
   the difference for melee but not for the other distance checks that read the same
   fields. Not repaired here; recorded as D-M17.
-- [ ] **D-M17 Runtime `combat_reach` and `bounding_radius` are zero where C++ derives them
-  from the model.** Observed 2026-10-01 while closing D-M16: the global player-melee phase
-  read `combat_reach = 0` for the QA player and for creature entry 94, which made
-  `Unit::IsWithinBoundaryRadius`'s radius collapse to `MIN_MELEE_REACH` alone. Melee range
-  itself is floored at `NOMINAL_MELEE_RANGE` (`Unit::GetMeleeRange`,
-  `Entities/Unit/Unit.cpp:800-804`), so the melee path tolerates it, but every other
-  consumer of `WorldObject::_IsWithinDist`'s combat-reach term inherits the error. The
-  write paths exist (`wow-entities/src/creature/ops_2.rs:912` sets it from
-  `CreatureModelInfo` by scale; `unit::set_combat_reach`), so the question is which spawn
-  and login paths fail to call them.
+- [x] **D-M17 A logged-in player had no `BoundingRadius` and no `CombatReach` at all.**
+  Closed 2026-10-01. Found while closing D-M16, which the zero reach had made worse.
+
+  C++ `Player::SetObjectScale` (`Entities/Player/Player.cpp:1582-1586`) is the only writer
+  of those two fields for a player — `scale * DEFAULT_PLAYER_BOUNDING_RADIUS` and
+  `scale * DEFAULT_PLAYER_COMBAT_REACH` (`Entities/Object/ObjectDefines.h:39-40`) — and it
+  is called at `Player::Create` (`:439`), when resetting stats before reapplying auras
+  (`:2312`) and at `Player::LoadFromDB` (`:17645`). RustyCore had **no** writer: no
+  production path called `Unit::set_combat_reach` for a player, so both fields stayed at
+  their `0.0` default for the whole session. The creature side was fine — the production
+  create paths derive both from `CreatureModelInfo` by scale
+  (`session/world_entities/creature.rs:281-282`), and the hard-coded `0.389 / 1.5` in
+  `map_manager/runtime/creature.rs:83-84` belongs to `WorldCreature::new`, which has no
+  production caller.
+
+  It was invisible in two ways at once. The player's CREATE block wrote the correct
+  literals straight into the packet
+  (`wow-packet/.../update/player/state_2.rs`), so the client always saw `0.389 / 1.5` and
+  only the server disagreed; and `player_interaction_combat_reach_like_cpp` substituted
+  `DEFAULT_PLAYER_COMBAT_REACH` whenever it read a zero, which quietly fixed the one
+  consumer that would have shown it. Every other reader of the field was simply wrong:
+  `Unit::IsWithinBoundaryRadius`'s radius lost `1.5` yards, as did
+  `WorldObject::_IsWithinDist`'s combat-reach term. `Unit::GetMeleeRange`'s
+  `NOMINAL_MELEE_RANGE` floor of `5.0` absorbed the loss for melee range itself, which is
+  why nothing had failed outright before D-M16 turned the boundary radius into a range gate.
+
+  The repair adds `Player::set_object_scale_like_cpp` as the port of
+  `Player::SetObjectScale` and calls it at the login bootstrap, removes the substituting
+  fallback so a future zero is visible instead of patched, and gives the two
+  `ObjectDefines.h` values a single home in `wow_constants::object` (the copy in
+  `wow-map` stays, with the reason: that crate does not depend on `wow-constants` and one
+  float is not worth a new crate edge). The CREATE block now writes those constants instead
+  of magic numbers; a *scaled* player would still need the entity's own values there, which
+  `PlayerCreateData` does not carry and no RustyCore path needs yet.
+
+  Evidence: two entity tests on the derived values and their scaling, and a login-bootstrap
+  test that the canonical player comes out of `build_initial_player_for_owner_like_cpp` with
+  `0.389 / 1.5`. One existing test changed behaviour and was corrected rather than
+  re-baselined: `combat_tick_bad_facing_sets_short_retry_timer_like_cpp` placed its victim
+  at 2.0 yards, which was outside the boundary radius only while the player's reach was
+  zero; with the C++ value the attacker is inside it, and C++ then exempts the facing arc,
+  so the fixture now stands at 4.0 yards — outside the `3.5` boundary and inside the `5.0`
+  melee range, which is the only band where bad facing is what refuses the swing. That
+  behaviour change is itself the integration evidence that the field now reaches the
+  predicate. The live run after the repair is a regression check, not a measurement: the
+  wire carried the right literal either way, so no capture can distinguish the two.
+  `--loot-after-kill --melee-creature-entry 94 --melee-creature-guid 280092` still reports
+  `player_landed=4 (43 damage) creature_landed=3 death=true xp=44 loot_coins=8`,
+  money 21 -> 29.
 
 ## LOW — non-issues in practice / cosmetic (recorded for completeness)
 
