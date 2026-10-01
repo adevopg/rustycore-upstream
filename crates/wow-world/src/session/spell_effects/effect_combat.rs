@@ -217,9 +217,10 @@ impl WorldSession {
     /// publishes one `SMSG_SPELL_HEAL_ABSORB_LOG` per consuming shield and is
     /// removed once spent. Returns `(remaining heal, absorbed)`.
     ///
-    /// Boundary: a creature heal target keeps its auras with no represented
-    /// mutable amount, so its heal absorb stays open, exactly like the damage
-    /// absorb for creature victims.
+    /// Boundary: a creature heal target has no represented heal-absorb
+    /// projection, so its heal absorb stays open. The damage side no longer
+    /// shares that gap — `represented_spell_absorb_for_damage_like_cpp` spends a
+    /// creature victim's school shields through the canonical aura amounts.
     pub(in crate::session) fn apply_owned_player_heal_absorb_like_cpp(
         &mut self,
         spell_id: Option<i32>,
@@ -1387,7 +1388,19 @@ impl WorldSession {
             spell_school_mask,
             critical.damage,
         );
-        let damage_amount = resist.damage;
+        // C++ `CalcAbsorbResist` spends the victim's shields after the resist
+        // and before `DealDamage` (`Unit.cpp:2114-2178`), publishing one absorb
+        // log per consuming shield before the damage log.
+        let absorb = self.represented_spell_absorb_for_damage_like_cpp(
+            spell_id,
+            caster_guid,
+            target_guid,
+            spell_school_mask,
+            critical.damage,
+            resist.damage,
+            original_damage_amount,
+        );
+        let damage_amount = absorb.damage;
 
         // Si target es otra criatura — mutate canonical shared map state.
         let damage_outcome = self
@@ -1484,11 +1497,11 @@ impl WorldSession {
         };
 
         // C++ `Unit::DealSpellDamage` sends the combat log for the hit before
-        // the kill cascade (`Unit.cpp:1250-1260`, `Unit::SendSpellNonMeleeDamageLog`
-        // `Unit.cpp:5353-5380`). `HitInfo`, `damage`, `originalDamage` and `resist`
-        // carry what the critical and resist rolls above resolved; the absorb
-        // shields and the spell block stage have no represented equivalent for a
-        // creature target yet, so those two fields stay zero.
+        // the kill cascade (`Unit.cpp:1362-1383`, `Unit::SendSpellNonMeleeDamageLog`
+        // `Unit.cpp:5880-5905`). `HitInfo`, `damage`, `originalDamage`, `resist`
+        // and `absorb` carry what the critical roll, the resist roll and the
+        // shield loop above resolved; the spell block stage has no represented
+        // equivalent for a creature target yet, so that field stays zero.
         if let Some(spell_id) = spell_id {
             let damage = damage_amount.min(i32::MAX as u32) as i32;
             let original_damage = original_damage_amount.min(i32::MAX as u32) as i32;
@@ -1506,7 +1519,7 @@ impl WorldSession {
                     -1
                 },
                 school_mask: spell_school_mask.min(u32::from(u8::MAX)) as u8,
-                absorbed: 0,
+                absorbed: absorb.absorbed.min(i32::MAX as u32) as i32,
                 resisted: resist.resisted.min(i32::MAX as u32) as i32,
                 shield_block: 0,
                 periodic: false,

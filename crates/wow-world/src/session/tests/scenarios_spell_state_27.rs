@@ -276,6 +276,10 @@ fn a_player_without_auras_still_reports_an_empty_group_like_cpp() {
 /// compare against.
 async fn spell_crit_scenario_like_cpp(
     creature_id: i64,
+    // `(spell id, amount, MiscValue school mask)` of a
+    // `SPELL_AURA_SCHOOL_ABSORB` effect to apply to the victim, for the
+    // scenarios that exercise `CalcAbsorbResist`'s shield loop.
+    shield: Option<(i32, i32, i32)>,
 ) -> (
     WorldSession,
     crate::map_manager::SharedMapManager,
@@ -356,6 +360,35 @@ async fn spell_crit_scenario_like_cpp(
             effect_mechanics: BTreeMap::from([(0, 0)]),
         },
     );
+    if let Some((shield_spell_id, amount, shield_school_mask)) = shield {
+        spell_store.insert(
+            shield_spell_id,
+            wow_data::SpellInfo {
+                spell_id: shield_spell_id,
+                cast_time_ms: 0,
+                cooldown_ms: 0,
+                recovery_time_ms: 0,
+                effect_type: wow_data::spell::spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+                effect_base_points: amount,
+                effect_bonus_coefficient: 0.0,
+                aura_type: Some(wow_data::spell::aura_types::SPELL_AURA_SCHOOL_ABSORB),
+                display_flags: 0,
+                requires_spell_focus: 0,
+                power_costs: Vec::new(),
+                effects: vec![wow_data::SpellEffectInfo {
+                    effect_index: 0,
+                    effect: wow_data::spell::spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+                    effect_aura: wow_data::spell::aura_types::SPELL_AURA_SCHOOL_ABSORB,
+                    effect_base_points: amount,
+                    // C++ `absorbAurEff->GetMiscValue()`: the schools the shield
+                    // covers, matched against the hit's school mask.
+                    effect_misc_value_1: shield_school_mask,
+                    effect_misc_value_2: 0,
+                    ..Default::default()
+                }],
+            },
+        );
+    }
     session.set_spell_store(Arc::new(spell_store));
     // `SpellInfo::GetSchoolMask()` comes from `SpellMisc`, which is the reader the
     // damage path passes to the critical roll.
@@ -387,6 +420,12 @@ async fn spell_crit_scenario_like_cpp(
             player.replace_effective_combat_stats_like_cpp(stats);
         })
         .expect("the canonical Player must own the published percentages");
+
+    if let Some((shield_spell_id, _, _)) = shield {
+        session
+            .apply_creature_aura_like_cpp(shield_spell_id, player_guid, creature_guid, 1, 60_000)
+            .expect("the victim's shield must apply");
+    }
 
     (session, manager, creature_guid, spell_id, send_rx)
 }
@@ -436,7 +475,7 @@ fn spell_non_melee_damage_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32,
 #[tokio::test]
 async fn a_critical_spell_hit_adds_half_again_and_flags_the_log_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_001).await;
+        spell_crit_scenario_like_cpp(27_001, None).await;
     // The resolved chance is the published 25%; a draw below it crits.
     let _pinned = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(10.0);
 
@@ -468,7 +507,7 @@ async fn a_critical_spell_hit_adds_half_again_and_flags_the_log_like_cpp() {
 #[tokio::test]
 async fn a_non_critical_spell_hit_keeps_its_damage_and_flags_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_002).await;
+        spell_crit_scenario_like_cpp(27_002, None).await;
     let _pinned = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
 
     let _ = drain_server_packet_bytes(&send_rx);
@@ -503,7 +542,7 @@ async fn a_non_critical_spell_hit_keeps_its_damage_and_flags_like_cpp() {
 #[tokio::test]
 async fn a_resisted_spell_hit_loses_that_share_and_reports_it_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_003).await;
+        spell_crit_scenario_like_cpp(27_003, None).await;
     session
         .mutate_world_creature(creature_guid, |creature| {
             creature
@@ -553,7 +592,7 @@ async fn a_resisted_spell_hit_loses_that_share_and_reports_it_like_cpp() {
 #[tokio::test]
 async fn an_unresisted_spell_hit_reports_no_resist_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_004).await;
+        spell_crit_scenario_like_cpp(27_004, None).await;
     session
         .mutate_world_creature(creature_guid, |creature| {
             creature.creature.unit_mut().set_level(20);
@@ -582,4 +621,268 @@ async fn an_unresisted_spell_hit_reports_no_resist_like_cpp() {
     assert_eq!(original_damage, 200);
     assert_eq!(resisted, 0);
     assert_eq!(flags, 0);
+}
+
+/// The one `SMSG_SPELL_ABSORB_LOG` the hit published, as
+/// `(absorbed_spell_id, absorb_spell_id, absorbed, original_damage)`.
+fn spell_absorb_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32, i32, i32) {
+    let bytes = packets
+        .iter()
+        .find(|bytes| {
+            wow_packet::WorldPacket::from_bytes(bytes).server_opcode()
+                == Some(ServerOpcodes::SpellAbsorbLog)
+        })
+        .expect("a consuming shield must publish one SMSG_SPELL_ABSORB_LOG");
+    let mut packet = wow_packet::WorldPacket::from_bytes(bytes);
+    assert_eq!(
+        packet.read_uint16().expect("opcode"),
+        ServerOpcodes::SpellAbsorbLog as u16
+    );
+    packet.read_packed_guid().expect("attacker");
+    packet.read_packed_guid().expect("victim");
+    let absorbed_spell_id = packet.read_int32().expect("absorbed spell id");
+    let absorb_spell_id = packet.read_int32().expect("absorb spell id");
+    packet.read_packed_guid().expect("absorb caster");
+    let absorbed = packet.read_int32().expect("absorbed");
+    let original_damage = packet.read_int32().expect("original damage");
+    (
+        absorbed_spell_id,
+        absorb_spell_id,
+        absorbed,
+        original_damage,
+    )
+}
+
+/// The victim's surviving `SPELL_AURA_SCHOOL_ABSORB` amount, read from the
+/// canonical aura subsystem the depletion writes to.
+fn creature_shield_amount_like_cpp(
+    session: &mut WorldSession,
+    creature_guid: ObjectGuid,
+) -> Option<i32> {
+    session
+        .mutate_creature_aura_owner_like_cpp(creature_guid, |creature| {
+            let auras = &creature.unit().subsystems().auras;
+            auras
+                .applied_auras
+                .first()
+                .and_then(|applied| auras.applied_aura_amounts.get(applied).copied())
+        })
+        .flatten()
+}
+
+/// C++ `Unit::CalcAbsorbResist`'s school-absorb loop
+/// (`Entities/Unit/Unit.cpp:2114-2178`) spends the victim's
+/// `SPELL_AURA_SCHOOL_ABSORB` amount on the hit, publishes one
+/// `SMSG_SPELL_ABSORB_LOG` per consuming shield and reports the total as
+/// `SpellNonMeleeDamage::absorb`.
+///
+/// A shield bigger than the hit survives with the remainder, which is what makes
+/// the amount real state rather than a per-hit calculation.
+#[tokio::test]
+async fn an_absorbed_spell_hit_spends_the_shield_and_reports_it_like_cpp() {
+    let shield_spell_id = 91_830_i32;
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_005, Some((shield_spell_id, 300, 0x04))).await;
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 100)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500, "the shield covered the whole hit");
+
+    let (damage, original_damage, _, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 0, "the log reports the damage after the shields");
+    assert_eq!(
+        original_damage, 100,
+        "C++ assigns originalDamage before CalcAbsorbResist"
+    );
+    assert_eq!(flags, 0);
+
+    let (absorbed_spell_id, absorb_spell_id, absorbed, log_original_damage) =
+        spell_absorb_log_values_like_cpp(&packets);
+    assert_eq!(absorbed_spell_id, spell_id, "the spell being absorbed");
+    assert_eq!(absorb_spell_id, shield_spell_id, "the shield's own spell");
+    assert_eq!(absorbed, 100);
+    assert_eq!(log_original_damage, 100);
+
+    assert_eq!(
+        creature_shield_amount_like_cpp(&mut session, creature_guid),
+        Some(200),
+        "C++ ChangeAmount leaves the shield with what the hit did not spend"
+    );
+}
+
+/// A shield smaller than the hit absorbs what it can, is removed at zero
+/// (`AURA_REMOVE_BY_ENEMY_SPELL`, `Unit.cpp:2170-2172`), and the rest of the hit
+/// lands.
+#[tokio::test]
+async fn a_spent_spell_absorb_shield_is_removed_and_the_rest_lands_like_cpp() {
+    let shield_spell_id = 91_831_i32;
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_006, Some((shield_spell_id, 40, 0x04))).await;
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 100)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 60, "the shield took 40 of the 100");
+
+    let (damage, _, _, _) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 60);
+    let (_, _, absorbed, _) = spell_absorb_log_values_like_cpp(&packets);
+    assert_eq!(absorbed, 40);
+
+    assert_eq!(
+        creature_shield_amount_like_cpp(&mut session, creature_guid),
+        None,
+        "a spent shield is removed, not left at zero"
+    );
+    let removed = packets.iter().any(|bytes| {
+        wow_packet::WorldPacket::from_bytes(bytes).server_opcode()
+            == Some(ServerOpcodes::AuraUpdate)
+    });
+    assert!(
+        removed,
+        "the removal must reach the client as an aura update"
+    );
+}
+
+/// The resist runs before the shields in C++ (`CalcSpellResistedDamage` at
+/// `Unit.cpp:2084`, the loop at `:2114`), so the shield only ever sees what the
+/// resist left, and the log carries both shares.
+#[tokio::test]
+async fn a_resisted_spell_hit_absorbs_only_what_the_resist_left_like_cpp() {
+    let shield_spell_id = 91_832_i32;
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_007, Some((shield_spell_id, 300, 0x04))).await;
+    session
+        .mutate_world_creature(creature_guid, |creature| {
+            creature
+                .creature
+                .set_resistances_like_cpp([0, 0, 100, 0, 0, 0, 0]);
+            creature.creature.unit_mut().set_level(20);
+        })
+        .expect("the creature must be registered");
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+    let _resist = crate::session::spell_effects::PinnedResistRollLikeCpp::pin(0.5);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 200)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500, "half resisted, the other half absorbed");
+
+    let (damage, original_damage, resisted, _) =
+        spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 0);
+    assert_eq!(original_damage, 200);
+    assert_eq!(resisted, 100);
+    let (_, _, absorbed, log_original_damage) = spell_absorb_log_values_like_cpp(&packets);
+    assert_eq!(absorbed, 100, "the shield only saw the post-resist half");
+    assert_eq!(
+        log_original_damage, 200,
+        "the absorb log carries GetOriginalDamage, not the absorbed share"
+    );
+    assert_eq!(
+        creature_shield_amount_like_cpp(&mut session, creature_guid),
+        Some(200)
+    );
+}
+
+/// A shield whose `MiscValue` does not cover the hit's school is skipped
+/// entirely (`if (!(absorbAurEff->GetMiscValue() & damageInfo.GetSchoolMask()))
+/// continue;`, `Unit.cpp:2127-2128`): the hit lands whole and the amount is
+/// untouched.
+#[tokio::test]
+async fn a_shield_of_another_school_absorbs_nothing_like_cpp() {
+    let shield_spell_id = 91_833_i32;
+    // The shield covers frost (`0x10`) while the hit stays fire (`0x04`).
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_008, Some((shield_spell_id, 300, 0x10))).await;
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 100)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 100, "a frost shield does not stop a fire hit");
+    let (damage, _, _, _) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 100);
+    assert!(
+        !packets.iter().any(|bytes| {
+            wow_packet::WorldPacket::from_bytes(bytes).server_opcode()
+                == Some(ServerOpcodes::SpellAbsorbLog)
+        }),
+        "a shield that absorbs nothing publishes nothing"
+    );
+    assert_eq!(
+        creature_shield_amount_like_cpp(&mut session, creature_guid),
+        Some(300)
+    );
+}
+
+/// A creature aura must survive a legacy-runtime mutation of the same creature.
+///
+/// `sync_canonical_creature_entity_like_cpp` replaces the canonical creature
+/// wholesale from its legacy mirror, so an aura written only to the canonical
+/// side was discarded by the next `mutate_world_creature` — a no-op one was
+/// enough. The hit path mutates the legacy creature to read resistances and to
+/// apply damage, so the shield had to survive that for the absorb loop to see it
+/// at all.
+#[tokio::test]
+async fn a_creature_aura_survives_a_legacy_mirror_mutation_like_cpp() {
+    let shield_spell_id = 91_834_i32;
+    let (mut session, _manager, creature_guid, _spell_id, _send_rx) =
+        spell_crit_scenario_like_cpp(27_009, Some((shield_spell_id, 300, 0x04))).await;
+    assert_eq!(
+        creature_shield_amount_like_cpp(&mut session, creature_guid),
+        Some(300),
+        "the shield applies"
+    );
+    session
+        .mutate_world_creature(creature_guid, |_creature| {})
+        .expect("the creature must be registered");
+    assert_eq!(
+        creature_shield_amount_like_cpp(&mut session, creature_guid),
+        Some(300),
+        "a legacy mutation must not discard it"
+    );
 }

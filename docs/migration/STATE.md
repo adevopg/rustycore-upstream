@@ -157,6 +157,52 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**The absorb stage closes D-H3 on 2026-10-02, and getting there turned up two defects the stage
+depended on (D-H24, D-H25).** The spell hit now runs C++'s whole `CalcAbsorbResist`: the shields are
+spent between the resist and `DealDamage`, each consuming shield publishes its own
+`SMSG_SPELL_ABSORB_LOG` before the damage log, a spent shield is removed with its slot update, and
+`SMSG_SPELL_NON_MELEE_DAMAGE_LOG` carries the real `absorb` where it carried a hardcoded zero.
+
+The plan's prediction for this slot was wrong in both directions and the correction is the useful
+part. It said the mutable shield amounts existed only for the session's own player, so the player
+victim was the easy side and a creature victim the boundary. In fact
+`creature_absorb_shields_like_cpp` had been reading mutable creature aura amounts since the melee
+creature-victim work, while the **player** victim has no spell-damage path at all:
+`apply_damage_from_caster_like_cpp` resolves a creature target or returns, and the creature spell
+tick publishes START/GO and then deliberately executes no effects. The implemented victim is the
+creature; the player victim waits on creature spell effect execution.
+
+**D-H24: the ignore-absorb term was invented.** C++ holds the attacker's
+`SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` share out of the damage once before both shield loops
+(`Unit.cpp:2112`) and restores it once after them (`:2250`); inside the loops the shields only read
+`damageInfo.GetDamage()`. The port subtracted that share from every shield's cap inside both loops,
+never restored it, and exempted a shield carrying `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE` — an
+attribute this reference declares (`SharedDefines.h:697`) and reads nowhere in the server. So the
+damage was short by the ignored share whenever the modifier was active, and an exempt shield
+swallowed a hit C++ would have let partly through. `represented_absorb_stages_like_cpp` now owns the
+whole absorb half, the melee path goes through it, and the two tests that asserted the invented
+shape assert the real one. The same reading also kept a detail the port had lost: C++ reads the
+percentage from the damage *before* `ResistDamage`, so the composition takes both values.
+
+**D-H25: the shield was written to the mirror that gets overwritten.** A creature exists as a legacy
+`WorldCreature` and as a canonical map entity, and `mutate_world_creature` ends by replacing the
+whole canonical entity from the legacy clone. The aura application wrote only the canonical side, so
+a no-op `mutate_world_creature` erased it — measured: `Some(300)` before, `None` after. The hit path
+mutates the legacy creature twice before any shield is read, so the absorb loop could never have seen
+one. In play this reached **every** creature aura a player cast applied: the debuff landed, published
+its slot, and vanished at the victim's next hit with no packet saying so.
+`mutate_creature_aura_owner_like_cpp` now writes the mirror that owns the state and the sync carries
+it, with one shared registration body instead of two aura tables.
+
+**This stage is not live, and the reason is the next responsibility.** Neither live shape is
+reachable from a client: a player cannot shield a hostile creature, because absorb spells are self or
+friendly target and this server has no GM command surface, and a creature cannot cast damage at a
+shielded player, because of the effect-execution gap above. The evidence is four deterministic
+scenarios — the shield spent with its remainder surviving, a spent shield removed with its aura
+update, the resist running first so the shield only sees what it left, and a shield of another school
+absorbing nothing — plus the regression that pins the mirror, at `cargo test -p wow-world --lib`,
+4278 passed, 0 failed. The live run is owed, not claimed.
+
 **A player gets one spell cast per session (D-H23), and that is what blocks the remaining spell
 evidence.** Trying to take D-H20's critical from a sampling run made it visible, which a
 single-cast scenario never does: four `CMSG_CAST_SPELL` six seconds apart, on a freshly started
@@ -257,7 +303,8 @@ against 30,018 templates, with a melee kill in the same session still paying 44 
 a looted item — the regression that matters, since every spawn now seeds resistances. The resist
 roll has **no** live evidence, because resistance applies to magic schools and the QA character is
 a level-2 warrior with no damaging magic; the route is a caster-class QA character, not another
-fixture on this one. What remains of D-H3 after this is the absorb shields.
+fixture on this one. What remained of D-H3 after this was the absorb shields, closed on 2026-10-02
+above.
 
 **Spell hits can crit now, and two HIGH combat entries turned out to be stale records
 (D-H20, D-H1/D-H2).** The plan's next responsibility was to contrast the three open HIGH combat
@@ -278,7 +325,8 @@ reaches the wire.
 There is **no live crit evidence**, and the entry says so: forcing one needs a repeated-cast
 campaign against a ~5% chance or a sitting player victim, and the QA character is a warrior with
 no damaging magic. The scenario pins C++'s draw and asserts both outcomes of the same hit. What
-remains of D-H3 is the resist and absorb stage, which still reports zero for a creature target.
+remained of D-H3 then was the resist and absorb stage; both are closed above, the resist on
+2026-10-01 and the absorb on 2026-10-02.
 
 **The kill-credit path had none of C++'s three pre-progress gates, and now has all three
 (D-H19).** `Player::UpdateQuestObjectiveProgress` refuses a matched objective for three separate

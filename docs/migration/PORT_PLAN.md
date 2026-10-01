@@ -209,16 +209,49 @@ for 10, 14, 11 and 11 — 46 in total, about the target's health — and the res
 refuses too. Recorded residue: the bot captured 2 of the 4 published logs, so its drain loop still
 misses some.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** the absorb
-stage, which is all that remains of D-H3 and the only spell-hit field still hardcoded to zero.
-`Unit::CalcAbsorbResist`'s shield loop (`Entities/Unit/Unit.cpp:2113-2200`) spends each
-`SPELL_AURA_SCHOOL_ABSORB` effect in `AbsorbAuraOrderPred` order, publishes
-`SMSG_SPELL_ABSORB_LOG` per consuming shield and removes a spent one. This port represents those
-amounts as mutable state only for the session's own player — the heal-absorb path already does it
-(`apply_owned_player_heal_absorb_like_cpp`) — so the damage side can follow that owner for a player
-victim, and a creature victim stays a named boundary until creature aura amounts are mutable. The
-live shape is the reverse of every run so far: a creature casting at the shielded player, which the
-creature-spell tick already drives.
+**The absorb stage is in, and the prediction in this slot was wrong in both directions.** It said the
+mutable shield amounts existed only for the session's own player and that a creature victim was the
+boundary. The opposite was true: `creature_absorb_shields_like_cpp` had been reading mutable creature
+aura amounts since the melee creature-victim work, while the **player** victim has no spell-damage
+path at all — `apply_damage_from_caster_like_cpp` resolves a creature target or returns, and the
+creature spell tick deliberately executes no effects (its own comment assigns damage and heal to
+M3.2). So the implemented victim is the creature, and the player victim waits on creature spell
+effects rather than on aura ownership.
+
+Two findings came out of reading `Unit::CalcAbsorbResist` for it, both recorded with the fix:
+
+* **D-H24**, the ignore-absorb term. C++ holds the attacker's
+  `SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` share out of the damage once before both loops
+  (`Unit.cpp:2112`) and restores it once after (`:2250`); the port subtracted it inside each loop per
+  shield, never restored it, and gated it on `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`, an attribute this
+  reference declares and reads nowhere. `represented_absorb_stages_like_cpp` now owns the whole
+  absorb half and the melee path goes through it too.
+* **D-H25**, the mirror that discarded the shield. A creature aura was written only to the canonical
+  entity, and `sync_canonical_creature_entity_like_cpp` replaces that entity wholesale from its
+  legacy mirror, so a single no-op `mutate_world_creature` erased it — measured, not inferred. The
+  hit path mutates the legacy creature twice before the shields are read, so without this the absorb
+  loop could never have seen one. `mutate_creature_aura_owner_like_cpp` now writes the mirror that
+  owns the state.
+
+**Next prepared responsibility, selected by evidence rather than by document order: creature spell
+effect execution.** `run_legacy_creature_spell_tick_once_like_cpp` decides the cast, mutates the
+cooldown and publishes START/GO, then stops — "Effect execution is intentionally not invented here:
+damage/heal calculation belongs to M3.2". That single gap is now what blocks a list of finished
+work from ever being observed in play: a creature's damage spell deals nothing, so the spell-damage
+chain this session built (coefficient, critical, resist, absorb) only ever runs caster-side, the
+player victim's shields are never spent by a spell, and no creature debuff, heal or buff cast has an
+effect. The C++ owner is `Spell::handle_immediate`/`Spell::DoAllEffectOnTarget` reached from
+`Creature::Update`'s AI cast, and the represented pieces mostly exist already —
+`apply_damage_from_caster_like_cpp`, `apply_heal_from_caster_like_cpp` and the aura application are
+all written to take a caster guid that is not the session's player.
+
+Why it is also the only way to prove the absorb stage live, stated plainly rather than left implied:
+neither live shape is reachable from a client today. A player cannot put a shield on a hostile
+creature — absorb spells are self or friendly target and this server has no GM command surface — and
+a creature cannot cast damage at a shielded player because of the gap above. The absorb stage's
+evidence is therefore four deterministic scenarios and the regression that pins the mirror, with the
+live run owed as soon as creature spell effects land. It is recorded that way in STATE.md instead of
+being called live.
 
 One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
 a previous run can leave the nearest spawn of that entry dead.

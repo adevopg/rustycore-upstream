@@ -703,9 +703,9 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   source expression — and `melee_outcome_presentation_like_cpp` publishes the real
   `HitInfo`/`VictimState` instead of a hardcoded pair. Both entries are closed as **inaccurate
   records**; nothing was implemented for them here.
-- [ ] **D-H3 Spell hits had no coefficient, no critical and no resist. Two of the three are now
-  done; the resist/absorb stage is what remains.** Restated on contrast 2026-10-01, because the
-  original one-liner was wrong in two directions.
+- [x] **D-H3 Spell hits had no coefficient, no critical and no resist. All four stages are now
+  done.** Restated on contrast 2026-10-01, because the original one-liner was wrong in two
+  directions; closed 2026-10-02 when the absorb stage landed.
 
   * **Coefficient: already done before this session.** `SpellDamageBonusDone` is ported with
     `BonusCoefficient`, `BonusCoefficientFromAP`, the `SPELL_ATTR3_IGNORE_CASTER_MODIFIERS`
@@ -713,10 +713,34 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
     (`session/spell_effects/effect_combat.rs:614-668`), and the healing side with it.
   * **Critical: done 2026-10-01**, see the entry below.
   * **Resist: done 2026-10-01**, see D-H21 below.
-  * **Absorb: still open.** `Unit::CalcAbsorbResist`'s shield loop has no represented
-    equivalent for a creature target, so `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` still reports
-    `absorbed = 0`. It needs the victim's `SPELL_AURA_SCHOOL_ABSORB` amounts as mutable state,
-    which only the session's own player has today. That is what is left of this entry.
+  * **Absorb: done 2026-10-02.** `represented_spell_absorb_for_damage_like_cpp`
+    (`session/spell_effects/spell_absorb.rs`) runs C++'s school-absorb loop
+    (`Unit.cpp:2114-2178`) between the resist and `DealDamage`: it spends each shield in
+    `AbsorbAuraOrderPred` order through the canonical aura amount, publishes one
+    `SMSG_SPELL_ABSORB_LOG` per consuming shield before the damage log, removes a spent shield with
+    its slot update, and `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` carries the real `absorb`.
+
+    Two sentences of the paragraph this replaces were wrong, and saying so is part of the record.
+    The mutable amounts were **not** player-only: `creature_absorb_shields_like_cpp` had been reading
+    a creature's `applied_aura_amounts` since the melee creature-victim work. And the player victim
+    was not the easy side — it has no spell-damage path at all, because
+    `apply_damage_from_caster_like_cpp` resolves a creature target or returns and the creature spell
+    tick executes no effects. The implemented victim is therefore the creature, and the player victim
+    waits on creature spell effect execution, not on aura ownership.
+
+    Boundaries kept: `SPELL_AURA_MANA_SHIELD` has no creature-side projection, so C++'s second loop
+    (`:2179-2248`) is empty for this victim, exactly as it is for the melee creature victim; the
+    absorb scripts and their `defaultPrevented` escape (`:2140-2144`) are not ported, so an
+    infinite-absorb shield stays clamped to zero; the spell block stage is still zero.
+
+    Evidence: four scenarios in `session/tests/scenarios_spell_state_27.rs` — the shield spent with
+    its remainder surviving, a spent shield removed with its aura update and the rest of the hit
+    landing, the resist running first so the shield only sees what it left, and a shield of another
+    school absorbing nothing — plus `cargo test -p wow-world --lib`, 4278 passed. **Not live**: no
+    client-reachable shape exists yet in either direction. A player cannot shield a hostile creature
+    (absorb spells are self or friendly target, and this server has no GM command surface) and a
+    creature cannot cast damage at a shielded player (the tick above). The live run is owed when
+    creature spell effects land, and is not claimed here.
 - [x] **D-H20 Spell hits could never crit, in either direction.** Implemented 2026-10-01 as the
   critical half of D-H3. The damage path applied no critical at all — the code said so in a
   comment — so a caster's spell crit percentage, which the port already computes per school on
@@ -1289,6 +1313,39 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   come from the pinned reference. Which file they did come from is not established here — the
   complementary 3.3.5a checkout is not present on this host, so that is a question for whoever has
   it, not a claim. Corrected anchors are in the same commit.
+
+- [x] **D-H25 A creature's aura was written to the mirror that gets overwritten, so one no-op
+  mutation erased it.** Found and fixed on 2026-10-02 while implementing D-H3's absorb stage, which
+  could not see a shield that no longer existed.
+
+  A creature can exist twice: as a legacy-runtime `WorldCreature` and as a canonical map entity.
+  `mutate_world_creature` ends by calling `sync_canonical_creature_entity_like_cpp`, which replaces
+  the **whole** canonical entity from the legacy clone — deliberately, because death and respawn
+  hooks touch AI, combat, loot, aura, timer and plan state together
+  (`session/mod.rs:4013-4021`). `apply_creature_aura_with_provenance_like_cpp` wrote the application
+  only to the canonical side. So any legacy mutation of that creature discarded it, and a no-op one
+  was enough.
+
+  Measured rather than reasoned about: a probe applied a 300-point shield, read `Some(300)`, called
+  `mutate_world_creature(guid, |_| {})`, and read `None`. The spell-hit path mutates the legacy
+  creature twice before any shield is read — once to read resistance and level for the resist, once
+  to apply the damage — so the shield was always gone by then. In play this reached every creature
+  aura a player cast applied (`spell_effects/execution.rs:853`): a debuff landed, published its slot
+  to the client, and vanished at the victim's next swing or hit with no packet saying so.
+
+  The repair gives the aura state one owner per creature. `mutate_creature_aura_owner_like_cpp`
+  writes the legacy mirror when the creature is registered there — the sync then carries the state
+  to canonical, as it does for health — and the canonical entity directly otherwise, which is what a
+  summon or pet is. The registration body moved into
+  `register_creature_aura_application_like_cpp(&mut Creature, …)` so both mirrors share one
+  implementation rather than two aura tables, and the slot lookup, the expiry removal and the new
+  absorb stage all go through the same owner.
+
+  Evidence: `a_creature_aura_survives_a_legacy_mirror_mutation_like_cpp` is the probe turned into a
+  regression, and the four absorb scenarios would all fail without this. Boundary: this fixes the
+  aura table's owner. Whether any **other** canonical-only creature write has the same exposure is
+  not audited here; the sync's whole-entity replacement is unchanged and still the thing to check
+  before writing canonical-only creature state.
 
 ## MED — wrong values / loose checks / minor loss
 
