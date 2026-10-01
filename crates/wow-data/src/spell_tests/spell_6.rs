@@ -767,3 +767,420 @@ fn hydrating_serverside_spells_publishes_the_payload_get_like_cpp() {
     );
     assert_eq!(incumbent.recovery_time_ms, 0);
 }
+
+/// C++ `SpellEffectInfo::CalcValue` (`Spells/SpellInfo.cpp:496-597`) with a unit
+/// caster.
+///
+/// The arms, in C++'s order: the `RealPointsPerLevel` term with its
+/// `MaxLevel`/`BaseLevel` clamp and the `max(BaseLevel, SpellLevel)` subtraction
+/// (`:506-517`), the `DieSides` roll (`:519-526`), then `PointsPerResource`
+/// times the caster's combo points (`:531-536`), then `round`.
+#[test]
+fn calc_value_with_caster_matches_cpp_level_and_combo_arms() {
+    use crate::spell::{CalcValueCasterLikeCpp, SpellEffectInfo, SpellLevelsLikeCpp};
+
+    let caster = |level: u32, combo_points: u8| CalcValueCasterLikeCpp {
+        level,
+        combo_points,
+        is_controlled_by_player: true,
+        scales_with_creature_level: false,
+    };
+
+    // No roll is wanted in these cases, so a die roll would be a bug.
+    let no_die = |_min: i32, _max: i32| -> i32 { panic!("DieSides is zero, C++ never rolls") };
+    let effect = |base_points: i32, real_points_per_level: f32| SpellEffectInfo {
+        effect_base_points: base_points,
+        effect_real_points_per_level: real_points_per_level,
+        ..Default::default()
+    };
+    let levels = |base_level: u32, max_level: u32, spell_level: u32| SpellLevelsLikeCpp {
+        base_level,
+        max_level,
+        spell_level,
+    };
+
+    // No caster: C++ skips both unit arms, so the per-level term does not apply
+    // however large it is.
+    assert_eq!(
+        effect(100, 5.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            None,
+            None,
+            no_die
+        ),
+        100
+    );
+
+    // A zero `RealPointsPerLevel` skips the arm even with a caster.
+    assert_eq!(
+        effect(100, 0.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(40, 0)),
+            None,
+            no_die
+        ),
+        100
+    );
+
+    // Level 20, BaseLevel and SpellLevel 1, no MaxLevel: `level -= max(1, 1)`
+    // leaves 19 steps of 5.
+    assert_eq!(
+        effect(100, 5.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(20, 0)),
+            None,
+            no_die
+        ),
+        195
+    );
+
+    // `MaxLevel` caps the level before the subtraction: 10 instead of 20, so 9
+    // steps.
+    assert_eq!(
+        effect(100, 5.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 10, 1),
+            Some(caster(20, 0)),
+            None,
+            no_die
+        ),
+        145
+    );
+
+    // A caster below `BaseLevel` is raised to it, which is why a low-level
+    // caster of a high-level spell gets the spell's own floor.
+    assert_eq!(
+        effect(100, 5.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(30, 0, 30),
+            Some(caster(5, 0)),
+            None,
+            no_die
+        ),
+        100,
+        "level is clamped up to BaseLevel 30, then 30 - max(30, 30) is zero"
+    );
+
+    // `max(BaseLevel, SpellLevel)` uses the larger of the two, so a SpellLevel
+    // above BaseLevel can make the term negative and reduce the base points.
+    assert_eq!(
+        effect(100, 5.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 30),
+            Some(caster(20, 0)),
+            None,
+            no_die
+        ),
+        50,
+        "20 - max(1, 30) is -10 steps of 5"
+    );
+
+    // `int32(level * basePointsPerLevel)` truncates toward zero rather than
+    // rounding: 19 * 0.5 is 9.5, which C++ takes as 9.
+    assert_eq!(
+        effect(100, 0.5).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(20, 0)),
+            None,
+            no_die
+        ),
+        109
+    );
+
+    // The die roll lands on top of the level term, in C++'s order.
+    assert_eq!(
+        effect(100, 5.0).calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(20, 0)),
+            None,
+            |min, max| {
+                assert_eq!((min, max), (1, 4));
+                3
+            }
+        ),
+        195,
+        "DieSides is zero here, so no roll is added"
+    );
+    let mut rolled = SpellEffectInfo {
+        effect_base_points: 100,
+        effect_real_points_per_level: 5.0,
+        effect_die_sides: 4,
+        ..Default::default()
+    };
+    assert_eq!(
+        rolled.calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(20, 0)),
+            None,
+            |min, max| {
+                assert_eq!((min, max), (1, 4), "C++ irand(1, DieSides)");
+                3
+            }
+        ),
+        198
+    );
+    // `DieSides == 1` adds the sides rather than rolling (`:522-523`).
+    rolled.effect_die_sides = 1;
+    assert_eq!(
+        rolled.calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(20, 0)),
+            None,
+            no_die
+        ),
+        196
+    );
+    // A negative `DieSides` rolls the reversed range (`:525`).
+    rolled.effect_die_sides = -4;
+    assert_eq!(
+        rolled.calc_value_with_caster_and_die_roll_like_cpp(
+            levels(1, 0, 1),
+            Some(caster(20, 0)),
+            None,
+            |min, max| {
+                assert_eq!((min, max), (-4, 1), "C++ irand(DieSides, 1)");
+                -2
+            }
+        ),
+        193
+    );
+
+    // Combo points multiply `PointsPerResource`, and only with a unit caster.
+    let combo = SpellEffectInfo {
+        effect_base_points: 100,
+        effect_points_per_resource: 7.5,
+        ..Default::default()
+    };
+    assert_eq!(
+        combo.calc_value_with_caster_and_die_roll_like_cpp(
+            SpellLevelsLikeCpp::default(),
+            Some(caster(20, 4)),
+            None,
+            no_die
+        ),
+        130,
+        "100 + 7.5 * 4 rounds to 130"
+    );
+    assert_eq!(
+        combo.calc_value_with_caster_and_die_roll_like_cpp(
+            SpellLevelsLikeCpp::default(),
+            None,
+            None,
+            no_die
+        ),
+        100,
+        "no unit caster, no combo term"
+    );
+    assert_eq!(
+        combo.calc_value_with_caster_and_die_roll_like_cpp(
+            SpellLevelsLikeCpp::default(),
+            Some(caster(20, 0)),
+            None,
+            no_die
+        ),
+        100,
+        "C++ reads the combo term only when GetComboPoints() is non-zero"
+    );
+
+    // The no-caster entry point is the same function with both unit arms off,
+    // so the two agree by construction rather than by a copied body.
+    assert_eq!(
+        effect(100, 5.0).calc_value_no_caster_with_die_roll_like_cpp(no_die),
+        100
+    );
+}
+
+/// C++ `CalcValue`'s creature-level multiplication gate (`SpellInfo.cpp:544-594`).
+///
+/// The predicate is public because a caller with no `NpcManaCostScaler` table in
+/// hand still needs to know when C++ would have scaled, so the gap stays
+/// countable rather than silent.
+#[test]
+fn calc_value_creature_level_scaling_gate_matches_cpp() {
+    use crate::spell::{SpellEffectInfo, SpellLevelsLikeCpp, spell_effect_types};
+
+    let damage = SpellEffectInfo {
+        effect: spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+        ..Default::default()
+    };
+    let levels = SpellLevelsLikeCpp {
+        base_level: 1,
+        max_level: 0,
+        spell_level: 10,
+    };
+
+    assert!(damage.calc_value_reaches_creature_level_scaling_like_cpp(levels, 20, false, true));
+    assert!(
+        !damage.calc_value_reaches_creature_level_scaling_like_cpp(levels, 20, true, true),
+        "C++ requires !IsControlledByPlayer()"
+    );
+    assert!(
+        !damage.calc_value_reaches_creature_level_scaling_like_cpp(levels, 10, false, true),
+        "SpellLevel equal to the caster's level skips it"
+    );
+    assert!(
+        !damage.calc_value_reaches_creature_level_scaling_like_cpp(
+            SpellLevelsLikeCpp {
+                spell_level: 0,
+                ..levels
+            },
+            20,
+            false,
+            true
+        ),
+        "a zero SpellLevel skips it"
+    );
+    assert!(
+        !damage.calc_value_reaches_creature_level_scaling_like_cpp(levels, 20, false, false),
+        "SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL is required"
+    );
+    assert!(
+        !SpellEffectInfo {
+            effect: spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+            effect_real_points_per_level: 5.0,
+            ..Default::default()
+        }
+        .calc_value_reaches_creature_level_scaling_like_cpp(levels, 20, false, true),
+        "C++ requires !basePointsPerLevel, the two scalings are exclusive"
+    );
+
+    // Neither switch matches, so C++ leaves canEffectScale false.
+    assert!(
+        !SpellEffectInfo {
+            effect: spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+            effect_aura: aura_types::SPELL_AURA_MOD_STUN,
+            ..Default::default()
+        }
+        .calc_value_reaches_creature_level_scaling_like_cpp(levels, 20, false, true)
+    );
+    // The aura switch is enough on its own (`:568-584`).
+    assert!(
+        SpellEffectInfo {
+            effect: spell_effect_types::SPELL_EFFECT_APPLY_AURA,
+            effect_aura: aura_types::SPELL_AURA_PERIODIC_DAMAGE,
+            ..Default::default()
+        }
+        .calc_value_reaches_creature_level_scaling_like_cpp(levels, 20, false, true)
+    );
+}
+
+/// C++ `value *= casterScaler->Scaler / spellScaler->Scaler`
+/// (`SpellInfo.cpp:586-592`), with the `NPCManaCostScaler.txt` table C++ reads it
+/// from.
+#[test]
+fn calc_value_creature_level_scaling_applies_the_npc_mana_cost_scaler_like_cpp() {
+    use crate::game_tables::NpcManaCostScalerGameTableLikeCpp;
+    use crate::spell::{CalcValueCasterLikeCpp, SpellEffectInfo, SpellLevelsLikeCpp};
+
+    let no_die = |_min: i32, _max: i32| -> i32 { panic!("DieSides is zero, C++ never rolls") };
+    let effect = SpellEffectInfo {
+        effect: spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+        effect_base_points: 100,
+        ..Default::default()
+    };
+    let levels = SpellLevelsLikeCpp {
+        base_level: 1,
+        max_level: 0,
+        spell_level: 10,
+    };
+    // Row 0 is the unused default, so level 10 is the tenth scaler and level 20
+    // the twentieth.
+    let table =
+        NpcManaCostScalerGameTableLikeCpp::from_scalers((1..=20).map(|level| level as f32 / 10.0));
+    let creature = CalcValueCasterLikeCpp {
+        level: 20,
+        combo_points: 0,
+        is_controlled_by_player: false,
+        scales_with_creature_level: true,
+    };
+
+    // `casterScaler 2.0 / spellScaler 1.0` doubles the value.
+    assert_eq!(
+        effect.calc_value_with_caster_and_die_roll_like_cpp(
+            levels,
+            Some(creature),
+            Some(&table),
+            no_die
+        ),
+        200
+    );
+    // Without the table C++'s `if (spellScaler && casterScaler)` leaves the value
+    // alone, which is also what a caller with no table in hand gets.
+    assert_eq!(
+        effect.calc_value_with_caster_and_die_roll_like_cpp(levels, Some(creature), None, no_die),
+        100
+    );
+    // A level past the end of the table is C++'s null row.
+    assert_eq!(
+        effect.calc_value_with_caster_and_die_roll_like_cpp(
+            levels,
+            Some(CalcValueCasterLikeCpp {
+                level: 21,
+                ..creature
+            }),
+            Some(&table),
+            no_die
+        ),
+        100
+    );
+    // A player-controlled caster never reaches the arm, table or not.
+    assert_eq!(
+        effect.calc_value_with_caster_and_die_roll_like_cpp(
+            levels,
+            Some(CalcValueCasterLikeCpp {
+                is_controlled_by_player: true,
+                ..creature
+            }),
+            Some(&table),
+            no_die
+        ),
+        100
+    );
+    // The scaling multiplies the value the earlier arms produced, not the raw
+    // base points: `(100 + 19 * 2) * 2`.
+    assert_eq!(
+        SpellEffectInfo {
+            effect_real_points_per_level: 2.0,
+            ..effect.clone()
+        }
+        .calc_value_with_caster_and_die_roll_like_cpp(
+            SpellLevelsLikeCpp {
+                base_level: 1,
+                max_level: 0,
+                spell_level: 1,
+            },
+            Some(creature),
+            Some(&table),
+            no_die
+        ),
+        138,
+        "RealPointsPerLevel and the creature scaling are mutually exclusive in C++"
+    );
+}
+
+/// The real `NPCManaCostScaler.txt` parses into C++'s row shape.
+#[test]
+fn npc_mana_cost_scaler_parses_the_installed_game_table_like_cpp() {
+    use crate::game_tables::NpcManaCostScalerGameTableLikeCpp;
+
+    let path = std::path::Path::new("/opt/wow-3.4.3/gt/NPCManaCostScaler.txt");
+    if !path.exists() {
+        // The installed client data is not part of the repository.
+        return;
+    }
+    let table = NpcManaCostScalerGameTableLikeCpp::load_from_path(path)
+        .expect("the installed table must parse");
+    assert_eq!(
+        table.len(),
+        101,
+        "100 level rows plus LoadGameTable's unused row 0"
+    );
+    assert_eq!(
+        table.row(1).map(|row| row.scaler),
+        Some(0.193),
+        "the first data row is level 1"
+    );
+    assert_eq!(
+        table.row(0).map(|row| row.scaler),
+        Some(0.0),
+        "row 0 is the default unused entry"
+    );
+    assert!(table.row(101).is_none(), "past the end is C++'s null row");
+}

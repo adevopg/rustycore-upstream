@@ -661,6 +661,7 @@ pub struct SpellStore {
     pub(super) spell_interrupt_rows_by_id: BTreeMap<u32, SpellInterruptRowLikeCpp>,
     pub(super) spell_hit_categories_by_difficulty: HashMap<(i32, u8), SpellHitCategoriesRowLikeCpp>,
     pub(super) spell_hit_misc_by_difficulty: HashMap<(i32, u8), SpellHitMiscRowLikeCpp>,
+    pub(super) spell_levels_by_difficulty: HashMap<(i32, u8), SpellLevelsLikeCpp>,
     pub(super) spell_hit_effect_mechanics_by_difficulty:
         HashMap<(i32, u8), BTreeMap<u32, SpellHitEffectMechanicRowLikeCpp>>,
     pub(super) spell_shapeshift_masks: HashMap<i32, (u64, u64)>,

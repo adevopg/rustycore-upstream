@@ -18,6 +18,7 @@ impl SpellStore {
             spell_interrupt_rows_by_id: BTreeMap::new(),
             spell_hit_categories_by_difficulty: HashMap::new(),
             spell_hit_misc_by_difficulty: HashMap::new(),
+            spell_levels_by_difficulty: HashMap::new(),
             spell_hit_effect_mechanics_by_difficulty: HashMap::new(),
             spell_shapeshift_masks: HashMap::new(),
             implicit_target_conditions: HashMap::new(),
@@ -120,6 +121,42 @@ impl SpellStore {
 
         has_metadata.then_some(metadata)
     }
+    /// C++ `SpellInfo`'s `SpellLevels` trio for one spell at one difficulty,
+    /// with the same fallback walk the other difficulty-aware readers use.
+    ///
+    /// C++ leaves all three at zero when the spell has no row, and so does a
+    /// miss here, so the caller cannot tell "no row" from "a row of zeros" —
+    /// neither can C++, because both reach `CalcValue` as zero.
+    pub fn spell_levels_for_difficulty_like_cpp(
+        &self,
+        spell_id: i32,
+        requested_difficulty_id: u8,
+        difficulty_store: Option<&crate::difficulty::DifficultyStore>,
+    ) -> SpellLevelsLikeCpp {
+        let mut difficulty_id = requested_difficulty_id;
+        let mut visited = [false; 256];
+        loop {
+            let visited_slot = &mut visited[usize::from(difficulty_id)];
+            if *visited_slot {
+                break;
+            }
+            *visited_slot = true;
+            if let Some(levels) = self
+                .spell_levels_by_difficulty
+                .get(&(spell_id, difficulty_id))
+            {
+                return *levels;
+            }
+            if difficulty_id == 0 {
+                break;
+            }
+            difficulty_id = difficulty_store
+                .and_then(|store| store.get(u32::from(difficulty_id)))
+                .map_or(0, |difficulty| difficulty.fallback_difficulty_id);
+        }
+        SpellLevelsLikeCpp::default()
+    }
+
     pub(in crate::spell) fn empty_spell_info_like_cpp(spell_id: i32) -> SpellInfo {
         SpellInfo {
             spell_id,
@@ -211,6 +248,8 @@ impl SpellStore {
             effect_mechanic: effect.effect_mechanic,
             effect_amplitude: effect.effect_amplitude,
             effect_die_sides: 0,
+            effect_real_points_per_level: effect.effect_real_points_per_level,
+            effect_points_per_resource: effect.effect_points_per_resource,
             effect_bonus_coefficient_from_ap: effect.bonus_coefficient_from_ap,
             effect_spell_class_mask: effect.effect_spell_class_mask.map(|mask| mask as u32),
             effect_misc_value_1: effect.effect_misc_value[0],
@@ -235,6 +274,8 @@ impl SpellStore {
             effect_mechanic: effect.effect_mechanic,
             effect_amplitude: effect.effect_amplitude,
             effect_die_sides: effect.effect_die_sides,
+            effect_real_points_per_level: effect.effect_real_points_per_level,
+            effect_points_per_resource: effect.effect_points_per_resource,
             effect_bonus_coefficient_from_ap: effect.bonus_coefficient_from_ap,
             effect_spell_class_mask: effect.effect_spell_class_mask,
             effect_misc_value_1: effect.effect_misc_value[0],
@@ -279,9 +320,16 @@ impl SpellStore {
     }
     /// Hydrate the represented `SpellInfo` payload from already-effective DB2
     /// authorities while preserving C++ `SpellMgr::LoadSpellInfoStore` order.
+    /// `spell_levels` is taken by reference while the other contributors are
+    /// taken by value because it is not the same kind of input: the ten in
+    /// `stores` are hotfix-overlaid stores built for this call and consumed by
+    /// it, whereas `SpellLevels.db2` has no overlay path and its store is a
+    /// long-lived one the composition root already owns and shares with the
+    /// `SpellInfo` key authority.
     pub fn hydrate_effective_core_db2_like_cpp(
         self,
         stores: EffectiveCoreSpellDb2StoresLikeCpp,
+        spell_levels: &crate::spell_db2::SpellLevelsStore,
     ) -> Self {
         let mut store = Self::from_spell_db2_stores_like_cpp(
             &stores.spell_categories,
@@ -295,6 +343,7 @@ impl SpellStore {
         store.apply_db2_cooldowns_like_cpp(&stores.spell_cooldowns);
         store.apply_db2_casting_requirements_like_cpp(&stores.spell_casting_requirements);
         store.apply_db2_power_costs_like_cpp(&stores.spell_power, &stores.spell_power_difficulty);
+        store.apply_db2_spell_levels_like_cpp(spell_levels);
         store.apply_interrupt_flag_corrections_like_cpp();
 
         info!(

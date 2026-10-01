@@ -1,6 +1,8 @@
 //! Composition boundary for the Hotfix DB2 rows that hydrate core `SpellInfo`.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+use std::sync::Arc;
+use tracing::info;
 use wow_data::{
     Db2HotfixRemovalStoreLikeCpp, EffectiveCoreSpellDb2StoresLikeCpp, SpellAuraRestrictionsEntry,
     SpellAuraRestrictionsStore, SpellCastTimesEntry, SpellCastTimesStore,
@@ -319,13 +321,27 @@ pub(crate) async fn load_spell_name_store_like_cpp(
     )
 }
 
+/// Loads the core `SpellInfo` contributors, including `SpellLevels.db2`, whose
+/// store is returned for the session resources and the two later readers.
+///
+/// `SpellLevels` is the one contributor taken straight from the DB2 rather than
+/// through `load_effective_from_hotfix_rows_like_cpp`: that table has no overlay
+/// path here, so a `spell_levels` hotfix row would not apply.
 pub(crate) async fn load_spell_store_like_cpp(
     data_dir: &str,
     locale: &str,
     seed: SpellStore,
     persistence: &dyn SpellCoreDb2HotfixPersistencePortLikeCpp,
     removals: &Db2HotfixRemovalStoreLikeCpp,
-) -> Result<SpellStore> {
+) -> Result<(SpellStore, Arc<wow_data::SpellLevelsStore>)> {
+    let spell_levels = Arc::new(
+        wow_data::SpellLevelsStore::load(data_dir, locale)
+            .context("Failed to load SpellLevels.db2")?,
+    );
+    info!(
+        "Loaded {} spell level rows from SpellLevels.db2",
+        spell_levels.len()
+    );
     let categories = loaded_rows_like_cpp(persistence.load_spell_categories_rows_like_cpp().await)?;
     let categories = SpellCategoriesStore::load_effective_from_hotfix_rows_like_cpp(
         data_dir,
@@ -410,8 +426,8 @@ pub(crate) async fn load_spell_store_like_cpp(
         removals,
     )?;
 
-    Ok(
-        seed.hydrate_effective_core_db2_like_cpp(EffectiveCoreSpellDb2StoresLikeCpp::new(
+    let store = seed.hydrate_effective_core_db2_like_cpp(
+        EffectiveCoreSpellDb2StoresLikeCpp::new(
             categories,
             misc,
             effect,
@@ -422,8 +438,10 @@ pub(crate) async fn load_spell_store_like_cpp(
             casting_requirements,
             power,
             power_difficulty,
-        )),
-    )
+        ),
+        &spell_levels,
+    );
+    Ok((store, spell_levels))
 }
 
 pub(crate) async fn load_spell_casting_requirements_store_like_cpp(

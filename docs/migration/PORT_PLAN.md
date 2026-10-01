@@ -303,12 +303,16 @@ tick needs the same shape for its own log, which is `SMSG_SPELL_NON_MELEE_DAMAGE
 **Slices, in dependency order.** Each is a bounded deliverable with its own acceptance; none is
 useful before the one above it, which is why they are not all one commit:
 
-1. **`CalcValue` with its caster.** Carry `effect_real_points_per_level` and
-   `effect_points_per_resource` into `SpellEffectInfo` from both hydration arms, plumb
-   `SpellLevels` into the spell store, and implement the level-scaling and combo arms as a rule over
-   explicit inputs. The `NpcManaCostScaler` arm stays a named boundary until a GameTable reader
-   exists, and the gate that reaches it (`SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL` with
-   `SpellLevel != caster level`) must be *observable*, not silently skipped.
+1. **`CalcValue` with its caster — done 2026-10-02, and it carried a HIGH defect of its own.** The
+   two effect columns and `SpellLevels` are plumbed, the level, die and combo arms are ported in C++'s
+   order, and the creature-level arm runs against the real game table. The defect is
+   **D-H26**: the player's execution path had the same hole as the tick, reading
+   `effect.effect_base_points` for every effect kind, so no spell ever rolled its range and none
+   scaled with the caster's level. 48,102 of 69,504 installed effect rows carry a non-zero
+   `DieSides`. The `NpcManaCostScaler` multiplication is in as well: the table is installed at
+   `/opt/wow-3.4.3/gt/` and `wow-data::game_tables` already read several, which a first look at
+   `dbc/<locale>/` alone had missed. What remains unrepresented is only the combo-point term and the
+   spellmods, neither of which has an owner.
 2. **The player-victim hit chain as a map-owned stage.** Crit, resist, absorb and mana shield
    against the canonical player, committed in the same phase as the health write, mirroring the
    melee stage rather than duplicating its arithmetic.
@@ -320,9 +324,8 @@ useful before the one above it, which is why they are not all one commit:
 5. **Live acceptance**, which this macro finally makes reachable: a creature casting a damage spell
    at the QA character, and the same run proves the absorb stage that D-H3 left owed.
 
-Not started in this pass, deliberately. Slice 1 crosses two crates' store composition, and a
-half-plumbed spell store is worse than none; it is the next thing to cut, with the inventory above
-as its starting evidence rather than a re-derivation.
+Slice 1 is in. Slices 2 to 5 remain, and slice 2 — the player-victim hit chain as a map-owned stage
+— is the next cut.
 
 One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
 a previous run can leave the nearest spawn of that entry dead.

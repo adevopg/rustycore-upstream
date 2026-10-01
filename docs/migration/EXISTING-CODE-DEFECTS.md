@@ -1347,6 +1347,76 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   not audited here; the sync's whole-entity replacement is unchanged and still the thing to check
   before writing canonical-only creature state.
 
+- [x] **D-H26 Every spell effect was worth its raw `EffectBasePoints`, so no spell ever rolled its
+  damage range and no spell scaled with the caster's level.** Found on 2026-10-02 while sizing the
+  creature-spell macro, and fixed in the same pass.
+
+  C++ never hands an effect handler the DB2 column. `Spell::EffectHandler` fills `damage` from
+  `SpellEffectInfo::CalcValue(caster)` (`Spells/SpellInfo.cpp:496-597`), so by the time any handler
+  runs, the value already includes the `DieSides` roll (`:519-526`) and the `RealPointsPerLevel` term
+  with its `MaxLevel`/`BaseLevel` clamp and `max(BaseLevel, SpellLevel)` subtraction (`:506-517`).
+  The port's execution path read `effect.effect_base_points` straight out of the effect
+  (`session/spell_effects/execution.rs`), for **every** effect kind — damage, heal, and every other
+  handler fed from that tuple.
+
+  Two consequences, both systematic rather than occasional. Every spell with a damage or healing
+  *range* delivered the bottom of it, always, because the range lives entirely in `DieSides`. And a
+  spell whose value grows with the caster's level never grew: a level-20 caster got the level-1
+  value.
+
+  Measured on the installed client data rather than estimated, with the port's own DB2 reader:
+  **48,102 of 69,504** `SpellEffect.db2` rows carry a non-zero `DieSides`, and **2,117** carry a
+  non-zero `RealPointsPerLevel`, of which **701** are `SPELL_EFFECT_SCHOOL_DAMAGE`. `SpellLevels.db2`
+  has 16,914 rows, 16,878 of them with a non-zero `BaseLevel` or `SpellLevel`, so the clamp the
+  per-level term needs has data for essentially every spell.
+
+  The live run from 2026-10-01 already contained the symptom, which is worth recording because it was
+  looked at and not noticed: the captured non-critical row reported `original_damage = 13`, and the
+  critical row's 19 is `13 + 13/2` truncated, so both casts started from the same 13 where a die range
+  should have varied. Two casts are not proof on their own; the source is.
+
+  The repair ports the missing arms. `SpellEffectInfo::calc_value_with_caster_and_die_roll_like_cpp`
+  carries the level term, the die roll and the `PointsPerResource` combo term in C++'s order, and the
+  existing no-caster entry point now delegates to it with both unit arms off, so the two cannot drift
+  apart. `effect_real_points_per_level` and `effect_points_per_resource` were already read into
+  `SpellEffectDb2Entry` and never carried into the runtime effect; they are now. `SpellLevels.db2`
+  was loaded and keyed but never reached the spell store either, and now lands in a side table with
+  the same difficulty-fallback walk the spell-hit metadata uses — beside the runtime `SpellInfo`
+  rather than on it, because that struct is named field-by-field in roughly 300 fixtures and
+  `CalcValue` is the only consumer.
+
+  The creature-level multiplication (`:541-594`) is in too, and a correction belongs here because I
+  first wrote it off as unreachable: I had looked only inside `dbc/<locale>/` and concluded the
+  installed data shipped no GameTable files and the port had no reader. Both were wrong.
+  `/opt/wow-3.4.3/gt/NPCManaCostScaler.txt` is installed, and `wow-data::game_tables` already reads
+  several GameTables. So `NpcManaCostScalerGameTableLikeCpp` is a small addition in the shape of its
+  neighbours, and `value *= casterScaler->Scaler / spellScaler->Scaler` now runs. The gate predicate
+  stays public anyway, because a caller holding no table still needs to know when C++ would have
+  scaled.
+
+  Boundaries that remain, each a fact this port does not carry rather than a choice: combo points are
+  zero because no owner tracks `Unit::GetComboPoints`, which leaves the `PointsPerResource` term inert
+  for the 66 effects that have one, and `ApplyEffectModifiers`'s spellmods have no represented owner.
+  The player's own cast path passes no scaler table, which is not a gap either: C++ gates that arm on
+  `!IsControlledByPlayer()` (`:544`), so a player caster cannot reach it. `SpellLevels` also takes the plain DB2 load
+  rather than a hotfix overlay, because that table has no overlay path here; a `spell_levels` hotfix
+  row would not apply. The core spell loader now owns that store and hands it back, so the file is
+  still read once and `app.rs` ends six lines *below* its physical ceiling rather than one above it.
+
+  Evidence: `calc_value_with_caster_matches_cpp_level_and_combo_arms` pins every arm including the
+  `MaxLevel` cap, the raise to `BaseLevel`, the negative term a `SpellLevel` above `BaseLevel`
+  produces, the truncation of `int32(level * basePointsPerLevel)`, the three `DieSides` branches and
+  the no-caster agreement; `calc_value_creature_level_scaling_gate_matches_cpp` pins that arm's gate
+  and `calc_value_creature_level_scaling_applies_the_npc_mana_cost_scaler_like_cpp` the multiplication
+  itself, with `npc_mana_cost_scaler_parses_the_installed_game_table_like_cpp` reading the real
+  `NPCManaCostScaler.txt` (101 rows, level 1 at `0.193`, row 0 the unused default); and
+  `a_spell_effects_damage_is_its_calc_value_not_its_base_points_like_cpp` drives a real cast end to
+  end, where a 10-base-point spell with `DieSides 6` and `RealPointsPerLevel 2.0` at level 20 deals
+  **52**, not 10. `cargo test -p wow-data --lib` 765 passed; `-p wow-world --lib` 4280 passed; `-p world-server --lib` 607 passed.
+
+  **Not proven live.** The next `--spell-damage` sampling run should now show a *range* of
+  `original_damage` where it showed a constant 13, and that is the acceptance owed.
+
 ## MED — wrong values / loose checks / minor loss
 
 - [ ] **D-M1 Silent gold-save error.** `let _ = char_db.execute(stmt).await` swallows failures. `session.rs:21495`.

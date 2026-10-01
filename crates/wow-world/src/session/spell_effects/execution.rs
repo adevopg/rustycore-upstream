@@ -339,7 +339,10 @@ impl WorldSession {
                     .map(|effect| {
                         (
                             effect.effect,
-                            effect.effect_base_points,
+                            // C++ hands every effect handler
+                            // `SpellEffectInfo::CalcValue(caster)`, never the raw
+                            // `EffectBasePoints` column.
+                            self.represented_spell_effect_calc_value_like_cpp(spell_id, effect),
                             effect.effect_index,
                             effect.effect_misc_value_1,
                             effect.effect_trigger_spell,

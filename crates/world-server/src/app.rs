@@ -1103,14 +1103,6 @@ async fn run_inner(
         "Loaded {} creature family rows from CreatureFamily.db2",
         creature_family_store.len()
     );
-    let spell_levels_store = Arc::new(
-        wow_data::SpellLevelsStore::load(&data_dir, &locale)
-            .context("Failed to load SpellLevels.db2")?,
-    );
-    info!(
-        "Loaded {} spell level rows from SpellLevels.db2",
-        spell_levels_store.len()
-    );
     let spell_core_hotfix_persistence =
         wow_database::MariaDbSpellCoreDb2HotfixPersistenceAdapterLikeCpp::new(Arc::clone(
             &hotfix_db,
@@ -1149,7 +1141,9 @@ async fn run_inner(
     )
     .await
     .context("Failed to load SpellInfo key authority")?;
-    let mut spell_store = spell::core_db2_hotfix::load_spell_store_like_cpp(
+    // The loader owns `SpellLevels.db2` because it is the first consumer; it
+    // hands the store back for the session resources and the two later readers.
+    let (mut spell_store, spell_levels_store) = spell::core_db2_hotfix::load_spell_store_like_cpp(
         &data_dir,
         &locale,
         spell_store_seed,

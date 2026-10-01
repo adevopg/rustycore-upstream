@@ -9,7 +9,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
+mod npc_scaling;
 mod regen;
+pub use npc_scaling::*;
 pub use regen::*;
 
 /// C++ `GtBattlePetXPEntry`.
@@ -551,7 +553,7 @@ pub fn shield_block_regular_column_for_quality_like_cpp(
     }
 }
 
-fn parse_float_like_cpp(value: &str) -> f32 {
+pub(super) fn parse_float_like_cpp(value: &str) -> f32 {
     value.parse::<f32>().unwrap_or(0.0)
 }
 

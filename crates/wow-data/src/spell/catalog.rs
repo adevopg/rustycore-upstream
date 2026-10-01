@@ -69,6 +69,15 @@ pub struct SpellEffectInfo {
     /// through `SpellEffectInfo::CalcValueMultiplier` (`SpellInfo.cpp:624-631`).
     pub effect_amplitude: f32,
     pub effect_die_sides: i32,
+    /// C++ `SpellEffectInfo::RealPointsPerLevel`
+    /// (`SpellEffectEntry::EffectRealPointsPerLevel`), the per-level term
+    /// `SpellEffectInfo::CalcValue` adds for a unit caster
+    /// (`SpellInfo.cpp:506-517`).
+    pub effect_real_points_per_level: f32,
+    /// C++ `SpellEffectInfo::PointsPerResource`
+    /// (`SpellEffectEntry::EffectPointsPerResource`), the per-combo-point term
+    /// `CalcValue` adds for a unit caster (`SpellInfo.cpp:534-535`).
+    pub effect_points_per_resource: f32,
     /// C++ `SpellEffectInfo::BonusCoefficientFromAP`
     /// (`DB2Structure.h:3525`, `SpellInfo.cpp:436`): the coefficient
     /// `Unit::SpellDamageBonusDone`/`SpellHealingBonusDone` scale by the
@@ -623,18 +632,146 @@ impl SpellEffectInfo {
         )
     }
 
-    pub fn calc_value_no_caster_with_die_roll_like_cpp<F>(&self, mut roll_die: F) -> i32
+    pub fn calc_value_no_caster_with_die_roll_like_cpp<F>(&self, roll_die: F) -> i32
     where
         F: FnMut(i32, i32) -> i32,
     {
-        let mut value = f64::from(self.effect_base_points);
+        // C++ `CalcValue(nullptr)`: every unit arm is skipped, which is exactly
+        // this function with no caster.
+        self.calc_value_with_caster_and_die_roll_like_cpp(
+            SpellLevelsLikeCpp::default(),
+            None,
+            None,
+            roll_die,
+        )
+    }
+
+    /// C++ `SpellEffectInfo::CalcValue` (`SpellInfo.cpp:496-597`) with the
+    /// caster's unit arms.
+    ///
+    /// In C++ order: the `RealPointsPerLevel` term with its level clamp
+    /// (`:506-517`), the `DieSides` roll (`:519-526`), the `PointsPerResource`
+    /// combo term (`:531-536`), the creature-level multiplication (`:541-594`),
+    /// then `round`.
+    ///
+    /// Boundary: `WorldObject::ApplyEffectModifiers` (`:538-539`) applies the
+    /// caster's spellmods, which have no represented owner, so the value passes
+    /// through as it does in C++ for a caster with none.
+    pub fn calc_value_with_caster_and_die_roll_like_cpp<F>(
+        &self,
+        levels: SpellLevelsLikeCpp,
+        caster: Option<CalcValueCasterLikeCpp>,
+        npc_mana_cost_scaler: Option<&crate::game_tables::NpcManaCostScalerGameTableLikeCpp>,
+        mut roll_die: F,
+    ) -> i32
+    where
+        F: FnMut(i32, i32) -> i32,
+    {
+        let mut base_points = self.effect_base_points;
+        // C++ `if (casterUnit && basePointsPerLevel != 0.0f)`.
+        if let Some(caster) = caster
+            && self.effect_real_points_per_level != 0.0
+        {
+            let mut level = caster.level as i32;
+            if level > levels.max_level as i32 && levels.max_level > 0 {
+                level = levels.max_level as i32;
+            } else if level < levels.base_level as i32 {
+                level = levels.base_level as i32;
+            }
+            // C++ `level -= int32(std::max(BaseLevel, SpellLevel))`, which can go
+            // negative and then reduce the base points.
+            level -= levels.base_level.max(levels.spell_level) as i32;
+            // C++ `int32(level * basePointsPerLevel)` truncates toward zero.
+            base_points = base_points
+                .saturating_add((level as f32 * self.effect_real_points_per_level) as i32);
+        }
+        // C++ `if (DieSides)`, so a zero never rolls.
         match self.effect_die_sides {
             0 => {}
-            1 => value += 1.0,
-            die_sides if die_sides > 1 => value += f64::from(roll_die(1, die_sides)),
-            die_sides => value += f64::from(roll_die(die_sides, 1)),
+            1 => base_points = base_points.saturating_add(1),
+            die_sides if die_sides > 1 => {
+                base_points = base_points.saturating_add(roll_die(1, die_sides));
+            }
+            die_sides => base_points = base_points.saturating_add(roll_die(die_sides, 1)),
+        }
+        let mut value = f64::from(base_points);
+        if let Some(caster) = caster {
+            // C++ `if (uint8 comboPoints = casterUnit->GetComboPoints())`.
+            if caster.combo_points != 0 {
+                value +=
+                    f64::from(self.effect_points_per_resource) * f64::from(caster.combo_points);
+            }
+            // C++ `value *= casterScaler->Scaler / spellScaler->Scaler`, under the
+            // gate at `:544-547` and the two `canEffectScale` switches.
+            if self.calc_value_reaches_creature_level_scaling_like_cpp(
+                levels,
+                caster.level,
+                caster.is_controlled_by_player,
+                caster.scales_with_creature_level,
+            ) && let Some(factor) = npc_mana_cost_scaler.and_then(|table| {
+                table.creature_level_value_factor_like_cpp(levels.spell_level, caster.level)
+            }) {
+                value *= f64::from(factor);
+            }
         }
         value.round() as i32
+    }
+
+    /// Whether C++ `CalcValue` would reach the `NpcManaCostScaler`
+    /// creature-level multiplication for this effect (`SpellInfo.cpp:544-594`).
+    ///
+    /// The gate is all four of: a caster not controlled by a player, a non-zero
+    /// `SpellLevel` that differs from the caster's level, no
+    /// `RealPointsPerLevel`, and `SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL`; then
+    /// either the effect or its aura must be one of the scalable kinds.
+    pub fn calc_value_reaches_creature_level_scaling_like_cpp(
+        &self,
+        levels: SpellLevelsLikeCpp,
+        caster_level: u32,
+        caster_is_controlled_by_player: bool,
+        spell_scales_with_creature_level: bool,
+    ) -> bool {
+        if caster_is_controlled_by_player
+            || levels.spell_level == 0
+            || levels.spell_level == caster_level
+            || self.effect_real_points_per_level != 0.0
+            || !spell_scales_with_creature_level
+        {
+            return false;
+        }
+        self.calc_value_effect_can_scale_with_creature_level_like_cpp()
+    }
+
+    /// C++ `CalcValue`'s two `canEffectScale` switches (`SpellInfo.cpp:549-584`).
+    fn calc_value_effect_can_scale_with_creature_level_like_cpp(&self) -> bool {
+        use aura_types::*;
+        use spell_effect_types::*;
+        matches!(
+            self.effect,
+            SPELL_EFFECT_SCHOOL_DAMAGE
+                | SPELL_EFFECT_DUMMY
+                | SPELL_EFFECT_POWER_DRAIN
+                | SPELL_EFFECT_HEALTH_LEECH
+                | SPELL_EFFECT_HEAL
+                | SPELL_EFFECT_WEAPON_DAMAGE
+                | SPELL_EFFECT_POWER_BURN
+                | SPELL_EFFECT_SCRIPT_EFFECT
+                | SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+                | SPELL_EFFECT_FORCE_CAST_WITH_VALUE
+                | SPELL_EFFECT_TRIGGER_SPELL_WITH_VALUE
+                | SPELL_EFFECT_TRIGGER_MISSILE_SPELL_WITH_VALUE
+        ) || matches!(
+            self.effect_aura,
+            SPELL_AURA_PERIODIC_DAMAGE
+                | SPELL_AURA_DUMMY
+                | SPELL_AURA_PERIODIC_HEAL
+                | SPELL_AURA_DAMAGE_SHIELD
+                | SPELL_AURA_PROC_TRIGGER_DAMAGE
+                | SPELL_AURA_PERIODIC_LEECH
+                | SPELL_AURA_PERIODIC_MANA_LEECH
+                | SPELL_AURA_SCHOOL_ABSORB
+                | SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE
+        )
     }
 
     /// C++ `SpellEffectInfo::CalcValueMultiplier` (`SpellInfo.cpp:624-631`):

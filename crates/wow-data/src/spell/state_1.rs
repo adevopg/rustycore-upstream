@@ -33,6 +33,45 @@ pub struct SpellHitMetadataLikeCpp {
     pub effect_mechanics: BTreeMap<u32, i32>,
 }
 
+/// What C++ `SpellEffectInfo::CalcValue` reads off its `caster` argument
+/// (`Spells/SpellInfo.cpp:501-594`).
+///
+/// C++ takes a `WorldObject const*` and asks it four questions; naming them here
+/// keeps the rule pure and makes it obvious at a call site which of C++'s unit
+/// arms the caller is enabling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CalcValueCasterLikeCpp {
+    /// C++ `casterUnit->GetLevel()`.
+    pub level: u32,
+    /// C++ `casterUnit->GetComboPoints()`.
+    pub combo_points: u8,
+    /// C++ `casterUnit->IsControlledByPlayer()`, which suppresses the
+    /// creature-level multiplication.
+    pub is_controlled_by_player: bool,
+    /// C++ `_spellInfo->HasAttribute(SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL)`.
+    /// It belongs to the spell rather than the caster, but it gates the same arm
+    /// and the caller resolves both from the same place.
+    pub scales_with_creature_level: bool,
+}
+
+/// C++ `SpellInfo::BaseLevel`, `MaxLevel` and `SpellLevel`
+/// (`SpellInfo.cpp:1180-1185`), read from `SpellLevels.db2`.
+///
+/// They live beside the runtime `SpellInfo` rather than on it, like the
+/// spell-hit metadata, because `SpellEffectInfo::CalcValue` is their only
+/// consumer and the runtime struct is named field-by-field in hundreds of
+/// fixtures.
+///
+/// C++ assigns `int16` DB2 columns to `uint32` members, so a negative row wraps;
+/// this mirrors that conversion rather than clamping it. A spell with no
+/// `SpellLevels` row keeps all three at zero, which is C++'s default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SpellLevelsLikeCpp {
+    pub base_level: u32,
+    pub max_level: u32,
+    pub spell_level: u32,
+}
+
 /// Missing or malformed data that prevents safe C++ primary-profession
 /// classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

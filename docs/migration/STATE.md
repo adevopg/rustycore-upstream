@@ -157,6 +157,35 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**Sizing the creature-spell macro found a bigger defect than the macro itself: no spell ever rolled
+its damage range (D-H26).** The plan's next responsibility is creature spell effect execution, whose
+tick refuses to deliver damage with the comment "raw EffectBasePoints is not CalcValue". Reading
+`SpellEffectInfo::CalcValue` (`SpellInfo.cpp:496-597`) to size that showed the player's own execution
+path has the same hole: it read `effect.effect_base_points` straight out of the effect, for every
+effect kind, so the `DieSides` roll and the `RealPointsPerLevel` term never applied to anything.
+
+Every spell with a damage or healing range therefore delivered the bottom of it, always, and a spell
+whose value grows with the caster's level never grew. Measured on the installed client data with the
+port's own DB2 reader rather than estimated: **48,102 of 69,504** `SpellEffect.db2` rows carry a
+non-zero `DieSides` and **2,117** a non-zero `RealPointsPerLevel`, 701 of those on
+`SPELL_EFFECT_SCHOOL_DAMAGE`. The symptom was already in the 2026-10-01 live run and went unnoticed: the
+captured non-critical Fireball row read `original_damage = 13`, and the critical row's 19 is
+`13 + 13/2` truncated, so both casts started from the same 13.
+
+The missing arms are ported in C++'s order, the two effect columns that were read from DB2 and never
+carried into the runtime effect now are, and `SpellLevels.db2` — loaded and keyed but never reaching
+the spell store — lands in a side table with the spell-hit metadata's difficulty-fallback walk.
+The creature-level multiplication went in too, after a correction worth recording: I first wrote it
+off as unreachable, having looked only inside `dbc/<locale>/` and concluded the data shipped no
+GameTable files and the port had no reader. Both were wrong —
+`/opt/wow-3.4.3/gt/NPCManaCostScaler.txt` is installed and `wow-data::game_tables` already reads
+several tables — so the table is now read and the arm runs. Boundaries that remain: combo points have
+no owner and spellmods have no owner. Acceptance owed: the next `--spell-damage` run should show a
+range where it showed a constant.
+
+This is slice 1 of the five the macro analysis lists, and it turned out to carry its own HIGH defect
+rather than being pure plumbing.
+
 **The absorb stage closes D-H3 on 2026-10-02, and getting there turned up two defects the stage
 depended on (D-H24, D-H25).** The spell hit now runs C++'s whole `CalcAbsorbResist`: the shields are
 spent between the resist and `DealDamage`, each consuming shield publishes its own

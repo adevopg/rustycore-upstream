@@ -280,6 +280,13 @@ async fn spell_crit_scenario_like_cpp(
     // `SPELL_AURA_SCHOOL_ABSORB` effect to apply to the victim, for the
     // scenarios that exercise `CalcAbsorbResist`'s shield loop.
     shield: Option<(i32, i32, i32)>,
+    // `(BasePoints, DieSides, RealPointsPerLevel)` for the damage spell's own
+    // effect, for the scenarios that exercise `SpellEffectInfo::CalcValue`. The
+    // default leaves all three at zero, which is what every other scenario here
+    // wants because it supplies the damage itself. When it is set, the spell also
+    // gets `SpellLevels` of `BaseLevel 1 / SpellLevel 1`, the shape the per-level
+    // term is read against.
+    damage_effect: Option<(i32, i32, f32)>,
 ) -> (
     WorldSession,
     crate::map_manager::SharedMapManager,
@@ -342,6 +349,9 @@ async fn spell_crit_scenario_like_cpp(
             effects: vec![wow_data::SpellEffectInfo {
                 effect_index: 0,
                 effect: wow_data::spell::spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE,
+                effect_base_points: damage_effect.map_or(0, |(base, _, _)| base),
+                effect_die_sides: damage_effect.map_or(0, |(_, sides, _)| sides),
+                effect_real_points_per_level: damage_effect.map_or(0.0, |(_, _, rppl)| rppl),
                 ..Default::default()
             }],
         },
@@ -386,6 +396,17 @@ async fn spell_crit_scenario_like_cpp(
                     effect_misc_value_2: 0,
                     ..Default::default()
                 }],
+            },
+        );
+    }
+    if damage_effect.is_some() {
+        spell_store.insert_spell_levels_for_difficulty_like_cpp(
+            spell_id,
+            0,
+            wow_data::spell::SpellLevelsLikeCpp {
+                base_level: 1,
+                max_level: 0,
+                spell_level: 1,
             },
         );
     }
@@ -475,7 +496,7 @@ fn spell_non_melee_damage_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32,
 #[tokio::test]
 async fn a_critical_spell_hit_adds_half_again_and_flags_the_log_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_001, None).await;
+        spell_crit_scenario_like_cpp(27_001, None, None).await;
     // The resolved chance is the published 25%; a draw below it crits.
     let _pinned = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(10.0);
 
@@ -507,7 +528,7 @@ async fn a_critical_spell_hit_adds_half_again_and_flags_the_log_like_cpp() {
 #[tokio::test]
 async fn a_non_critical_spell_hit_keeps_its_damage_and_flags_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_002, None).await;
+        spell_crit_scenario_like_cpp(27_002, None, None).await;
     let _pinned = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
 
     let _ = drain_server_packet_bytes(&send_rx);
@@ -542,7 +563,7 @@ async fn a_non_critical_spell_hit_keeps_its_damage_and_flags_like_cpp() {
 #[tokio::test]
 async fn a_resisted_spell_hit_loses_that_share_and_reports_it_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_003, None).await;
+        spell_crit_scenario_like_cpp(27_003, None, None).await;
     session
         .mutate_world_creature(creature_guid, |creature| {
             creature
@@ -592,7 +613,7 @@ async fn a_resisted_spell_hit_loses_that_share_and_reports_it_like_cpp() {
 #[tokio::test]
 async fn an_unresisted_spell_hit_reports_no_resist_like_cpp() {
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_004, None).await;
+        spell_crit_scenario_like_cpp(27_004, None, None).await;
     session
         .mutate_world_creature(creature_guid, |creature| {
             creature.creature.unit_mut().set_level(20);
@@ -682,7 +703,7 @@ fn creature_shield_amount_like_cpp(
 async fn an_absorbed_spell_hit_spends_the_shield_and_reports_it_like_cpp() {
     let shield_spell_id = 91_830_i32;
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_005, Some((shield_spell_id, 300, 0x04))).await;
+        spell_crit_scenario_like_cpp(27_005, Some((shield_spell_id, 300, 0x04)), None).await;
     let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
 
     let _ = drain_server_packet_bytes(&send_rx);
@@ -729,7 +750,7 @@ async fn an_absorbed_spell_hit_spends_the_shield_and_reports_it_like_cpp() {
 async fn a_spent_spell_absorb_shield_is_removed_and_the_rest_lands_like_cpp() {
     let shield_spell_id = 91_831_i32;
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_006, Some((shield_spell_id, 40, 0x04))).await;
+        spell_crit_scenario_like_cpp(27_006, Some((shield_spell_id, 40, 0x04)), None).await;
     let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
 
     let _ = drain_server_packet_bytes(&send_rx);
@@ -774,7 +795,7 @@ async fn a_spent_spell_absorb_shield_is_removed_and_the_rest_lands_like_cpp() {
 async fn a_resisted_spell_hit_absorbs_only_what_the_resist_left_like_cpp() {
     let shield_spell_id = 91_832_i32;
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_007, Some((shield_spell_id, 300, 0x04))).await;
+        spell_crit_scenario_like_cpp(27_007, Some((shield_spell_id, 300, 0x04)), None).await;
     session
         .mutate_world_creature(creature_guid, |creature| {
             creature
@@ -827,7 +848,7 @@ async fn a_shield_of_another_school_absorbs_nothing_like_cpp() {
     let shield_spell_id = 91_833_i32;
     // The shield covers frost (`0x10`) while the hit stays fire (`0x04`).
     let (mut session, manager, creature_guid, spell_id, send_rx) =
-        spell_crit_scenario_like_cpp(27_008, Some((shield_spell_id, 300, 0x10))).await;
+        spell_crit_scenario_like_cpp(27_008, Some((shield_spell_id, 300, 0x10)), None).await;
     let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
 
     let _ = drain_server_packet_bytes(&send_rx);
@@ -871,7 +892,7 @@ async fn a_shield_of_another_school_absorbs_nothing_like_cpp() {
 async fn a_creature_aura_survives_a_legacy_mirror_mutation_like_cpp() {
     let shield_spell_id = 91_834_i32;
     let (mut session, _manager, creature_guid, _spell_id, _send_rx) =
-        spell_crit_scenario_like_cpp(27_009, Some((shield_spell_id, 300, 0x04))).await;
+        spell_crit_scenario_like_cpp(27_009, Some((shield_spell_id, 300, 0x04)), None).await;
     assert_eq!(
         creature_shield_amount_like_cpp(&mut session, creature_guid),
         Some(300),
@@ -885,4 +906,66 @@ async fn a_creature_aura_survives_a_legacy_mirror_mutation_like_cpp() {
         Some(300),
         "a legacy mutation must not discard it"
     );
+}
+
+/// C++ hands every effect handler `SpellEffectInfo::CalcValue(caster)`
+/// (`Spells/SpellInfo.cpp:496-597`), never the raw `EffectBasePoints` column, so
+/// the `DieSides` roll and the `RealPointsPerLevel` term are part of a spell's
+/// damage before any bonus chain sees it.
+///
+/// The fixture's caster is level 20 and the spell's `BaseLevel`/`SpellLevel` are
+/// 1, so the per-level term is 19 steps; the roll is pinned so the range is
+/// asserted exactly rather than sampled.
+#[tokio::test]
+async fn a_spell_effects_damage_is_its_calc_value_not_its_base_points_like_cpp() {
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_010, None, Some((10, 6, 2.0))).await;
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+    let _roll = crate::session::spell_effects::PinnedCalcValueDieRollLikeCpp::pin(4);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .execute_spell(spell_id, creature_guid)
+        .await
+        .expect("the represented cast must execute");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    // `10 + int32(19 * 2.0) + 4` is 52; the base points alone would be 10.
+    let (damage, original_damage, _, _) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 52);
+    assert_eq!(original_damage, 52);
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 52);
+}
+
+/// The same effect with no `DieSides` and no `RealPointsPerLevel` is its base
+/// points, which is why every scenario that supplies its own damage is unchanged
+/// by the arms above.
+#[tokio::test]
+async fn a_spell_effect_without_a_die_or_a_level_term_is_its_base_points_like_cpp() {
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_011, None, Some((37, 0, 0.0))).await;
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .execute_spell(spell_id, creature_guid)
+        .await
+        .expect("the represented cast must execute");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let (damage, _, _, _) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 37);
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 37);
 }

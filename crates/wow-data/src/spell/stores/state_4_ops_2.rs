@@ -324,6 +324,36 @@ impl SpellStore {
     /// Insert one synthetic hit-metadata projection for focused tests or
     /// dynamic registration without widening `SpellInfo`/`SpellEffectInfo`.
     #[allow(dead_code)]
+    /// C++ `SpellMgr::LoadSpellInfoStore`'s `SpellLevels` contributor
+    /// (`SpellInfo.cpp:1180-1185`): one row per `(SpellID, DifficultyID)`.
+    pub fn apply_db2_spell_levels_like_cpp(&mut self, store: &crate::spell_db2::SpellLevelsStore) {
+        for entry in store.entries_like_cpp() {
+            let Ok(spell_id) = i32::try_from(entry.spell_id) else {
+                continue;
+            };
+            self.spell_levels_by_difficulty.insert(
+                (spell_id, entry.difficulty_id),
+                SpellLevelsLikeCpp {
+                    // C++ assigns the `int16` column to a `uint32` member.
+                    base_level: entry.base_level as u32,
+                    max_level: entry.max_level as u32,
+                    spell_level: entry.spell_level as u32,
+                },
+            );
+        }
+    }
+
+    /// Seed one spell's levels directly, for fixtures with no DB2 behind them.
+    pub fn insert_spell_levels_for_difficulty_like_cpp(
+        &mut self,
+        spell_id: i32,
+        difficulty_id: u8,
+        levels: SpellLevelsLikeCpp,
+    ) {
+        self.spell_levels_by_difficulty
+            .insert((spell_id, difficulty_id), levels);
+    }
+
     pub fn insert_spell_hit_metadata_for_difficulty_like_cpp(
         &mut self,
         spell_id: i32,
