@@ -198,6 +198,12 @@ pub trait WorldObjectCatalogPersistencePortLikeCpp: Send + Sync {
     fn load_creature_sparring_rows_like_cpp(
         &self,
     ) -> PersistenceFutureLikeCpp<'_, WorldObjectRowsLoadOutcomeLikeCpp<Vec<(u32, f32)>>>;
+    /// `creature_template_resistance` rows as `(CreatureID, School, Resistance)`,
+    /// read by C++ `ObjectMgr::LoadCreatureTemplateResistances`
+    /// (`Globals/ObjectMgr.cpp:536-570`).
+    fn load_creature_template_resistance_rows_like_cpp(
+        &self,
+    ) -> PersistenceFutureLikeCpp<'_, WorldObjectRowsLoadOutcomeLikeCpp<Vec<(u32, u8, i16)>>>;
     fn load_gameobject_template_rows_like_cpp(
         &self,
     ) -> PersistenceFutureLikeCpp<

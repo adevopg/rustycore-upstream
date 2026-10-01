@@ -589,6 +589,10 @@ impl crate::session::WorldSession {
                 continue;
             }
 
+            // C++ reads the live player state its completion rules need straight off
+            // the Player; resolve it once before the borrow-free scan below.
+            let player_facts = self.resolved_quest_objective_player_facts_like_cpp(&quest);
+            let player_facts = player_facts.borrow_like_cpp();
             // C++ stops at the first objective it can credit.
             let credited = quest.objectives.iter().enumerate().find_map(
                 |(objective_index, objective)| {
@@ -598,9 +602,10 @@ impl crate::session::WorldSession {
                             &status,
                             &quest,
                             objective_index,
+                            &player_facts,
                         )
                         || crate::handlers::quest_rules::represented_quest_objective_complete_like_cpp(
-                            &status, &quest, objective,
+                            &status, &quest, objective, &player_facts,
                         )
                         || (objective.object_id != -1
                             && objective.object_id != i32::try_from(trigger_id).unwrap_or(i32::MAX))

@@ -897,6 +897,21 @@ fn instance_ignore_raid_uses_cpp_world_config_key() {
         false
     ));
 }
+/// C++ `CONFIG_QUEST_IGNORE_RAID` is read from `Quests.IgnoreRaid`
+/// (`World/World.cpp:1264`) and is the only escape hatch
+/// `Quest::IsAllowedInRaid` has (`Quests/QuestDef.cpp:543-549`).
+#[test]
+fn quests_ignore_raid_uses_cpp_world_config_key() {
+    let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+    wow_config::load_config_from_str("Quests.IgnoreRaid = 1\n").expect("config should load");
+
+    let configs = wow_config::load_world_config_values();
+    assert!(world_config_bool(
+        &configs,
+        "CONFIG_QUEST_IGNORE_RAID",
+        false
+    ));
+}
 #[test]
 fn instance_ignore_level_uses_cpp_world_config_key() {
     let _guard = TEST_LOCK.lock().expect("test lock poisoned");

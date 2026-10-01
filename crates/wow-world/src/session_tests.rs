@@ -200,6 +200,8 @@ mod scenarios_spell_state_24;
 mod scenarios_spell_state_25;
 #[path = "session/tests/scenarios_spell_state_26.rs"]
 mod scenarios_spell_state_26;
+#[path = "session/tests/scenarios_spell_state_27.rs"]
+mod scenarios_spell_state_27;
 #[path = "session/tests/scenarios_spell_state_3.rs"]
 mod scenarios_spell_state_3;
 #[path = "session/tests/scenarios_spell_state_4.rs"]
@@ -3554,6 +3556,7 @@ fn creature_template_lifecycle_store_for_test(
             string_id: String::new(),
             regen_health: true,
             spells: [0; wow_data::MAX_CREATURE_SPELLS_LIKE_CPP],
+            resistances: [0; 7],
             models: Vec::new(),
         },
     ))

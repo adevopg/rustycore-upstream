@@ -151,6 +151,126 @@ if it is zero, and moves the character into the trigger — all fixtures to colu
 passes or fails; the quest rows are left as the server wrote them, because they are
 the evidence.
 
+## Aura persistence across a logout — live and mutating
+
+`--aura-save` drives C++ `Player::_SaveAuras` (`Entities/Player/Player.cpp:20089-20146`),
+which the full save reaches right after `_SaveActions` (`:19948`).
+
+The hard part of this check is that the obvious observation proves nothing. Seeding a
+`character_aura` row, logging in and out, and finding the row still there looks exactly
+the same whether the save rewrote it or never ran at all — and never running was the
+actual defect. So the fixture seeds **two** rows and the assertions are about the
+difference between them:
+
+* the spell you pass, with stored values the save cannot reproduce: `remainCharges = 5`
+  and `baseAmount = 777777`. After the logout both must be gone, because `_SaveAuras`
+  rewrites every row from the live aura.
+* spell `90000001`, which no `Spell.db2` row can carry. `_LoadAuras` drops a stored aura
+  whose `SpellInfo` is missing, so it is not in the live aura map and the save must not
+  write it back. If that row survives, the table was never cleared.
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local --aura-save 6673
+```
+
+The sequence is `seed -> login -> count SMSG_AURA_UPDATE -> clean logout -> read
+character_aura and character_aura_effect back -> login again -> count SMSG_AURA_UPDATE`.
+A run fails if the unknown-spell row survived, if the seeded `remainCharges` or
+`baseAmount` is still there, if the spell is missing from the table, or if the relog
+published no aura update.
+
+Pick a spell the character actually knows nothing about — the aura is restored from the
+row, not cast, so any spell with a `Spell.db2` entry works.
+
+This mode writes: it clears and seeds both aura tables for the QA character and restores
+one a previous run left dead. The rows after the run are left as the server wrote them,
+because they are the evidence.
+
+## Player spell damage, criticals and resists — live and mutating
+
+`--spell-damage` is the mode three closed entries were waiting on. A spell critical
+needs a caster-side percentage (`Unit::SpellCritChanceDone`, `Unit.cpp:7706-7772`)
+and a spell resist needs a magic school (`Unit::CalcSpellResistedDamage`,
+`:1973-1975`), so **neither can be reached with a warrior**, however it is
+fixtured. The mode drives a caster-class character and reports every published
+field of every cast, drawing no conclusion in the harness.
+
+Provision the caster once:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --create-character-name Rustymage --create-character-race 1 --create-character-class 8
+```
+
+That character needs **no spellbook fixture** for a class spell. Its
+`character_spell` rows are zero and it still knows 43 spells, Fireball and
+Frostbolt among them: C++ `_SaveSpells` writes only **non-dependent** rows
+(`Entities/Player/Player.cpp:20664-20666`) and `LearnSkillRewardedSpells` learns
+dependent ones, so that table is the wrong place to look for what a character
+knows. Start the server with `RUSTYCORE_KNOWN_SPELLS_TRACE=1` to see the granted
+set on `SMSG_SEND_KNOWN_SPELLS`.
+
+Seeding is therefore opt-in through `--spell-damage-seed-spell`, for a spell the
+login genuinely does not grant; inserting a row for a dependent one would write
+something the target build never writes. A level-1 caster has the mana for only a
+couple of casts, so a `characters.level` fixture is worth applying by hand for a
+longer sequence.
+
+```bash
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6 --spell-damage-casts 1
+```
+
+The sequence is `resolve the spawn from world.creature -> seed the spellbook row and
+stand 12 yards off -> login -> CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE -> read the
+CREATE block for the runtime ObjectGuid -> CMSG_CAST_SPELL -> record every
+SMSG_SPELL_NON_MELEE_DAMAGE_LOG -> clean logout -> restore the position`. A run
+fails if the server published no damage log at all.
+
+Reference runs, Fireball (133) at a Kobold Tunneler (entry 475, 21 fire resistance
+in `creature_template_resistance`), the second with `character_spell` emptied to
+zero rows and no seeding at all:
+`cast 1: damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00` and
+`cast 1: damage=12 original=13 resisted=1 absorbed=0 school=0x04 flags=0x00`.
+The average reduction is `21 / (21 + 100) = 0.17`, whose discrete table puts the
+weight on the one- and two-tenth buckets, and `13 * 2/10` truncates to the 2 the
+server published. `flags` stays zero for a non-critical hit, and it stays zero for
+a critical resist too: C++ writes that field in **seven bits**
+(`CombatLogPackets.cpp:39`) while `HITINFO_*_RESIST` are `0x80` and `0x100`, so the
+client learns of a resist from `Resisted` and never from the flags.
+
+Two things to know before reading a zero-log run as a defect:
+
+* **the target must be alive and in range.** A previous run can leave the nearest
+  spawn of that entry dead, and `--spell-damage-entry` then resolves to a corpse:
+  the casts complete and deal nothing. Pass a different entry or wait for the
+  respawn.
+* **a drained caster is refused, correctly.** A session starts with the mana saved
+  at the previous logout, so a sequence that looks like "the server dropped my
+  casts" is usually `SPELL_FAILED_NO_POWER` — which this mode now reports by name.
+  The fixture therefore fills `characters.power1` before login, in the same place
+  it revives a dead character; the stored value is clamped to the character's real
+  maximum when `InitStatsForLevel` runs, so it means "full" rather than an invented
+  pool. The world-pass deadline warning this host logs continuously is unrelated:
+  the coordinator allows each session one map tick interval to report, which any
+  pass touching the database exceeds by a few milliseconds.
+
+A refusal is reported with its `SpellCastResult`, not just its opcode. `SpellCastVisual`
+serialises **one** `uint32` on this branch, so the reason sits four bytes earlier than a
+two-field reading puts it — getting that wrong reported every refusal as
+`SPELL_CAST_OK`, and a test now pins the offset.
+
+`WOW_BOT_SPELL_DAMAGE_TRACE=1` logs every opcode on both sockets, which is how the
+`SMSG_SPELL_START` / `SMSG_SPELL_GO` / `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` order above
+was established.
+
+This mode writes: it seeds one `character_spell` row, restores a character a
+previous run left dead, and moves the character beside the spawn. The position is
+restored whether the run passes or fails; the spellbook row is left, because it is
+what makes a repeat run cheap.
+
 ## The death exit — live and mutating
 
 `--death-smoke` drives the whole corpse circuit and reports what the server

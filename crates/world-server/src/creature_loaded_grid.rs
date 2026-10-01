@@ -68,6 +68,10 @@ pub struct ResolvedCreatureTemplateLikeCpp {
     pub classification: u32,
     pub damage_school: u8,
     pub sparring_health_pct: Option<f32>,
+    /// C++ `CreatureTemplate::resistance`, seeded into the live unit's
+    /// `UNIT_MOD_RESISTANCE_*` base values by `Creature::UpdateEntry`
+    /// (`Entities/Creature/Creature.cpp:694-699`).
+    pub resistances: [i32; 7],
     pub unit_flags: u32,
     pub unit_flags2: u32,
     pub unit_flags3: u32,
@@ -254,6 +258,10 @@ impl CreatureLoadedGridLifecycleResolverLikeCpp {
         if let Some(sparring_health_pct) = template.sparring_health_pct {
             creature.set_sparring_health_pct_like_cpp(sparring_health_pct);
         }
+        // C++ `Creature::UpdateEntry` seeds `UNIT_MOD_RESISTANCE_*` from the
+        // template before `UpdateAllStats` publishes the resistances
+        // (`Entities/Creature/Creature.cpp:694-701`).
+        creature.set_resistances_like_cpp(template.resistances);
         // This is the DB-backed boundary that has resolved and applied the
         // selected creature_addon/template_addon source. Empty local aura
         // containers can therefore be accredited as inert for the stat and
@@ -508,6 +516,7 @@ pub fn build_loaded_grid_creature_inputs_with_power_stores_from_db_like_cpp(
         classification: template.classification,
         damage_school: template.damage_school,
         sparring_health_pct: None,
+        resistances: template.resistances,
         unit_flags,
         unit_flags2,
         unit_flags3,

@@ -58,6 +58,24 @@ impl WorldSession {
                     || quest.is_seasonal_like_cpp())
         })
     }
+    /// The three facts C++ `Player::UpdateQuestObjectiveProgress` reads for its
+    /// raid gate (`Entities/Player/Player.cpp:16644-16646`).
+    ///
+    /// The difficulty is `Map::GetDifficultyID()` for the map that actually owns
+    /// this Player, which is the same reader the represented spell metadata uses.
+    pub(in crate::session) fn resolved_quest_raid_context_like_cpp(
+        &self,
+    ) -> crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
+        let in_raid_group = self
+            .resolved_group_guid_like_cpp()
+            .and_then(|group_guid| self.group_registry.as_ref()?.get(&group_guid))
+            .is_some_and(|group| group.is_raid_group());
+        crate::handlers::quest_rules::RepresentedQuestRaidContextLikeCpp {
+            in_raid_group,
+            map_difficulty_id: self.current_map_difficulty_id_like_cpp(),
+            quests_ignore_raid: self.quests_ignore_raid_like_cpp,
+        }
+    }
     pub(in crate::session) async fn update_represented_storing_value_quest_objective_progress_like_cpp(
         &mut self,
         item_guid_generator: &wow_core::ObjectGuidGenerator,
@@ -85,6 +103,10 @@ impl WorldSession {
                 None
             };
         let player_team = player_team_for_race_cpp(self.player_race_like_cpp());
+        let raid = self.resolved_quest_raid_context_like_cpp();
+        let victim_guid_is_empty = credit_guid.is_empty();
+        let player_facts = self.resolved_quest_objective_player_facts_for_quest_log_like_cpp();
+        let facts = player_facts.borrow_like_cpp();
         let Some(quests) = self.player_quest_gameplay_snapshot_like_cpp() else {
             return;
         };
@@ -94,22 +116,43 @@ impl WorldSession {
             .filter(|qs| qs.status == crate::conditions::QUEST_STATUS_INCOMPLETE_LIKE_CPP)
             .flat_map(|qs| {
                 let quest = store.get(qs.quest_id)?;
-                Some(quest.objectives.iter().filter_map(move |obj| {
-                    if obj.obj_type != objective_type || obj.object_id != object_id {
-                        return None;
-                    }
-                    if objective_type == QUEST_OBJECTIVE_PLAYERKILLS_LIKE_CPP
-                        && (obj.flags & QUEST_OBJECTIVE_FLAG_KILL_PLAYERS_SAME_FACTION_LIKE_CPP)
-                            != 0
-                        && victim_team.is_some_and(|team| team != player_team)
-                    {
-                        return None;
-                    }
-                    let Ok(idx) = usize::try_from(obj.storage_index) else {
-                        return None;
-                    };
-                    Some((qs.quest_id, idx, obj.amount, obj.id))
-                }))
+                Some(
+                    quest
+                        .objectives
+                        .iter()
+                        .enumerate()
+                        .filter_map(move |(objective_index, obj)| {
+                            if obj.obj_type != objective_type || obj.object_id != object_id {
+                                return None;
+                            }
+                            // Every gate C++ applies before it touches progress:
+                            // the raid group, `IsQuestObjectiveCompletable`, and
+                            // the proxy-credit refusal (`Player.cpp:16644-16655`).
+                            if !crate::handlers::quest_rules::represented_quest_objective_progress_allowed_like_cpp(
+                                qs,
+                                quest,
+                                objective_index,
+                                obj,
+                                &raid,
+                                victim_guid_is_empty,
+                                &facts,
+                            ) {
+                                return None;
+                            }
+                            if objective_type == QUEST_OBJECTIVE_PLAYERKILLS_LIKE_CPP
+                                && (obj.flags
+                                    & QUEST_OBJECTIVE_FLAG_KILL_PLAYERS_SAME_FACTION_LIKE_CPP)
+                                    != 0
+                                && victim_team.is_some_and(|team| team != player_team)
+                            {
+                                return None;
+                            }
+                            let Ok(idx) = usize::try_from(obj.storage_index) else {
+                                return None;
+                            };
+                            Some((qs.quest_id, idx, obj.amount, obj.id))
+                        }),
+                )
             })
             .flatten()
             .collect();
@@ -173,12 +216,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push(quest_id);
@@ -288,12 +333,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));
@@ -402,12 +449,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));
@@ -539,12 +588,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));
@@ -693,12 +744,14 @@ impl WorldSession {
                 ) {
                     let quest_already_rewarded =
                         quests.rewarded_quest_ids_like_cpp().contains(&quest_id);
+                    let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
                     if quests.statuses_like_cpp().get(&quest_id).is_some_and(|status| {
                         crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
                             status,
                             quest,
                             objective_id,
                             quest_already_rewarded,
+                            &player_facts.borrow_like_cpp(),
                         )
                     }) {
                         quests_to_complete.push((quest_id, objective_id));

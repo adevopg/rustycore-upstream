@@ -69,10 +69,19 @@ impl WorldSession {
         } else {
             heal_amount
         };
+        // C++ `Spell::DoAllEffectOnTarget` rolls the critical and runs
+        // `SpellCriticalHealingBonus` before `HealBySpell`, so before the heal
+        // absorb (`Spells/Spell.cpp:2930-2940`).
+        let (heal_amount, heal_is_critical) = self.represented_spell_critical_for_heal_like_cpp(
+            spell_id,
+            healer_guid,
+            healer_guid.is_player(),
+            heal_amount,
+        );
         // Si target es el mismo jugador
         if target_guid == player_guid {
             // C++ `Unit::HealBySpell` runs `CalcHealAbsorb` before `DealHeal`
-            // (`Unit.cpp:6557-6562`, `2020-2084`), so the heal the target
+            // (`Unit.cpp:7079-7086`, `2360-2426`), so the heal the target
             // receives is what the heal-absorb shields left.
             let (heal_amount, absorbed) =
                 self.apply_owned_player_heal_absorb_like_cpp(spell_id, healer_guid, heal_amount);
@@ -98,6 +107,7 @@ impl WorldSession {
                 heal_amount,
                 effective_heal,
                 absorbed,
+                heal_is_critical,
             );
             info!(account = self.account_id, heal = heal_amount, "Healed self");
             if healed != current {
@@ -151,6 +161,7 @@ impl WorldSession {
             heal_amount,
             effective_heal,
             0,
+            heal_is_critical,
         );
 
         if self.client_visible_guids_like_cpp.contains(&target_guid)
@@ -167,8 +178,9 @@ impl WorldSession {
     }
     /// C++ `Unit::SendHealSpellLog` (`Unit.cpp:6538-6555`): the heal combat log
     /// the client shows for a spell heal. A heal without a represented spell has
-    /// no `HealInfo` spell to log, so it stays silent; critical heals are not
-    /// represented, so `Crit` stays false and no crit-roll float follows.
+    /// no `HealInfo` spell to log, so it stays silent. `Crit` is the roll
+    /// `Spell::DoAllEffectOnTarget` made, and C++ sends no crit-roll float with it
+    /// (that `CritRollMade`/`CritRollNeeded` pair is debug-only output).
     ///
     /// `heal_amount` is `HealInfo::GetHeal()` after the heal-absorb shields;
     /// `HealInfo::GetOriginalHeal()` is that amount plus `absorbed`, exactly
@@ -181,6 +193,7 @@ impl WorldSession {
         heal_amount: u32,
         effective_heal: u32,
         absorbed: u32,
+        crit: bool,
     ) {
         let Some(spell_id) = spell_id else {
             return;
@@ -194,19 +207,20 @@ impl WorldSession {
             over_heal: i32::try_from(heal_amount.saturating_sub(effective_heal))
                 .unwrap_or(i32::MAX),
             absorbed: i32::try_from(absorbed).unwrap_or(i32::MAX),
-            crit: false,
+            crit,
         });
     }
 
-    /// C++ `Unit::CalcHealAbsorb` (`Unit.cpp:2020-2084`) for the session's own
+    /// C++ `Unit::CalcHealAbsorb` (`Unit.cpp:2360-2426`) for the session's own
     /// player target: every `SPELL_AURA_SCHOOL_HEAL_ABSORB` whose `MiscValue`
     /// covers the heal's school spends its amount before the heal lands,
     /// publishes one `SMSG_SPELL_HEAL_ABSORB_LOG` per consuming shield and is
     /// removed once spent. Returns `(remaining heal, absorbed)`.
     ///
-    /// Boundary: a creature heal target keeps its auras with no represented
-    /// mutable amount, so its heal absorb stays open, exactly like the damage
-    /// absorb for creature victims.
+    /// Boundary: a creature heal target has no represented heal-absorb
+    /// projection, so its heal absorb stays open. The damage side no longer
+    /// shares that gap — `represented_spell_absorb_for_damage_like_cpp` spends a
+    /// creature victim's school shields through the canonical aura amounts.
     pub(in crate::session) fn apply_owned_player_heal_absorb_like_cpp(
         &mut self,
         spell_id: Option<i32>,
@@ -264,7 +278,7 @@ impl WorldSession {
                 && consumption.consumed > 0
             {
                 // C++ `healInfo.GetTarget()->SendMessageToSet(absorbLog.Write(), true)`
-                // (`Unit.cpp:2070-2083`); the represented rail is session-local.
+                // (`Unit.cpp:2410-2424`); the represented rail is session-local.
                 self.send_packet(&wow_packet::packets::combat::SpellHealAbsorbLog {
                     target: victim_guid,
                     absorb_caster,
@@ -1352,6 +1366,42 @@ impl WorldSession {
             1.0
         };
 
+        // C++ rolls one critical chance per target before the hit
+        // (`Spells/Spell.cpp:8675-8684`) and `CalculateSpellDamageTaken` applies
+        // the arm for the spell's damage class (`Unit.cpp:1266-1332`). Both run
+        // before `DealDamage`, so the creature takes the critical value.
+        let critical = self.represented_spell_critical_for_damage_like_cpp(
+            spell_id,
+            caster_guid,
+            controlling_player_guid.is_some(),
+            spell_school_mask,
+            damage_amount,
+        );
+        // C++ assigns `originalDamage` after the critical arm and before
+        // `CalcAbsorbResist` (`Unit.cpp:1346-1347`), so it carries the critical
+        // but not the resist.
+        let original_damage_amount = critical.damage;
+        let resist = self.represented_spell_resist_for_damage_like_cpp(
+            spell_id,
+            caster_guid,
+            target_guid,
+            spell_school_mask,
+            critical.damage,
+        );
+        // C++ `CalcAbsorbResist` spends the victim's shields after the resist
+        // and before `DealDamage` (`Unit.cpp:2114-2178`), publishing one absorb
+        // log per consuming shield before the damage log.
+        let absorb = self.represented_spell_absorb_for_damage_like_cpp(
+            spell_id,
+            caster_guid,
+            target_guid,
+            spell_school_mask,
+            critical.damage,
+            resist.damage,
+            original_damage_amount,
+        );
+        let damage_amount = absorb.damage;
+
         // Si target es otra criatura — mutate canonical shared map state.
         let damage_outcome = self
             .mutate_world_creature(target_guid, |creature| {
@@ -1447,12 +1497,14 @@ impl WorldSession {
         };
 
         // C++ `Unit::DealSpellDamage` sends the combat log for the hit before
-        // the kill cascade (`Unit.cpp:1250-1260`, `Unit::SendSpellNonMeleeDamageLog`
-        // `Unit.cpp:5353-5380`). The represented hit has no spell absorb, resist
-        // or block stage for a creature target yet, and no spell critical
-        // representation, so those fields and `HitInfo` stay zero.
+        // the kill cascade (`Unit.cpp:1362-1383`, `Unit::SendSpellNonMeleeDamageLog`
+        // `Unit.cpp:5880-5905`). `HitInfo`, `damage`, `originalDamage`, `resist`
+        // and `absorb` carry what the critical roll, the resist roll and the
+        // shield loop above resolved; the spell block stage has no represented
+        // equivalent for a creature target yet, so that field stays zero.
         if let Some(spell_id) = spell_id {
             let damage = damage_amount.min(i32::MAX as u32) as i32;
+            let original_damage = original_damage_amount.min(i32::MAX as u32) as i32;
             self.send_packet(&wow_packet::packets::combat::SpellNonMeleeDamageLog {
                 target: target_guid,
                 caster: caster_guid,
@@ -1460,18 +1512,18 @@ impl WorldSession {
                 spell_id,
                 visual_id: spell_visual_id.min(i32::MAX as u32) as i32,
                 damage,
-                original_damage: damage,
+                original_damage,
                 overkill: if damage_amount > pre_hit_health {
                     i32::try_from(damage_amount - pre_hit_health).unwrap_or(i32::MAX)
                 } else {
                     -1
                 },
                 school_mask: spell_school_mask.min(u32::from(u8::MAX)) as u8,
-                absorbed: 0,
-                resisted: 0,
+                absorbed: absorb.absorbed.min(i32::MAX as u32) as i32,
+                resisted: resist.resisted.min(i32::MAX as u32) as i32,
                 shield_block: 0,
                 periodic: false,
-                flags: 0,
+                flags: critical.hit_info | resist.hit_info,
             });
         }
         if let Some(threat_value) = threat_value {

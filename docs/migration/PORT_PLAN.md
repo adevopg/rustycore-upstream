@@ -105,16 +105,227 @@ could read as complete. See the closed entry for each anchor.
 87 is proven live; it caught a wire divergence the scenario tests could not. Every objective
 type the M3/M4 exit needs — kill, item and explore — now has wire evidence.
 
-**Next prepared responsibility, selected by evidence rather than by document order:**
-**D-H17** — four objective types cannot complete because
-`represented_quest_objective_complete_like_cpp` is pure and C++
-`Player::IsQuestObjectiveComplete` asks the player for reputation, money, spells and
-currency (`Entities/Player/Player.cpp:16970-16998`). It is the last structural hole in the
-objective `match` after today's two repairs to it, the state it needs already has owners in
-the session, and the live acceptance has a shape that now works three times over: seed the
-objective, satisfy it, read `character_queststatus_objectives` back after a clean logout.
-After it, the lane's remaining items are D-M15 (`QuestLogItemId` credited and put on the wire
-where the target build does neither) and the `NO_CREDIT_FOR_PROXY` boundary noted under D-H4.
+**D-H17 is done as well:** the five live-state branches of
+`Player::IsQuestObjectiveComplete` are ported, which unblocks 256 quests in the installed
+world database, and the money branch is proven live. With it, **every objective type the
+M3/M4 exit needs has wire evidence**: kill, item, explore, and now money.
+
+**D-M18 was withdrawn the same day it was raised**: the Rust reputation reader is faithful,
+because `ReputationMgr::Initialize` gives every faction with a reputation index a
+`FactionState` with `Standing = 0`, which makes the C++ `return 0` it was compared against
+unreachable. The correction is recorded beside the claim.
+
+**D-M15 is done, and recorded as latent rather than live**: `QuestLogItemId` no longer
+decides credit or wire bytes, but all 625 rows of the installed `item_template_addon` hold
+`0`, so nothing on this installation could have exercised it and no live run distinguishes
+before from after. Its inert plumbing is D-L4.
+
+**Auras are also done (D-H18):** the load was composed in production but nothing wrote the
+rows back, so every buff and debuff died at logout. `Player::_SaveAuras` is ported end to end
+and proven live with a fixture a missing save cannot pass.
+
+**The `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` responsibility this section named is done, and it
+was larger than the flag (D-H19).** Reading the whole of
+`Player::UpdateQuestObjectiveProgress` found three refusals in front of progress, not one, and
+the session-side credit path applied none of them: the raid gate, `IsQuestObjectiveCompletable`,
+and the proxy flag. All three are now one pure rule applied where C++ applies it, with
+`Quests.IgnoreRaid` wired through the composition root. The prediction in the earlier wording
+was wrong in one detail worth keeping: the kill-credit path *did* already carry the victim GUID
+to the objective loop and onto the wire — the D-H4 proxy expansion passes `ObjectGuid::Empty`
+exactly as C++ does. What was missing was only the reader. The proxy half is latent on this
+installation (no `quest_template` row carries `0x4000`) and the raid half still needs a
+two-account raid for live acceptance; the live run that was taken proves the three new refusals
+did not break the working credit chain.
+
+**That contrast is done, and it went as predicted.** D-H1 and D-H2 are closed as inaccurate
+records: the current swing runs the done/taken bonuses, `CalcArmorReducedDamage` with armour
+penetration, the attack-table roll and every outcome arm with its real `HitInfo`, so there was
+nothing to implement. D-H3 was wrong in two directions — the spell damage coefficient was already
+ported, and the critical was missing in both the damage and the heal direction. **Spell criticals
+are now ported end to end (D-H20)**, including the custom attribute, both chance functions, the
+single roll per target and the three distinct bonus arms, with `SPELL_HIT_TYPE_CRIT` on the wire.
+It carries no live evidence, which the entry states: forcing a crit needs a repeated-cast campaign
+or a sitting player victim, and the QA character is a warrior with no damaging magic.
+
+**The resist half is done (D-H21), and the live-shape prediction in the earlier wording was
+wrong — worth keeping.** It claimed a physical-school spell hit would show a resist. It cannot:
+`CalcSpellResistedDamage` returns zero immediately unless the school mask carries magic
+(`Entities/Unit/Unit.cpp:1973-1975`), because physical mitigation is armour. The resistances also
+turned out to live in `creature_template_resistance`, a table the port never read at all — 1,606
+rows across 786 creatures, all of them inert. That whole vertical is now ported, from the query to
+the publication, and the server applies all 1,606 rows live. The roll itself has no live evidence:
+the QA character is a level-2 warrior with no damaging magic, so nothing it can cast reaches the
+roll, and the route is a caster-class QA character rather than another fixture.
+
+**That is done: the caster exists and the resist roll is proven live.** A human mage was created
+through the ordinary `CMSG_CREATE_CHARACTER` path, and the new `--spell-damage` bot mode captured
+`damage=11 original=13 resisted=2 school=0x04` for one Fireball at a creature with 21 fire
+resistance — the C++ formula to the truncated point. D-H21's roll is settled. D-H20's critical is
+not: the captured cast was a normal hit, and seeing a critical needs a sampling run this host does
+not sustain yet.
+
+**D-H22 was taken next and it turned out not to be a defect; the entry records the correction.**
+An empty `character_spell` for a fresh character is faithful: C++ `_SaveSpells` inserts only
+**non-dependent** new spells and `LearnSkillRewardedSpells` learns dependent ones, so C++ does not
+persist them either — they are recomputed from `character_skills` at every login, which this port
+does. The first draft also misread `default_skill_count=0` on a later login as the DB2 walk being
+absent; on the first login that line reads `default_skill_count=11`. The change it motivated was
+reverted before publication, because C++'s `learning`-based state is unfaithful here only in a case
+this evidence does not supply.
+
+**That question is settled and the caster lane is clean.** `RUSTYCORE_KNOWN_SPELLS_TRACE` reports
+the ids the login grants: a human mage gets 43 spells including 116 (Frostbolt) and 133 (Fireball).
+With `character_spell` emptied to zero rows and the bot's seeding turned off, the mage cast Fireball
+and the server published `damage=12 original=13 resisted=1 school=0x04`. A fixture-free caster
+scenario therefore exists now, and the mode's spellbook seeding is opt-in.
+
+**That measurement is done and it moved the target.** The world-pass deadline warning is benign:
+the coordinator gives each session the map tick interval — ten milliseconds on this host — to run
+its world pass and report (`runtime/map/update_loop.rs:116`), so any pass touching the database
+exceeds it and the step waits for the completion boundary. What actually blocks a sampling run is
+narrower and is now recorded as **D-H23**: a player gets **one** spell cast per session. Four
+requests six seconds apart produced one execution, no refusals and no `SMSG_SPELL_START` for the
+other three — accepted off the socket and dropped. Fixing the harness's refusal reader was part of
+getting there: it had been reporting every `SMSG_CAST_FAILED` as `SPELL_CAST_OK`, because
+`SpellCastVisual` is one `uint32` on this branch rather than two.
+
+**D-H23 was taken next and withdrawn the same day: the mage was out of mana, and the server was
+right.** Three measurements, in order: the handler receives every `CMSG_CAST_SPELL`; the cast gate
+reports `remaining=Some((0, 0))` for all of them, which killed the retained-active-cast theory; and
+once the harness reported the real `SpellCastResult` the refusals read `[108, 108, 108]`, which is
+`SPELL_FAILED_NO_POWER` (`SharedDefines.h:1574`). A session starts with the mana saved at the
+previous logout, so a caster whose last run drained it gets about one cast. The world-pass warning
+was cleared with numbers too: 19 waits, median 11 ms, maximum 192 ms, 53 synchronous queries inside
+world ticks.
+
+**The mana fixture is in and the sampling run is done, so all three spell entries now have their
+live evidence.** Twenty casts, no refusals, and the second published row reads
+`damage=14 original=19 resisted=5 school=0x04 flags=0x02`: `SPELL_HIT_TYPE_CRIT` on the wire, the
+magical critical arm turning 13 into 19, and the resist composed after it in C++'s order. D-H20 is
+closed with that, and D-H21 gains the composition evidence its single-cast capture could not give.
+
+The run also ended D-H23's story: the server executed 16 of the 20 casts, 4 reached the damage step
+for 10, 14, 11 and 11 — 46 in total, about the target's health — and the rest hit a corpse, which C++
+refuses too. Recorded residue: the bot captured 2 of the 4 published logs, so its drain loop still
+misses some.
+
+**The absorb stage is in, and the prediction in this slot was wrong in both directions.** It said the
+mutable shield amounts existed only for the session's own player and that a creature victim was the
+boundary. The opposite was true: `creature_absorb_shields_like_cpp` had been reading mutable creature
+aura amounts since the melee creature-victim work, while the **player** victim has no spell-damage
+path at all — `apply_damage_from_caster_like_cpp` resolves a creature target or returns, and the
+creature spell tick deliberately executes no effects (its own comment assigns damage and heal to
+M3.2). So the implemented victim is the creature, and the player victim waits on creature spell
+effects rather than on aura ownership.
+
+Two findings came out of reading `Unit::CalcAbsorbResist` for it, both recorded with the fix:
+
+* **D-H24**, the ignore-absorb term. C++ holds the attacker's
+  `SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` share out of the damage once before both loops
+  (`Unit.cpp:2112`) and restores it once after (`:2250`); the port subtracted it inside each loop per
+  shield, never restored it, and gated it on `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`, an attribute this
+  reference declares and reads nowhere. `represented_absorb_stages_like_cpp` now owns the whole
+  absorb half and the melee path goes through it too.
+* **D-H25**, the mirror that discarded the shield. A creature aura was written only to the canonical
+  entity, and `sync_canonical_creature_entity_like_cpp` replaces that entity wholesale from its
+  legacy mirror, so a single no-op `mutate_world_creature` erased it — measured, not inferred. The
+  hit path mutates the legacy creature twice before the shields are read, so without this the absorb
+  loop could never have seen one. `mutate_creature_aura_owner_like_cpp` now writes the mirror that
+  owns the state.
+
+**Next prepared responsibility, selected by evidence rather than by document order: creature spell
+effect execution.** `run_legacy_creature_spell_tick_once_like_cpp` decides the cast, mutates the
+cooldown and publishes START/GO, then stops — "Effect execution is intentionally not invented here:
+damage/heal calculation belongs to M3.2". That single gap is now what blocks a list of finished
+work from ever being observed in play: a creature's damage spell deals nothing, so the spell-damage
+chain this session built (coefficient, critical, resist, absorb) only ever runs caster-side, the
+player victim's shields are never spent by a spell, and no creature debuff, heal or buff cast has an
+effect. The C++ owner is `Spell::handle_immediate`/`Spell::DoAllEffectOnTarget` reached from
+`Creature::Update`'s AI cast, and the represented pieces mostly exist already —
+`apply_damage_from_caster_like_cpp`, `apply_heal_from_caster_like_cpp` and the aura application are
+all written to take a caster guid that is not the session's player.
+
+Why it is also the only way to prove the absorb stage live, stated plainly rather than left implied:
+neither live shape is reachable from a client today. A player cannot put a shield on a hostile
+creature — absorb spells are self or friendly target and this server has no GM command surface — and
+a creature cannot cast damage at a shielded player because of the gap above. The absorb stage's
+evidence is therefore four deterministic scenarios and the regression that pins the mirror, with the
+live run owed as soon as creature spell effects land. It is recorded that way in STATE.md instead of
+being called live.
+
+### Analysis of that macro before it is decomposed — 2026-10-02
+
+Read before defining slices, as this plan requires. What follows is what the code and the reference
+actually say, not an estimate.
+
+**What the tick already does.** `run_legacy_creature_spell_tick_once_like_cpp` is not a stub around
+the hard part: it owns the AI decision, the cooldown mutation, the target preconditions, the
+range/LOS gates, the spell-disable context, the power-cost representability check, and the START/GO
+wire. It also already resolves hit or miss — `CreatureSpellHitProfileLikeCpp`, counted in
+`spell_hits`/`spell_misses`. `creature_ai_spell_single_unit_topology_like_cpp`
+(`session/mod.rs:17739`) narrows what it will emit at all to **one instant, single-target
+`SPELL_EFFECT_SCHOOL_DAMAGE` effect with `TargetA = TARGET_UNIT_TARGET_ENEMY`, no TargetB, no chain,
+no radius, no trigger**. So the missing piece is narrow and well fenced: give that one effect its
+damage and deliver it.
+
+**The C++ owners of the missing piece**, in call order: `Spell::handle_immediate`
+(`Spells/Spell.cpp:4081`) → `_handle_immediate_phase` (`:4258`) → `DoProcessTargetContainer`
+(`:4067`) → `TargetInfo::DoTargetSpellHit` (`:2794`), where `EffectSchoolDMG` accumulates
+`m_damage` → `TargetInfo::DoDamageAndTriggers` (`:2823`), whose damage arm (`:2960-2985`) is
+`CalculateSpellDamageTaken` → `DealSpellDamage` → `SendSpellNonMeleeDamageLog`. The last three
+stages are the chain this session already built; they only ever ran with a creature victim.
+
+**The real blocker is data, and the tick's own comment names it: "raw EffectBasePoints is not
+CalcValue."** `SpellEffectInfo::CalcValue` (`SpellInfo.cpp:496-597`) has five arms and this port
+carries one:
+
+| C++ arm | State here |
+| --- | --- |
+| `BasePoints` + `DieSides` roll (`:519-526`) | ported, `calc_value_no_caster_with_die_roll_like_cpp` |
+| `RealPointsPerLevel` with the `BaseLevel`/`MaxLevel`/`SpellLevel` clamp (`:506-517`) | **absent from `SpellEffectInfo`**, though `SpellEffectDb2Entry::effect_real_points_per_level` is already read (`spell_db2/state_2.rs:387`) and the serverside record already has it |
+| `PointsPerResource` × combo points (`:534-535`) | absent, and inert for a creature caster, which has none |
+| `ApplyEffectModifiers` spellmods (`:538-539`) | no represented owner; null-caster-equivalent |
+| `GtNpcManaCostScaler` creature-level scaling under `SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL` (`:541-594`) | **no GameTable reader exists at all** |
+
+The level clamp needs `SpellInfo::BaseLevel`, `MaxLevel` and `SpellLevel`. `SpellLevelsStore` is
+loaded and keyed (`spell_db2/state_2.rs:616`) but its values never reach the runtime `SpellInfo`, so
+the plumbing is one more store in `EffectiveCoreSpellDb2StoresLikeCpp` (`spell/stores/state_3.rs:676`)
+and its composition root, not a new DB2 reader.
+
+**The victim side needs no new arithmetic, only a new owner.** A player victim's crit-taken, resist
+and absorb all exist: the melee creature tick already runs the school-absorb and mana-shield loops
+against a canonical player in its own map phase (`apply_melee_absorb_to_canonical_player_like_cpp`)
+and hands the victim session the publication half through
+`CreatureMeleeDeliveryCommandLikeCpp`'s `absorbed`/`mana_spent`/`absorb_consumptions`. The spell
+tick needs the same shape for its own log, which is `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` rather than
+`SMSG_ATTACKERSTATEUPDATE`.
+
+**Slices, in dependency order.** Each is a bounded deliverable with its own acceptance; none is
+useful before the one above it, which is why they are not all one commit:
+
+1. **`CalcValue` with its caster.** Carry `effect_real_points_per_level` and
+   `effect_points_per_resource` into `SpellEffectInfo` from both hydration arms, plumb
+   `SpellLevels` into the spell store, and implement the level-scaling and combo arms as a rule over
+   explicit inputs. The `NpcManaCostScaler` arm stays a named boundary until a GameTable reader
+   exists, and the gate that reaches it (`SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL` with
+   `SpellLevel != caster level`) must be *observable*, not silently skipped.
+2. **The player-victim hit chain as a map-owned stage.** Crit, resist, absorb and mana shield
+   against the canonical player, committed in the same phase as the health write, mirroring the
+   melee stage rather than duplicating its arithmetic.
+3. **Delivery and publication.** A spell-damage delivery command for the victim session, the
+   `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` in C++'s order after the absorb logs, and the death cascade
+   the existing player-damage owner already has.
+4. **Wire the tick** to slices 1-3 behind the topology gate it already enforces, with the
+   `spell_effects_unrepresented` counters kept for everything still outside it.
+5. **Live acceptance**, which this macro finally makes reachable: a creature casting a damage spell
+   at the QA character, and the same run proves the absorb stage that D-H3 left owed.
+
+Not started in this pass, deliberately. Slice 1 crosses two crates' store composition, and a
+half-plumbed spell store is worse than none; it is the next thing to cut, with the inventory above
+as its starting evidence rather than a re-derivation.
+
+One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
+a previous run can leave the nearest spawn of that entry dead.
 
 ## 1. Direction from here
 

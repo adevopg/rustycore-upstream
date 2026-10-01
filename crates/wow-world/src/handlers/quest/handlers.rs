@@ -2309,13 +2309,15 @@ impl WorldSession {
         }
 
         // C++: if (_player->CanCompleteQuest(questID)) _player->CompleteQuest(questID)
+        let player_facts = self.resolved_quest_objective_player_facts_like_cpp(&quest);
+        let player_facts = player_facts.borrow_like_cpp();
         let can_complete_now = self
             .player_quest_gameplay_snapshot_like_cpp()
             .and_then(|state| {
                 let rewarded = state.rewarded_quest_ids_like_cpp().contains(&quest_id);
                 state.statuses_like_cpp().get(&quest_id).map(|status| {
                     crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
-                        status, &quest, 0, rewarded,
+                        status, &quest, 0, rewarded, &player_facts,
                     )
                 })
             })

@@ -119,6 +119,29 @@ impl MariaDbWorldObjectCatalogPersistenceAdapterLikeCpp {
         })
     }
 
+    /// C++ reads `CreatureID, School, Resistance` in that order
+    /// (`Globals/ObjectMgr.cpp:536-545`).
+    async fn creature_template_resistances(&self) -> Result<Vec<(u32, u8, i16)>> {
+        let mut result = self
+            .world_db
+            .direct_query("SELECT CreatureID, School, Resistance FROM creature_template_resistance")
+            .await?;
+        let mut rows = Vec::new();
+        if !result.is_empty() {
+            loop {
+                rows.push((
+                    result.try_read(0).unwrap_or(0),
+                    result.try_read(1).unwrap_or(0),
+                    result.try_read(2).unwrap_or(0),
+                ));
+                if !result.next_row() {
+                    break;
+                }
+            }
+        }
+        Ok(rows)
+    }
+
     async fn sparring(&self) -> Result<Vec<(u32, f32)>> {
         let mut result = self
             .world_db
@@ -450,6 +473,11 @@ impl WorldObjectCatalogPersistencePortLikeCpp
         &self,
     ) -> PersistenceFutureLikeCpp<'_, WorldObjectRowsLoadOutcomeLikeCpp<Vec<(u32, f32)>>> {
         Box::pin(async move { outcome(self.sparring().await) })
+    }
+    fn load_creature_template_resistance_rows_like_cpp(
+        &self,
+    ) -> PersistenceFutureLikeCpp<'_, WorldObjectRowsLoadOutcomeLikeCpp<Vec<(u32, u8, i16)>>> {
+        Box::pin(async move { outcome(self.creature_template_resistances().await) })
     }
     fn load_gameobject_template_rows_like_cpp(
         &self,

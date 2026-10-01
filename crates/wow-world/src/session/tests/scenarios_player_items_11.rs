@@ -869,7 +869,10 @@ fn send_new_item_plan_maps_entity_fields_to_item_push_result_like_cpp() {
     assert_eq!(packet.item_guid, plan.item_guid);
     assert_eq!(packet.slot, 4);
     assert_eq!(packet.slot_in_bag, 7);
-    assert_eq!(packet.quest_log_item_id, 777);
+    // C++ `Player::SendNewItem` never assigns `QuestLogItemID`: the only line that
+    // would is commented out (`Entities/Player/Player.cpp:13869`), so stock ships
+    // the packet default however the plan was filled. See D-M15.
+    assert_eq!(packet.quest_log_item_id, 0);
     assert_eq!(packet.quantity, 3);
     assert_eq!(packet.quantity_in_inventory, 9);
     assert_eq!(packet.dungeon_encounter_id, 615);

@@ -72,6 +72,7 @@ impl Creature {
             spell_focus: CreatureSpellFocusStateLikeCpp::default(),
             combat_log_stats: CreatureCombatLogStatsLikeCpp::default(),
             avoidance_like_cpp: CreatureAvoidanceLikeCpp::default(),
+            resistances_like_cpp: [0; 7],
             loot_lifecycle_revision: 0,
             loot_authority: OwnedLootAuthority::new(),
             shared_loot: None,

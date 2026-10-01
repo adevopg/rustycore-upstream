@@ -455,6 +455,7 @@ mod tests {
                 regen_health: true,
                 spells: [0; crate::creature::template::MAX_CREATURE_SPELLS_LIKE_CPP],
                 models: Vec::new(),
+                resistances: [0; 7],
             }
         }))
     }

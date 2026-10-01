@@ -50,6 +50,7 @@ fn creature_template_lifecycle_store_preserves_cpp_field_mapping_and_vehicle_id(
             string_id: "template_string".to_string(),
             regen_health: true,
             spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
+            resistances: [0; 7],
             models: Vec::new(),
         },
     ]);
@@ -156,6 +157,7 @@ fn creature_template_lifecycle_normalizes_invalid_flight_like_cpp() {
         string_id: String::new(),
         regen_health: true,
         spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
+        resistances: [0; 7],
         models: Vec::new(),
     };
     invalid = invalid.normalize_like_cpp();
@@ -228,6 +230,7 @@ fn creature_template_lifecycle_normalizes_zero_speeds_like_cpp() {
         string_id: String::new(),
         regen_health: true,
         spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
+        resistances: [0; 7],
         models: Vec::new(),
     };
 
@@ -279,6 +282,7 @@ fn creature_template_lifecycle_spells_skip_oob_and_missing_template_like_cpp() {
         string_id: String::new(),
         regen_health: false,
         spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
+        resistances: [0; 7],
         models: Vec::new(),
     };
     present.apply_spell_row_like_cpp(0, 100);
@@ -326,6 +330,7 @@ fn creature_template_lifecycle_models_preserve_order_and_first_valid_like_cpp() 
         string_id: String::new(),
         regen_health: false,
         spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
+        resistances: [0; 7],
         models: Vec::new(),
     };
     template.push_model_like_cpp(CreatureTemplateLifecycleModelLikeCpp {
@@ -484,6 +489,7 @@ fn creature_template_lifecycle_models_normalize_non_positive_display_scale_like_
         string_id: String::new(),
         regen_health: false,
         spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
+        resistances: [0; 7],
         models: vec![CreatureTemplateLifecycleModelLikeCpp {
             creature_display_id: 333,
             display_scale: -2.0,
@@ -782,5 +788,36 @@ fn creature_template_mount_model_selection_matches_cpp_shape() {
     assert_eq!(
         entry.choose_display_id_like_cpp(&mut StdRng::seed_from_u64(2)),
         Some(2)
+    );
+}
+
+/// C++ `ObjectMgr::LoadCreatureTemplateResistances` (`Globals/ObjectMgr.cpp:536-570`)
+/// writes each `(CreatureID, School, Resistance)` row onto the template it already
+/// loaded, and logs-and-skips a row for school zero, a school at or past
+/// `MAX_SPELL_SCHOOL`, or an entry with no template.
+#[test]
+fn creature_template_resistance_rows_apply_onto_loaded_templates_like_cpp() {
+    let mut store = CreatureTemplateLifecycleStoreLikeCpp::from_templates([
+        creature_template_lifecycle_record_for_test(40),
+        creature_template_lifecycle_record_for_test(89),
+    ]);
+
+    let applied = store.apply_resistance_rows_like_cpp([
+        (40, 2, 21),   // fire
+        (89, 2, 300),  // fire
+        (89, 5, 40),   // shadow
+        (40, 0, 999),  // physical: rejected, armour owns it
+        (40, 7, 999),  // past MAX_SPELL_SCHOOL: rejected
+        (12345, 2, 5), // no such template: rejected
+    ]);
+
+    assert_eq!(applied, 3, "only the three valid rows apply");
+    assert_eq!(
+        store.get(40).expect("template 40").resistances,
+        [0, 0, 21, 0, 0, 0, 0]
+    );
+    assert_eq!(
+        store.get(89).expect("template 89").resistances,
+        [0, 0, 300, 0, 0, 40, 0]
     );
 }

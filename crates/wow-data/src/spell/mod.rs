@@ -42,15 +42,8 @@ use crate::{
 /// Spell effect types (from SpellEffectType enum)
 
 /// Aura types (from AuraType enum)
-
-/// Selected `Targets` ids from C++ `SpellImplicitTargetInfo::_data`.
-pub mod implicit_targets {
-    pub const TARGET_DEST_HOME: u32 = 9;
-    pub const TARGET_DEST_DB: u32 = 17;
-    pub const TARGET_DEST_NEARBY_ENTRY: u32 = 46;
-    pub const TARGET_DEST_NEARBY_ENTRY_2: u32 = 107;
-    pub const TARGET_DEST_NEARBY_ENTRY_OR_DB: u32 = 142;
-}
+pub mod aura_interrupt_flags;
+pub mod implicit_targets;
 
 mod state_1;
 mod state_2;
@@ -96,6 +89,10 @@ pub mod attributes {
     pub const SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED_CASTER_FORM: u32 = 0x0008_0000;
     /// C++ `SPELL_ATTR2_NO_INITIAL_THREAT` (`SharedDefines.h`).
     pub const SPELL_ATTR2_NO_INITIAL_THREAT: u32 = 0x0040_0000;
+    /// C++ `SPELL_ATTR2_CANT_CRIT` (`SharedDefines.h:556`), which
+    /// `SpellMgr::LoadSpellInfoCustomAttributes` uses to clear
+    /// `SPELL_ATTR0_CU_CAN_CRIT` again (`Spells/SpellMgr.cpp:3643-3645`).
+    pub const SPELL_ATTR2_CANT_CRIT: u32 = 0x2000_0000;
     /// C++ `SPELL_ATTR3_CAN_PROC_FROM_PROCS` (`SharedDefines.h`).
     pub const SPELL_ATTR3_CAN_PROC_FROM_PROCS: u32 = 0x0400_0000;
     /// C++ `SPELL_ATTR3_IGNORE_CASTER_MODIFIERS` (`SharedDefines.h:571`):
@@ -120,6 +117,9 @@ pub mod attributes {
     /// C++ `SPELL_ATTR4_NO_HARMFUL_THREAT` (`SharedDefines.h`).
     pub const SPELL_ATTR4_NO_HARMFUL_THREAT: u32 = 0x0000_0010;
     pub const SPELL_ATTR4_USE_FACING_FROM_SPELL: u32 = 0x8000_0000;
+    /// C++ `SPELL_ATTR5_LIMIT_N` (`SharedDefines.h:643`), the only attribute
+    /// `SpellInfo::IsSingleTarget` reads (`SpellInfo.cpp:1789-1796`).
+    pub const SPELL_ATTR5_LIMIT_N: u32 = 0x0000_0020;
 }
 
 pub mod shapeshift_form_flags {

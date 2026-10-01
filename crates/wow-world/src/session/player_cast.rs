@@ -69,6 +69,18 @@ impl WorldSession {
                     cast.metadata.prepared_residence_revision.is_some()
                         && cast.metadata.prepared_residence_revision != revision
                 }) {
+                    // Dropping an active cast here is correct after a real
+                    // reentry, and indistinguishable from losing one when the
+                    // revision moves for another reason, so say which revisions
+                    // disagreed.
+                    debug!(
+                        prepared = ?state
+                            .active
+                            .as_ref()
+                            .and_then(|cast| cast.metadata.prepared_residence_revision),
+                        current = ?revision,
+                        "Dropping the active spell cast: its prepared residence revision is stale"
+                    );
                     state.active = None;
                     return None;
                 }
@@ -104,8 +116,19 @@ impl Runtime for WorldSession {
     }
 
     fn remaining(&self, spell: &wow_data::SpellInfo) -> Option<(u32, u32)> {
-        self.remaining_global_cooldown_ms_like_cpp(spell)
-            .zip(self.remaining_active_spell_cast_ms_like_cpp())
+        let remaining = self
+            .remaining_global_cooldown_ms_like_cpp(spell)
+            .zip(self.remaining_active_spell_cast_ms_like_cpp());
+        // The admission rule treats this pair three ways — refuse, queue, or cast
+        // now — and only the refusals publish anything, so a queued request is
+        // invisible without this.
+        debug!(
+            account = self.account_id,
+            spell_id = spell.spell_id,
+            ?remaining,
+            "Spell cast admission read the global cooldown and active cast"
+        );
+        remaining
     }
 
     fn replace_pending(&mut self, request: RepresentedPendingSpellCastRequestLikeCpp) {

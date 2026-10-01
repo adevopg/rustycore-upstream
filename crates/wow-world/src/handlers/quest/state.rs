@@ -97,11 +97,13 @@ impl WorldSession {
             return false;
         };
         let quest_already_rewarded = state.rewarded_quest_ids_like_cpp().contains(&quest.id);
+        let player_facts = self.resolved_quest_objective_player_facts_like_cpp(quest);
         if !crate::handlers::quest_rules::represented_can_complete_quest_after_objective_like_cpp(
             status,
             quest,
             ignored_objective_id,
             quest_already_rewarded,
+            &player_facts.borrow_like_cpp(),
         ) {
             return false;
         }

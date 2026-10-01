@@ -330,6 +330,8 @@ pub(super) struct SessionRuntimePolicyCapabilitiesLikeCpp {
     pub(super) server_expansion: u8,
     /// C++ `CONFIG_INSTANCE_IGNORE_RAID` / `Instance.IgnoreRaid`.
     pub(super) instance_ignore_raid: bool,
+    /// C++ `CONFIG_QUEST_IGNORE_RAID` / `Quests.IgnoreRaid`.
+    pub(super) quests_ignore_raid: bool,
     /// C++ `CONFIG_INSTANCE_IGNORE_LEVEL` / `Instance.IgnoreLevel`.
     pub(super) instance_ignore_level: bool,
     /// C++ `CONFIG_MAX_INSTANCES_PER_HOUR` / `AccountInstancesPerHour`.
@@ -548,6 +550,7 @@ impl SessionRuntimePolicyCapabilitiesLikeCpp {
         session.set_enable_ae_loot_like_cpp(self.enable_ae_loot);
         session.set_server_expansion_like_cpp(self.server_expansion);
         session.set_instance_ignore_raid_like_cpp(self.instance_ignore_raid);
+        session.set_quests_ignore_raid_like_cpp(self.quests_ignore_raid);
         session.set_instance_ignore_level_like_cpp(self.instance_ignore_level);
         session.set_max_instances_per_hour_like_cpp(self.max_instances_per_hour);
         session.set_socket_timeouts_like_cpp(socket_timeouts);

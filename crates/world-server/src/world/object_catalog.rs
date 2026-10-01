@@ -62,6 +62,10 @@ pub(crate) async fn load_creature_templates_like_cpp(
                     regen_health: r.regen_health,
                     spells: [0; wow_data::MAX_CREATURE_SPELLS_LIKE_CPP],
                     models: Vec::new(),
+                    // Filled by `apply_creature_template_resistances_like_cpp`,
+                    // the way C++ `ObjectMgr::LoadCreatureTemplateResistances`
+                    // writes onto templates already loaded.
+                    resistances: [0; 7],
                 }),
             rows.spells
                 .into_iter()
@@ -90,6 +94,17 @@ pub(crate) async fn load_creature_sparring_like_cpp(
             |entry| templates.get(entry).is_some(),
         ),
     )
+}
+
+/// C++ `ObjectMgr::LoadCreatureTemplateResistances`
+/// (`Globals/ObjectMgr.cpp:536-570`), which writes onto the already-loaded
+/// templates rather than building a second store. Returns the applied row count.
+pub(crate) async fn apply_creature_template_resistances_like_cpp(
+    port: &dyn WorldObjectCatalogPersistencePortLikeCpp,
+    templates: &mut wow_data::CreatureTemplateLifecycleStoreLikeCpp,
+) -> Result<usize> {
+    let rows = loaded(port.load_creature_template_resistance_rows_like_cpp().await)?;
+    Ok(templates.apply_resistance_rows_like_cpp(rows))
 }
 
 pub(crate) async fn load_gameobject_templates_like_cpp(

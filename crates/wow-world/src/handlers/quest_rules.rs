@@ -20,6 +20,7 @@ use crate::handlers::quest::QUEST_OBJECTIVE_AREA_TRIGGER_ENTER_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_AREA_TRIGGER_EXIT_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_AREATRIGGER_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_CRITERIA_TREE_LIKE_CPP_LOCAL;
+use crate::handlers::quest::QUEST_OBJECTIVE_CURRENCY_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_DEFEATBATTLEPET_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_FLAG_OPTIONAL_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_FLAG_PART_OF_PROGRESS_BAR_LIKE_CPP_LOCAL;
@@ -28,6 +29,10 @@ use crate::handlers::quest::QUEST_OBJECTIVE_GAMEOBJECT_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_HAVE_CURRENCY_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL;
+use crate::handlers::quest::QUEST_OBJECTIVE_LEARNSPELL_LIKE_CPP_LOCAL;
+use crate::handlers::quest::QUEST_OBJECTIVE_MAX_REPUTATION_LIKE_CPP_LOCAL;
+use crate::handlers::quest::QUEST_OBJECTIVE_MIN_REPUTATION_LIKE_CPP_LOCAL;
+use crate::handlers::quest::QUEST_OBJECTIVE_MONEY_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_OBTAIN_CURRENCY_LIKE_CPP_LOCAL;
 use crate::handlers::quest::QUEST_OBJECTIVE_PLAYERKILLS_LIKE_CPP_LOCAL;
@@ -41,6 +46,165 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use wow_core::GameTime;
 use wow_data::quest::QuestStore;
+
+/// The live player state C++ `Player::IsQuestObjectiveComplete` reads for the five
+/// objective types that are not decided by stored progress
+/// (`Entities/Player/Player.cpp:16970-16998`): a faction's standing, the carried
+/// money, whether a spell is known and a currency's quantity.
+///
+/// Resolved by the owner for one quest's own objectives and borrowed in, so these
+/// rules stay pure and no reader of session state leaks into them. The maps hold
+/// only the ids that quest names, which is one or two entries in practice.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RepresentedQuestObjectivePlayerFactsLikeCpp<'a> {
+    /// C++ `Player::GetMoney`.
+    pub money: u64,
+    /// C++ `ReputationMgr::GetReputation(faction_id)`, by `QuestObjective::ObjectID`.
+    pub reputation_standings: &'a HashMap<i32, i32>,
+    /// C++ `Player::HasSpell(ObjectID)`, for the spell ids this quest names.
+    pub known_spell_ids: &'a HashSet<i32>,
+    /// C++ `Player::GetCurrencyQuantity(ObjectID)`, by `QuestObjective::ObjectID`.
+    pub currency_quantities: &'a HashMap<i32, u32>,
+}
+
+impl RepresentedQuestObjectivePlayerFactsLikeCpp<'_> {
+    /// C++ `Player::HasEnoughMoney(int64)` (`Entities/Player/Player.h:1663-1664`):
+    /// a negative requirement is always satisfied.
+    fn has_enough_money_like_cpp(&self, amount: i32) -> bool {
+        amount < 0 || self.money >= amount as u64
+    }
+
+    /// C++ `Player::HasCurrency` (`Entities/Player/Player.cpp:7250-7254`): the
+    /// currency has to be in the storage *and* at least the amount.
+    fn has_currency_like_cpp(&self, currency_id: i32, amount: i32) -> bool {
+        self.currency_quantities
+            .get(&currency_id)
+            .is_some_and(|quantity| i64::from(*quantity) >= i64::from(amount))
+    }
+
+    /// A faction the owner could not resolve reads as `0`, which is what C++
+    /// `ReputationMgr::GetReputation(uint32)` returns for an id that is not in
+    /// `FactionStore` (`Reputation/ReputationMgr.cpp:114-125`). For a faction that
+    /// *is* in the store the owner always resolves a value, because
+    /// `ReputationMgr::Initialize` gives every one of them a `FactionState`.
+    fn reputation_like_cpp(&self, faction_id: i32) -> i32 {
+        self.reputation_standings
+            .get(&faction_id)
+            .copied()
+            .unwrap_or(0)
+    }
+}
+
+/// Facts for a caller whose objectives are all decided by stored progress.
+///
+/// C++ reads the Player unconditionally, but the five live-state branches of
+/// `IsQuestObjectiveComplete` cannot be reached from a scan restricted to one
+/// counter-based objective type, so there is nothing to read and no session
+/// lookup to pay for. Named rather than `Default` so a caller that *does* need
+/// the player cannot pick it by accident.
+pub(crate) fn stored_progress_only_player_facts_like_cpp()
+-> RepresentedQuestObjectivePlayerFactsLikeCpp<'static> {
+    static REPUTATIONS: std::sync::LazyLock<HashMap<i32, i32>> =
+        std::sync::LazyLock::new(HashMap::new);
+    static SPELLS: std::sync::LazyLock<HashSet<i32>> = std::sync::LazyLock::new(HashSet::new);
+    static CURRENCIES: std::sync::LazyLock<HashMap<i32, u32>> =
+        std::sync::LazyLock::new(HashMap::new);
+    RepresentedQuestObjectivePlayerFactsLikeCpp {
+        money: 0,
+        reputation_standings: &REPUTATIONS,
+        known_spell_ids: &SPELLS,
+        currency_quantities: &CURRENCIES,
+    }
+}
+
+/// The raid context C++ `Player::UpdateQuestObjectiveProgress` reads at
+/// `Entities/Player/Player.cpp:16644-16646`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RepresentedQuestRaidContextLikeCpp {
+    /// C++ `GetGroup() && GetGroup()->isRaidGroup()`.
+    pub in_raid_group: bool,
+    /// C++ `GetMap()->GetDifficultyID()`.
+    pub map_difficulty_id: u8,
+    /// C++ `CONFIG_QUEST_IGNORE_RAID` (`Quests.IgnoreRaid`).
+    pub quests_ignore_raid: bool,
+}
+
+/// C++ `QuestObjective::CanAlwaysBeProgressedInRaid` (`Quests/QuestDef.h:489-507`):
+/// the objective types a raid group never blocks, because none of them is earned
+/// by being somewhere or killing something.
+pub(crate) fn represented_objective_can_always_be_progressed_in_raid_like_cpp(
+    objective_type: u8,
+) -> bool {
+    matches!(
+        objective_type,
+        QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_CURRENCY_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_LEARNSPELL_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_MIN_REPUTATION_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_MAX_REPUTATION_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_MONEY_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_HAVE_CURRENCY_LIKE_CPP_LOCAL
+            | QUEST_OBJECTIVE_INCREASE_REPUTATION_LIKE_CPP_LOCAL
+    )
+}
+
+/// Every gate C++ `Player::UpdateQuestObjectiveProgress` applies to one matched
+/// objective before it touches its progress (`Entities/Player/Player.cpp:16644-16655`),
+/// in that order:
+///
+/// 1. the raid gate: unless the type can always progress in a raid, a raid group
+///    blocks the objective for a quest that is not allowed in raid;
+/// 2. `IsQuestObjectiveCompletable`, which the sequenced and progress-bar rules own;
+/// 3. `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY`, which refuses a `QUEST_OBJECTIVE_MONSTER`
+///    credit carrying no victim — that empty GUID is exactly how C++
+///    `Player::KilledMonster` (`:16568-16570`) marks the credit it grants for a
+///    `CreatureTemplate::KillCredit` proxy rather than for the unit that died.
+///
+/// Returns true when the objective may take the progress.
+pub(crate) fn represented_quest_objective_progress_allowed_like_cpp(
+    status: &PlayerQuestStatus,
+    quest: &wow_data::quest::QuestTemplate,
+    objective_index: usize,
+    objective: &wow_data::quest::QuestObjective,
+    raid: &RepresentedQuestRaidContextLikeCpp,
+    victim_guid_is_empty: bool,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
+) -> bool {
+    if !represented_objective_can_always_be_progressed_in_raid_like_cpp(objective.obj_type)
+        && raid.in_raid_group
+        && !quest.is_allowed_in_raid_like_cpp(raid.map_difficulty_id, raid.quests_ignore_raid)
+    {
+        return false;
+    }
+    if !represented_quest_objective_completable_like_cpp(status, quest, objective_index, facts) {
+        return false;
+    }
+    if quest.has_no_credit_for_proxy_like_cpp()
+        && objective.obj_type == QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL
+        && victim_guid_is_empty
+    {
+        return false;
+    }
+    true
+}
+
+/// Is this `QUEST_OBJECTIVE_GAMEOBJECT` objective still waiting on the player?
+///
+/// C++ `Player::HasQuestForGO` asks `IsQuestObjectiveCompletable` and
+/// `!IsQuestObjectiveComplete` for the matching objective
+/// (`Entities/Player/Player.cpp:16806-16830`). Both questions belong together and
+/// both are answered from stored progress for this type, so the rule owns the
+/// pairing and the caller does not have to resolve player facts it cannot need.
+pub(crate) fn represented_gameobject_objective_is_pending_like_cpp(
+    status: &PlayerQuestStatus,
+    quest: &wow_data::quest::QuestTemplate,
+    objective_index: usize,
+    objective: &wow_data::quest::QuestObjective,
+) -> bool {
+    let facts = stored_progress_only_player_facts_like_cpp();
+    represented_quest_objective_completable_like_cpp(status, quest, objective_index, &facts)
+        && !represented_quest_objective_complete_like_cpp(status, quest, objective, &facts)
+}
 
 /// Pure form of C++ `Player::ItemAddedQuestCheck(entry, count)`
 /// (`Entities/Player/Player.cpp:16533-16536`), which is
@@ -60,12 +224,12 @@ pub(crate) fn apply_quest_item_added_to_statuses_like_cpp(
     entry_id: u32,
     quest_log_item_id: u32,
     count: u32,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
 ) -> Vec<u32> {
     let entry_object_id = i32::try_from(entry_id).unwrap_or(i32::MAX);
-    let mut objective_ids = vec![entry_object_id];
-    if quest_log_item_id != 0 {
-        objective_ids.push(i32::try_from(quest_log_item_id).unwrap_or(i32::MAX));
-    }
+    // C++ `ItemAddedQuestCheck` credits the item entry only; see D-M15.
+    let objective_ids = [entry_object_id];
+    let _ = quest_log_item_id;
     let count = i32::try_from(count).unwrap_or(i32::MAX);
     let mut changed_quest_ids = Vec::new();
     let mut quests_to_complete = Vec::new();
@@ -80,7 +244,12 @@ pub(crate) fn apply_quest_item_added_to_statuses_like_cpp(
         for (objective_index, objective) in quest.objectives.iter().enumerate() {
             if objective.obj_type != QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL
                 || !objective_ids.contains(&objective.object_id)
-                || !represented_quest_objective_completable_like_cpp(status, quest, objective_index)
+                || !represented_quest_objective_completable_like_cpp(
+                    status,
+                    quest,
+                    objective_index,
+                    facts,
+                )
             {
                 continue;
             }
@@ -103,6 +272,7 @@ pub(crate) fn apply_quest_item_added_to_statuses_like_cpp(
                     quest,
                     objective.id,
                     rewarded_quests.contains(&status.quest_id),
+                    facts,
                 )
             {
                 quests_to_complete.push(status.quest_id);
@@ -124,6 +294,7 @@ pub(crate) fn apply_quest_item_removed_to_statuses_like_cpp(
     player_quests: &mut HashMap<u32, PlayerQuestStatus>,
     entry_id: u32,
     new_non_bank_item_count: u32,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
 ) -> Vec<u32> {
     let Ok(object_id) = i32::try_from(entry_id) else {
         return Vec::new();
@@ -138,7 +309,12 @@ pub(crate) fn apply_quest_item_removed_to_statuses_like_cpp(
         for (objective_index, objective) in quest.objectives.iter().enumerate() {
             if objective.obj_type != QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL
                 || objective.object_id != object_id
-                || !represented_quest_objective_completable_like_cpp(status, quest, objective_index)
+                || !represented_quest_objective_completable_like_cpp(
+                    status,
+                    quest,
+                    objective_index,
+                    facts,
+                )
             {
                 continue;
             }
@@ -205,6 +381,7 @@ pub(crate) fn represented_can_complete_quest_after_objective_like_cpp(
     quest: &wow_data::quest::QuestTemplate,
     ignored_objective_id: u32,
     quest_already_rewarded: bool,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
 ) -> bool {
     if quest.id == 0 {
         return false;
@@ -231,7 +408,7 @@ pub(crate) fn represented_can_complete_quest_after_objective_like_cpp(
             continue;
         }
 
-        if !represented_quest_objective_complete_like_cpp(status, quest, objective) {
+        if !represented_quest_objective_complete_like_cpp(status, quest, objective, facts) {
             return false;
         }
     }
@@ -255,6 +432,7 @@ pub(crate) fn represented_quest_objective_completable_like_cpp(
     status: &PlayerQuestStatus,
     quest: &wow_data::quest::QuestTemplate,
     objective_index: usize,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
 ) -> bool {
     let Some(objective) = quest.objectives.get(objective_index) else {
         return false;
@@ -270,12 +448,17 @@ pub(crate) fn represented_quest_objective_completable_like_cpp(
             return false;
         };
 
-        return represented_quest_objective_completable_like_cpp(status, quest, progress_bar_index)
-            && !represented_quest_objective_complete_like_cpp(
-                status,
-                quest,
-                progress_bar_objective,
-            );
+        return represented_quest_objective_completable_like_cpp(
+            status,
+            quest,
+            progress_bar_index,
+            facts,
+        ) && !represented_quest_objective_complete_like_cpp(
+            status,
+            quest,
+            progress_bar_objective,
+            facts,
+        );
     }
 
     if objective_index == 0 {
@@ -291,18 +474,25 @@ pub(crate) fn represented_quest_objective_completable_like_cpp(
         let previous_objective = &quest.objectives[previous_index];
         if (previous_objective.flags & QUEST_OBJECTIVE_FLAG_SEQUENCED_LIKE_CPP_LOCAL) != 0 {
             previous_sequenced_objective_index = Some(previous_index);
-            previous_sequenced_objective_complete =
-                represented_quest_objective_complete_like_cpp(status, quest, previous_objective);
+            previous_sequenced_objective_complete = represented_quest_objective_complete_like_cpp(
+                status,
+                quest,
+                previous_objective,
+                facts,
+            );
             break;
         }
 
         if objective_sequence_satisfied {
-            objective_sequence_satisfied =
-                represented_quest_objective_complete_like_cpp(status, quest, previous_objective)
-                    || (previous_objective.flags
-                        & (QUEST_OBJECTIVE_FLAG_OPTIONAL_LIKE_CPP_LOCAL
-                            | QUEST_OBJECTIVE_FLAG_PART_OF_PROGRESS_BAR_LIKE_CPP_LOCAL))
-                        != 0;
+            objective_sequence_satisfied = represented_quest_objective_complete_like_cpp(
+                status,
+                quest,
+                previous_objective,
+                facts,
+            ) || (previous_objective.flags
+                & (QUEST_OBJECTIVE_FLAG_OPTIONAL_LIKE_CPP_LOCAL
+                    | QUEST_OBJECTIVE_FLAG_PART_OF_PROGRESS_BAR_LIKE_CPP_LOCAL))
+                != 0;
         }
 
         if previous_index == 0 {
@@ -324,6 +514,7 @@ pub(crate) fn represented_quest_objective_completable_like_cpp(
                 status,
                 quest,
                 previous_sequenced_objective_index,
+                facts,
             ) {
                 return false;
             }
@@ -337,6 +528,7 @@ pub(crate) fn represented_quest_objective_complete_like_cpp(
     status: &PlayerQuestStatus,
     quest: &wow_data::quest::QuestTemplate,
     objective: &wow_data::quest::QuestObjective,
+    facts: &RepresentedQuestObjectivePlayerFactsLikeCpp<'_>,
 ) -> bool {
     match objective.obj_type {
         QUEST_OBJECTIVE_MONSTER_LIKE_CPP_LOCAL
@@ -382,13 +574,23 @@ pub(crate) fn represented_quest_objective_complete_like_cpp(
         QUEST_OBJECTIVE_PROGRESS_BAR_LIKE_CPP_LOCAL => {
             represented_quest_objective_progress_bar_complete_like_cpp(status, quest)
         }
-        // The remaining C++ branches read live player state this pure rule does
-        // not carry: `QUEST_OBJECTIVE_MIN_REPUTATION` / `MAX_REPUTATION` ask
-        // `GetReputationMgr`, `MONEY` asks `HasEnoughMoney`, `LEARNSPELL` asks
-        // `HasSpell` and `CURRENCY` asks `HasCurrency`
-        // (`Entities/Player/Player.cpp:16970-16998`). Each would need that state
-        // threaded in; until then they fail closed, which keeps a quest
-        // incomplete rather than completing it on an unchecked condition.
+        // The five types C++ decides from live player state rather than from
+        // stored progress (`Entities/Player/Player.cpp:16970-16998`).
+        QUEST_OBJECTIVE_MIN_REPUTATION_LIKE_CPP_LOCAL => {
+            facts.reputation_like_cpp(objective.object_id) >= objective.amount
+        }
+        QUEST_OBJECTIVE_MAX_REPUTATION_LIKE_CPP_LOCAL => {
+            facts.reputation_like_cpp(objective.object_id) <= objective.amount
+        }
+        QUEST_OBJECTIVE_MONEY_LIKE_CPP_LOCAL => facts.has_enough_money_like_cpp(objective.amount),
+        QUEST_OBJECTIVE_LEARNSPELL_LIKE_CPP_LOCAL => {
+            facts.known_spell_ids.contains(&objective.object_id)
+        }
+        QUEST_OBJECTIVE_CURRENCY_LIKE_CPP_LOCAL => {
+            facts.has_currency_like_cpp(objective.object_id, objective.amount)
+        }
+        // C++ logs an error and refuses an objective type it does not know
+        // (`:17003-17006`), which is what failing closed means here.
         _ => false,
     }
 }

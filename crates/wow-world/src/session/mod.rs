@@ -629,7 +629,7 @@ pub struct AreaTriggerCatalogsLikeCpp {
     pub scripts: Arc<AreaTriggerScriptStoreLikeCpp>,
     pub taverns: Arc<TavernAreaTriggerStoreLikeCpp>,
     pub quest_relations: Arc<wow_data::QuestAreaTriggerStoreLikeCpp>, // MiscHandler.cpp:534
-    pub script_dispatcher: Option<AreaTriggerScriptDispatcherLikeCpp>,
+    pub script_dispatcher: Option<AreaTriggerScriptDispatcherLikeCpp>, // ScriptMgr::OnAreaTrigger
 }
 
 /// Process-wide ObjectMgr identifier allocators.
@@ -5404,6 +5404,7 @@ pub struct WorldSession {
     #[cfg(test)]
     feature_system_character_undelete_enabled_like_cpp: bool,
     instance_ignore_raid_like_cpp: bool,
+    quests_ignore_raid_like_cpp: bool,
     instance_ignore_level_like_cpp: bool,
     max_instances_per_hour_like_cpp: u32,
     #[cfg(test)]
@@ -7878,6 +7879,7 @@ impl WorldSession {
             #[cfg(test)]
             feature_system_character_undelete_enabled_like_cpp: false,
             instance_ignore_raid_like_cpp: false,
+            quests_ignore_raid_like_cpp: false,
             instance_ignore_level_like_cpp: false,
             max_instances_per_hour_like_cpp: 5,
             #[cfg(test)]
@@ -9950,11 +9952,8 @@ impl WorldSession {
                 .any(|(index, objective)| {
                     objective.obj_type == 2
                         && objective.object_id == object_id
-                        && crate::handlers::quest_rules::represented_quest_objective_completable_like_cpp(
-                            status, quest, index,
-                        )
-                        && !crate::handlers::quest_rules::represented_quest_objective_complete_like_cpp(
-                            status, quest, objective,
+                        && crate::handlers::quest_rules::represented_gameobject_objective_is_pending_like_cpp(
+                            status, quest, index, objective,
                         )
                 })
         })

@@ -6,6 +6,7 @@
 use super::*;
 
 mod area_trigger_smoke;
+mod aura_save_smoke;
 mod character;
 mod cli;
 mod create_character;
@@ -31,6 +32,7 @@ mod runtime_3;
 mod runtime_4;
 mod social;
 mod spell;
+mod spell_damage_smoke;
 mod sql_fixtures;
 mod void_storage_1;
 mod void_storage_2;
@@ -40,6 +42,7 @@ mod world_handshake;
 
 #[allow(unused_imports)]
 pub(crate) use area_trigger_smoke::*;
+pub(crate) use aura_save_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use character::*;
 #[allow(unused_imports)]
@@ -88,6 +91,7 @@ pub(crate) use runtime_4::*;
 pub(crate) use social::*;
 #[allow(unused_imports)]
 pub(crate) use spell::*;
+pub(crate) use spell_damage_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use sql_fixtures::*;
 #[allow(unused_imports)]

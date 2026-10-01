@@ -6,6 +6,140 @@
 use super::*;
 
 impl SpellStore {
+    /// C++ `SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED`, the only custom attribute
+    /// `Aura::CanBeSaved` reads (`SpellAuras.cpp:1197`).
+    ///
+    /// `SpellMgr::LoadSpellInfoCustomAttributes` precomputes it into
+    /// `AttributesCu` from three sources; this port has no `AttributesCu` field,
+    /// so the same rules are read off the stores at the point of use:
+    ///
+    /// * the aura-type list at `SpellMgr.cpp:3340-3362` — the stable dialog
+    ///   cannot reopen on load, and the rest need both caster and target in
+    ///   world;
+    /// * `HasAuraInterruptFlag(LeaveWorld)` at `SpellMgr.cpp:3604-3605`, because
+    ///   the save runs before the Player leaves the world.
+    ///
+    /// The third source, liquid auras (`SpellMgr.cpp:3649-3655`), reads
+    /// `LiquidType.db2::SpellID`, which no store here loads; those auras are
+    /// therefore not yet recognised.
+    pub fn aura_cannot_be_saved_like_cpp(
+        &self,
+        spell_id: i32,
+        requested_difficulty_id: u8,
+        difficulty_store: Option<&crate::difficulty::DifficultyStore>,
+    ) -> bool {
+        use crate::spell::aura_types::*;
+        if self
+            .effects_for_difficulty_like_cpp(spell_id, requested_difficulty_id, difficulty_store)
+            .is_some_and(|effects| {
+                effects.iter().any(|effect| {
+                    matches!(
+                        effect.effect_aura,
+                        SPELL_AURA_OPEN_STABLE
+                            | SPELL_AURA_CONTROL_VEHICLE
+                            | SPELL_AURA_BIND_SIGHT
+                            | SPELL_AURA_MOD_POSSESS
+                            | SPELL_AURA_MOD_POSSESS_PET
+                            | SPELL_AURA_MOD_CHARM
+                            | SPELL_AURA_AOE_CHARM
+                            | SPELL_AURA_BATTLEGROUND_PLAYER_POSITION
+                            | SPELL_AURA_BATTLEGROUND_PLAYER_POSITION_FACTIONAL
+                    )
+                })
+            })
+        {
+            return true;
+        }
+        self.aura_interrupt_flags_for_difficulty_like_cpp(
+            spell_id,
+            requested_difficulty_id,
+            difficulty_store,
+        )
+        .is_some_and(|flags| {
+            flags[0] & crate::spell::aura_interrupt_flags::LEAVE_WORLD_LIKE_CPP != 0
+        })
+    }
+
+    /// C++ `SPELL_ATTR0_CU_CAN_CRIT`, the custom attribute every spell critical
+    /// path gates on (`Unit::SpellCritChanceDone`/`Taken`, `Unit.cpp:7717`,
+    /// `:7777`).
+    ///
+    /// `SpellMgr::LoadSpellInfoCustomAttributes` sets it for any spell with one
+    /// of eleven effects (`Spells/SpellMgr.cpp:3367-3381`) and clears it again
+    /// for `SPELL_ATTR2_CANT_CRIT` (`:3643-3645`). This port has no
+    /// `AttributesCu` field, so both rules are read off the stores here.
+    pub fn spell_can_crit_like_cpp(
+        &self,
+        spell_id: i32,
+        requested_difficulty_id: u8,
+        difficulty_store: Option<&crate::difficulty::DifficultyStore>,
+    ) -> bool {
+        use crate::spell::spell_effect_types::*;
+        if self.has_attribute_for_difficulty_like_cpp(
+            spell_id,
+            requested_difficulty_id,
+            difficulty_store,
+            2,
+            crate::spell::attributes::SPELL_ATTR2_CANT_CRIT,
+        ) {
+            return false;
+        }
+        self.effects_for_difficulty_like_cpp(spell_id, requested_difficulty_id, difficulty_store)
+            .is_some_and(|effects| {
+                effects.iter().any(|effect| {
+                    matches!(
+                        effect.effect,
+                        SPELL_EFFECT_SCHOOL_DAMAGE
+                            | SPELL_EFFECT_HEALTH_LEECH
+                            | SPELL_EFFECT_HEAL
+                            | SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+                            | SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+                            | SPELL_EFFECT_WEAPON_DAMAGE
+                            | SPELL_EFFECT_POWER_BURN
+                            | SPELL_EFFECT_HEAL_MECHANICAL
+                            | SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+                            | SPELL_EFFECT_HEAL_PCT
+                            | SPELL_EFFECT_DAMAGE_FROM_MAX_HEALTH_PCT
+                    )
+                })
+            })
+    }
+
+    /// C++ `SpellInfo::IsSingleTarget` (`SpellInfo.cpp:1789-1796`).
+    pub fn is_single_target_like_cpp(
+        &self,
+        spell_id: i32,
+        requested_difficulty_id: u8,
+        difficulty_store: Option<&crate::difficulty::DifficultyStore>,
+    ) -> bool {
+        self.has_attribute_for_difficulty_like_cpp(
+            spell_id,
+            requested_difficulty_id,
+            difficulty_store,
+            5,
+            crate::spell::attributes::SPELL_ATTR5_LIMIT_N,
+        )
+    }
+
+    /// Whether any real effect is area-targeting or an area-aura effect, the
+    /// loop C++ `Aura::CanBeSaved` runs for a foreign caster
+    /// (`SpellAuras.cpp:1180-1191`).
+    pub fn has_area_effect_for_difficulty_like_cpp(
+        &self,
+        spell_id: i32,
+        requested_difficulty_id: u8,
+        difficulty_store: Option<&crate::difficulty::DifficultyStore>,
+    ) -> bool {
+        self.effects_for_difficulty_like_cpp(spell_id, requested_difficulty_id, difficulty_store)
+            .is_some_and(|effects| {
+                effects.iter().any(|effect| {
+                    effect.is_effect_like_cpp()
+                        && (effect.is_targeting_area_like_cpp()
+                            || effect.is_area_aura_effect_like_cpp())
+                })
+            })
+    }
+
     pub fn aura_interrupt_flags_for_difficulty_like_cpp(
         &self,
         spell_id: i32,

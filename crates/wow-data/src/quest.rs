@@ -25,6 +25,22 @@ pub const QUEST_FLAGS_HIDE_REWARD_POI_LIKE_CPP: u32 = 0x0000_0020;
 pub const QUEST_OBJECTIVE_AREATRIGGER_LIKE_CPP: u8 = 10;
 pub const QUEST_FLAGS_WEEKLY_LIKE_CPP: u32 = 0x0000_8000;
 pub const QUEST_FLAGS_EX_LEGENDARY_LIKE_CPP: u32 = 0x0000_0100;
+/// C++ `QUEST_FLAGS_RAID_GROUP_OK` (`Quests/QuestDef.h:200`): "can be completed
+/// while in raid", read only by `Quest::IsRaidQuest`.
+pub const QUEST_FLAGS_RAID_GROUP_OK_LIKE_CPP: u32 = 0x0000_0040;
+/// C++ `QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY` (`Quests/QuestDef.h:246`): "no credit
+/// for proxy creatures", read only by `Player::UpdateQuestObjectiveProgress`
+/// (`Entities/Player/Player.cpp:16653-16655`).
+pub const QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY_LIKE_CPP: u32 = 0x0000_4000;
+/// C++ `QuestInfo` ids `Quest::IsRaidQuest` switches on
+/// (`Miscellaneous/SharedDefines.h:4700,4706,4707`).
+const QUEST_INFO_RAID_LIKE_CPP: u16 = 62;
+const QUEST_INFO_RAID_10_LIKE_CPP: u16 = 88;
+const QUEST_INFO_RAID_25_LIKE_CPP: u16 = 89;
+/// C++ `Difficulty` ids the 10- and 25-player raid quest-info arms compare
+/// against (`DataStores/DBCEnums.h:864-881`).
+const RAID_10_DIFFICULTY_IDS_LIKE_CPP: [u8; 4] = [3, 5, 175, 193];
+const RAID_25_DIFFICULTY_IDS_LIKE_CPP: [u8; 4] = [4, 6, 176, 194];
 const QUEST_TYPE_TURNIN_LIKE_CPP: u8 = 0;
 const QUEST_SPECIAL_FLAGS_REPEATABLE_LIKE_CPP: u32 = 0x0000_0001;
 const QUEST_SPECIAL_FLAGS_AUTO_PUSH_TO_PARTY_LIKE_CPP: u32 = 0x0000_0002;
@@ -207,6 +223,33 @@ impl QuestTemplate {
     /// C++ `Quest::IsWeekly()`: `QUEST_FLAGS_WEEKLY`.
     pub fn is_weekly_like_cpp(&self) -> bool {
         self.flags & QUEST_FLAGS_WEEKLY_LIKE_CPP != 0
+    }
+
+    /// C++ `Quest::IsRaidQuest(Difficulty)` (`Quests/QuestDef.cpp:511-541`): the
+    /// quest-info arms first, then `QUEST_FLAGS_RAID_GROUP_OK`.
+    pub fn is_raid_quest_like_cpp(&self, difficulty_id: u8) -> bool {
+        match self.quest_info_id {
+            QUEST_INFO_RAID_LIKE_CPP => return true,
+            QUEST_INFO_RAID_10_LIKE_CPP => {
+                return RAID_10_DIFFICULTY_IDS_LIKE_CPP.contains(&difficulty_id);
+            }
+            QUEST_INFO_RAID_25_LIKE_CPP => {
+                return RAID_25_DIFFICULTY_IDS_LIKE_CPP.contains(&difficulty_id);
+            }
+            _ => {}
+        }
+        self.flags & QUEST_FLAGS_RAID_GROUP_OK_LIKE_CPP != 0
+    }
+
+    /// C++ `Quest::IsAllowedInRaid(Difficulty)` (`Quests/QuestDef.cpp:543-549`).
+    /// `quests_ignore_raid` is `CONFIG_QUEST_IGNORE_RAID` (`Quests.IgnoreRaid`).
+    pub fn is_allowed_in_raid_like_cpp(&self, difficulty_id: u8, quests_ignore_raid: bool) -> bool {
+        self.is_raid_quest_like_cpp(difficulty_id) || quests_ignore_raid
+    }
+
+    /// C++ `Quest::HasFlagEx(QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY)`.
+    pub fn has_no_credit_for_proxy_like_cpp(&self) -> bool {
+        self.flags_ex & QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY_LIKE_CPP != 0
     }
 
     /// C++ `Quest::IsDFQuest()`: `QUEST_SPECIAL_FLAGS_DF_QUEST`.

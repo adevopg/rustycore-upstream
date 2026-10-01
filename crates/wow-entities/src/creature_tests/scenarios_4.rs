@@ -457,3 +457,41 @@ fn owner_combat_state_marks_the_flags_field_dirty_for_the_client_like_cpp() {
         "the published combat flag must be queued in the unit UpdateMask"
     );
 }
+
+/// C++ `Unit::GetResistance(SpellSchoolMask)` (`Entities/Unit/Unit.cpp:13982-13993`)
+/// returns the **smallest** resistance among the schools in the mask, so a spell
+/// carrying several schools is resisted by the weakest one. A mask with no school
+/// set returns zero.
+#[test]
+fn creature_resistance_for_school_mask_takes_the_smallest_like_cpp() {
+    let mut creature = Creature::new(false);
+    // fire 100, frost 40, shadow 250
+    creature.set_resistances_like_cpp([0, 0, 100, 0, 40, 250, 0]);
+
+    assert_eq!(creature.resistance_for_school_mask_like_cpp(0x04), 100);
+    assert_eq!(creature.resistance_for_school_mask_like_cpp(0x10), 40);
+    assert_eq!(
+        creature.resistance_for_school_mask_like_cpp(0x04 | 0x20),
+        100,
+        "fire is weaker than shadow"
+    );
+    assert_eq!(
+        creature.resistance_for_school_mask_like_cpp(0x04 | 0x10),
+        40,
+        "frost is the weakest of the two"
+    );
+    assert_eq!(creature.resistance_for_school_mask_like_cpp(0), 0);
+    // A mask covering an unset school is resisted by that zero.
+    assert_eq!(creature.resistance_for_school_mask_like_cpp(0x04 | 0x40), 0);
+}
+
+/// C++ rejects a `creature_template_resistance` row for the physical school, so
+/// the seeded array never carries one: armour owns that mitigation.
+#[test]
+fn creature_resistances_never_keep_a_physical_value_like_cpp() {
+    let mut creature = Creature::new(false);
+    creature.set_resistances_like_cpp([999, 0, 21, 0, 0, 0, 0]);
+    assert_eq!(creature.resistances_like_cpp()[0], 0);
+    assert_eq!(creature.resistance_for_school_mask_like_cpp(0x01), 0);
+    assert_eq!(creature.resistance_for_school_mask_like_cpp(0x04), 21);
+}

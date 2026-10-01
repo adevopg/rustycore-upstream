@@ -939,6 +939,7 @@ pub(super) fn enum_pet_template_store(
             string_id: String::new(),
             regen_health: true,
             spells: [0; wow_data::MAX_CREATURE_SPELLS_LIKE_CPP],
+            resistances: [0; 7],
             models: Vec::new(),
         },
     ])

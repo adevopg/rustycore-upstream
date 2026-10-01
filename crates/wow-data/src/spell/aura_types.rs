@@ -327,3 +327,16 @@ pub const SPELL_AURA_OVERRIDE_ATTACK_POWER_BY_SP_PCT: i32 = 404;
 pub const SPELL_AURA_MOD_MINIMUM_SPEED_RATE: i32 = 437;
 pub const SPELL_AURA_MOD_ROOT_2: i32 = 455;
 pub const SPELL_AURA_MOD_RESTED_XP_CONSUMPTION: i32 = 499;
+
+/// Aura types C++ `SpellMgr::LoadSpellInfoCustomAttributes`
+/// (`Spells/SpellMgr.cpp:3340-3362`) marks `SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED`
+/// with, because the stable dialog cannot reopen on load and the rest need both
+/// caster and target in world. Values from `SpellAuraDefines.h`.
+pub const SPELL_AURA_BIND_SIGHT: i32 = 1;
+pub const SPELL_AURA_MOD_POSSESS: i32 = 2;
+pub const SPELL_AURA_MOD_CHARM: i32 = 6;
+pub const SPELL_AURA_MOD_POSSESS_PET: i32 = 128;
+pub const SPELL_AURA_AOE_CHARM: i32 = 177;
+pub const SPELL_AURA_OPEN_STABLE: i32 = 292;
+pub const SPELL_AURA_BATTLEGROUND_PLAYER_POSITION_FACTIONAL: i32 = 397;
+pub const SPELL_AURA_BATTLEGROUND_PLAYER_POSITION: i32 = 398;

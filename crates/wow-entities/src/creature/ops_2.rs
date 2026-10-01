@@ -870,6 +870,32 @@ impl Creature {
     }
 
     /// The creature's represented base dodge/parry/block.
+    /// C++ `Unit::GetResistance(SpellSchoolMask)` (`Entities/Unit/Unit.cpp:13982-13993`):
+    /// the **smallest** resistance among the schools in the mask, because a spell
+    /// of several schools is resisted by the weakest one.
+    pub fn resistance_for_school_mask_like_cpp(&self, school_mask: u8) -> i32 {
+        let mut resist: Option<i32> = None;
+        for (school, value) in self.resistances_like_cpp.iter().enumerate() {
+            if school_mask & (1 << school) != 0 && resist.is_none_or(|current| current > *value) {
+                resist = Some(*value);
+            }
+        }
+        resist.unwrap_or(0)
+    }
+
+    pub const fn resistances_like_cpp(&self) -> [i32; 7] {
+        self.resistances_like_cpp
+    }
+
+    /// Seed the per-school resistances the way C++ `Creature::UpdateEntry` seeds
+    /// the `UNIT_MOD_RESISTANCE_*` base values from the template.
+    pub fn set_resistances_like_cpp(&mut self, resistances: [i32; 7]) {
+        self.resistances_like_cpp = resistances;
+        // C++ rejects a `creature_template_resistance` row for the physical
+        // school; armour owns that mitigation.
+        self.resistances_like_cpp[0] = 0;
+    }
+
     pub const fn avoidance_like_cpp(&self) -> CreatureAvoidanceLikeCpp {
         self.avoidance_like_cpp
     }

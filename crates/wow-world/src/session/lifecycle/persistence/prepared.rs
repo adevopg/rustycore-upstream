@@ -160,6 +160,7 @@ impl SavedPlayerReceipt {
             equipment_sets: expected.equipment_sets && committed.equipment_sets,
             tutorials_changed: expected.tutorials_changed && committed.tutorials_changed,
             tutorials_insert: expected.tutorials_insert && committed.tutorials_insert,
+            auras: expected.auras && committed.auras,
             reputation: expected.reputation && committed.reputation,
         };
         #[cfg(test)]

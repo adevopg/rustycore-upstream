@@ -40,6 +40,7 @@ fn template(entry: u32) -> ResolvedCreatureTemplateLikeCpp {
         classification: 4,
         damage_school: wow_constants::spell::SpellSchools::Fire as u8,
         sparring_health_pct: None,
+        resistances: [0; 7],
         unit_flags: wow_constants::UnitFlags::IMMUNE_TO_NPC.bits(),
         unit_flags2: wow_constants::UnitFlags2::FEIGN_DEATH.bits(),
         unit_flags3: wow_constants::UnitFlags3::AI_OBSTACLE.bits(),
@@ -226,6 +227,7 @@ fn db_backed_template_store_with_regen_and_vehicle(
             string_id: "template-string".to_string(),
             regen_health,
             spells: [10, 20, 0, 0, 0, 0, 0, 0],
+            resistances: [0; 7],
             models: vec![
                 wow_data::CreatureTemplateLifecycleModelLikeCpp {
                     creature_display_id: 111,

@@ -208,10 +208,29 @@ impl WorldSession {
             return;
         };
 
-        if self.remaining_global_cooldown_ms_like_cpp(&spell_info) != Some(0) {
+        // Both of these hold the request without telling anyone, which is the
+        // right shape — C++ `Player::UpdatePendingSpellCastRequest` retries on a
+        // later update rather than refusing — but it means a request that is
+        // never retried disappears in silence. Report the values so a live run
+        // can tell "waiting" from "lost".
+        let remaining_gcd = self.remaining_global_cooldown_ms_like_cpp(&spell_info);
+        if remaining_gcd != Some(0) {
+            debug!(
+                account = self.account_id,
+                spell_id = request.spell_id,
+                ?remaining_gcd,
+                "Holding the pending spell cast: global cooldown is not clear"
+            );
             return;
         }
-        if self.remaining_active_spell_cast_ms_like_cpp() != Some(0) {
+        let remaining_active_cast = self.remaining_active_spell_cast_ms_like_cpp();
+        if remaining_active_cast != Some(0) {
+            debug!(
+                account = self.account_id,
+                spell_id = request.spell_id,
+                ?remaining_active_cast,
+                "Holding the pending spell cast: an active cast is still running"
+            );
             return;
         }
 

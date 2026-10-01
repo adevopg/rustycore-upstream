@@ -125,6 +125,16 @@ pub(crate) struct CliOptions {
     pub(crate) area_trigger_map_id: u16,
     pub(crate) area_trigger_at: Option<String>,
     pub(crate) area_trigger_timeout_secs: u64,
+    pub(crate) aura_save_smoke: bool,
+    pub(crate) aura_save_spell_id: Option<u32>,
+    pub(crate) aura_save_timeout_secs: u64,
+    pub(crate) spell_damage_smoke: bool,
+    pub(crate) spell_damage_spell_id: Option<i32>,
+    pub(crate) spell_damage_creature_entry: Option<u32>,
+    pub(crate) spell_damage_character_guid: Option<u64>,
+    pub(crate) spell_damage_casts: u32,
+    pub(crate) spell_damage_seed_spell: bool,
+    pub(crate) spell_damage_timeout_secs: u64,
     pub(crate) report_path: Option<String>,
 }
 /// The post-login workflow modes that are exclusive with each other and with
@@ -177,6 +187,8 @@ pub(crate) fn any_exclusive_workflow_mode_selected(cli: &CliOptions) -> bool {
         || cli.group_capacity_race_smoke
         || cli.quest_smoke
         || cli.area_trigger_smoke
+        || cli.aura_save_smoke
+        || cli.spell_damage_smoke
 }
 pub(crate) fn parse_cli() -> Result<CliOptions> {
     let stand_state = std::env::var("WOW_BOT_STAND_STATE")
@@ -635,6 +647,49 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             .map(|value| value.parse::<u64>())
             .transpose()?
             .unwrap_or(DEFAULT_AREA_TRIGGER_SMOKE_TIMEOUT_SECS),
+        aura_save_smoke: std::env::var("WOW_BOT_AURA_SAVE_SMOKE")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        aura_save_spell_id: std::env::var("WOW_BOT_AURA_SAVE_SPELL")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?,
+        aura_save_timeout_secs: std::env::var("WOW_BOT_AURA_SAVE_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_AURA_SAVE_SMOKE_TIMEOUT_SECS),
+        spell_damage_smoke: std::env::var("WOW_BOT_SPELL_DAMAGE_SMOKE")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        spell_damage_spell_id: std::env::var("WOW_BOT_SPELL_DAMAGE_SPELL")
+            .ok()
+            .map(|value| value.parse::<i32>())
+            .transpose()?,
+        spell_damage_creature_entry: std::env::var("WOW_BOT_SPELL_DAMAGE_ENTRY")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?,
+        spell_damage_character_guid: std::env::var("WOW_BOT_SPELL_DAMAGE_CHARACTER")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?,
+        spell_damage_seed_spell: std::env::var("WOW_BOT_SPELL_DAMAGE_SEED_SPELL")
+            .ok()
+            .map(|v| is_truthy(&v))
+            .unwrap_or(false),
+        spell_damage_casts: std::env::var("WOW_BOT_SPELL_DAMAGE_CASTS")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()?
+            .unwrap_or(10),
+        spell_damage_timeout_secs: std::env::var("WOW_BOT_SPELL_DAMAGE_TIMEOUT_SECS")
+            .ok()
+            .map(|value| value.parse::<u64>())
+            .transpose()?
+            .unwrap_or(DEFAULT_SPELL_DAMAGE_SMOKE_TIMEOUT_SECS),
         report_path: std::env::var("WOW_BOT_REPORT").ok(),
     };
 
@@ -966,6 +1021,34 @@ pub(crate) fn parse_cli() -> Result<CliOptions> {
             }
             "--area-trigger-map" => {
                 opts.area_trigger_map_id = next_arg(&mut args, "--area-trigger-map")?.parse()?;
+            }
+            "--spell-damage" => {
+                opts.spell_damage_smoke = true;
+                opts.spell_damage_spell_id = Some(next_arg(&mut args, "--spell-damage")?.parse()?);
+            }
+            "--spell-damage-entry" => {
+                opts.spell_damage_creature_entry =
+                    Some(next_arg(&mut args, "--spell-damage-entry")?.parse()?);
+            }
+            "--spell-damage-character" => {
+                opts.spell_damage_character_guid =
+                    Some(next_arg(&mut args, "--spell-damage-character")?.parse()?);
+            }
+            "--spell-damage-seed-spell" => opts.spell_damage_seed_spell = true,
+            "--spell-damage-casts" => {
+                opts.spell_damage_casts = next_arg(&mut args, "--spell-damage-casts")?.parse()?;
+            }
+            "--spell-damage-timeout" => {
+                opts.spell_damage_timeout_secs =
+                    next_arg(&mut args, "--spell-damage-timeout")?.parse()?;
+            }
+            "--aura-save" => {
+                opts.aura_save_smoke = true;
+                opts.aura_save_spell_id = Some(next_arg(&mut args, "--aura-save")?.parse()?);
+            }
+            "--aura-save-timeout" => {
+                opts.aura_save_timeout_secs =
+                    next_arg(&mut args, "--aura-save-timeout")?.parse()?;
             }
             "--area-trigger-timeout" => {
                 opts.area_trigger_timeout_secs =

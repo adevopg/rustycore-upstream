@@ -132,7 +132,7 @@ pub(crate) fn player_aura_effects_by_spell_aura_type_like_cpp(
 
 /// One represented `SPELL_AURA_SCHOOL_ABSORB` shield of a player victim.
 ///
-/// C++ `Unit::CalcAbsorbResist` (`Unit.cpp:1813-1880`) copies
+/// C++ `Unit::CalcAbsorbResist` (`Unit.cpp:2114-2178`) copies
 /// `GetAuraEffectsByType(SPELL_AURA_SCHOOL_ABSORB)`, sorts it with
 /// `Trinity::AbsorbAuraOrderPred` and depletes each effect's amount. The
 /// application slot and effect index are carried here because the depletion is
@@ -151,14 +151,10 @@ pub(crate) struct RepresentedAbsorbShieldLikeCpp {
     /// C++ `AuraEffect::GetAmount()`. A negative amount is an infinite-absorb
     /// script shield, which C++ clamps to zero before absorbing.
     pub amount: i32,
-    /// C++ `SpellInfo::HasAttribute(SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE)`: an
-    /// absorb that an attacker's `SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` cannot
-    /// reduce (`Unit.cpp:1830-1832`).
-    pub cannot_be_ignored: bool,
 }
 
 /// C++ `Unit::CalcAbsorbResist`'s `SPELL_AURA_SCHOOL_ABSORB` selection
-/// (`Unit.cpp:1812-1825`): every active absorb effect whose `MiscValue` covers
+/// (`Unit.cpp:2115-2128`): every active absorb effect whose `MiscValue` covers
 /// the incoming school mask.
 ///
 /// Auras are visited in ascending slot order so the input to the priority sort
@@ -205,13 +201,6 @@ pub(crate) fn player_absorb_shields_like_cpp(
                 spell_id: aura.spell_id,
                 category_id,
                 amount,
-                cannot_be_ignored: spell_store.has_attribute_for_difficulty_like_cpp(
-                    aura.spell_id,
-                    difficulty_id,
-                    difficulty_store,
-                    6,
-                    wow_data::spell::attributes::SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE,
-                ),
             });
         }
     }
@@ -266,13 +255,6 @@ pub(crate) fn creature_absorb_shields_like_cpp(
                 spell_id,
                 category_id,
                 amount,
-                cannot_be_ignored: spell_store.has_attribute_for_difficulty_like_cpp(
-                    spell_id,
-                    difficulty_id,
-                    difficulty_store,
-                    6,
-                    wow_data::spell::attributes::SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE,
-                ),
             });
         }
     }
@@ -281,7 +263,7 @@ pub(crate) fn creature_absorb_shields_like_cpp(
 
 /// One represented `SPELL_AURA_MANA_SHIELD` of a player victim.
 ///
-/// C++ `Unit::CalcAbsorbResist`'s mana-shield loop (`Unit.cpp:1886-1930`) reads
+/// C++ `Unit::CalcAbsorbResist`'s mana-shield loop (`Unit.cpp:2179-2248`) reads
 /// the effect's amount as the damage cap and
 /// `SpellEffectInfo::CalcValueMultiplier` (`Amplitude`) as the mana drained per
 /// absorbed point.
@@ -299,12 +281,10 @@ pub(crate) struct RepresentedManaShieldLikeCpp {
     /// C++ `SpellEffectInfo::CalcValueMultiplier(caster)`'s data term: the mana
     /// the shield drains per point of absorbed damage.
     pub mana_multiplier: f32,
-    /// C++ `SpellInfo::HasAttribute(SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE)`.
-    pub cannot_be_ignored: bool,
 }
 
 /// C++ `Unit::CalcAbsorbResist`'s `SPELL_AURA_MANA_SHIELD` selection
-/// (`Unit.cpp:1886-1897`): every active mana-shield effect whose `MiscValue`
+/// (`Unit.cpp:2180-2191`): every active mana-shield effect whose `MiscValue`
 /// covers the incoming school mask.
 ///
 /// C++ iterates `GetAuraEffectsByType` in application order; the represented
@@ -313,8 +293,6 @@ pub(crate) struct RepresentedManaShieldLikeCpp {
 pub(crate) fn player_mana_shields_like_cpp(
     auras: &HashMap<u8, AuraApplicationLikeCpp>,
     spell_store: &SpellStore,
-    difficulty_id: u8,
-    difficulty_store: Option<&wow_data::DifficultyStore>,
     school_mask: u32,
 ) -> Vec<RepresentedManaShieldLikeCpp> {
     let mut slots: Vec<u8> = auras.keys().copied().collect();
@@ -347,13 +325,6 @@ pub(crate) fn player_mana_shields_like_cpp(
                 spell_id: aura.spell_id,
                 amount,
                 mana_multiplier: effect.calc_value_multiplier_like_cpp(),
-                cannot_be_ignored: spell_store.has_attribute_for_difficulty_like_cpp(
-                    aura.spell_id,
-                    difficulty_id,
-                    difficulty_store,
-                    6,
-                    wow_data::spell::attributes::SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE,
-                ),
             });
         }
     }
@@ -362,7 +333,7 @@ pub(crate) fn player_mana_shields_like_cpp(
 
 /// One represented `SPELL_AURA_SCHOOL_HEAL_ABSORB` of a player victim.
 ///
-/// C++ `Unit::CalcHealAbsorb` (`Unit.cpp:2020-2084`) copies
+/// C++ `Unit::CalcHealAbsorb` (`Unit.cpp:2360-2426`) copies
 /// `GetAuraEffectsByType(SPELL_AURA_SCHOOL_HEAL_ABSORB)` and depletes each
 /// effect's amount by the heal it consumed; the application slot and effect
 /// index are carried so the depletion is a canonical aura-amount write.
@@ -378,7 +349,7 @@ pub(crate) struct RepresentedHealAbsorbShieldLikeCpp {
 }
 
 /// C++ `Unit::CalcHealAbsorb`'s `SPELL_AURA_SCHOOL_HEAL_ABSORB` selection
-/// (`Unit.cpp:2025-2034`): every active heal-absorb effect whose `MiscValue`
+/// (`Unit.cpp:2365-2374`): every active heal-absorb effect whose `MiscValue`
 /// covers the heal's school mask, in the aura order C++
 /// `GetAuraEffectsByType` returns.
 pub(crate) fn player_heal_absorb_shields_like_cpp(

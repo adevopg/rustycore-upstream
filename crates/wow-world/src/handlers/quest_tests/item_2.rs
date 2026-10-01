@@ -227,7 +227,10 @@ async fn quest_confirm_accept_source_item_with_space_stores_and_pushes_item_like
         obj_type: QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL,
         order: 0,
         storage_index: 0,
-        object_id: quest_log_item_id as i32,
+        // C++ `ItemAddedQuestCheck` credits the stored item's own entry and never
+        // the template's `QuestLogItemId` (D-M15), so the objective has to name the
+        // entry for this scenario to exercise the credit at all.
+        object_id: source_item_id as i32,
         amount: 2,
         flags: 0,
         flags2: 0,
@@ -321,7 +324,7 @@ async fn quest_confirm_accept_source_item_with_space_stores_and_pushes_item_like
             packet.read_int32().unwrap(),
             i32::from(stored_source_item_slot)
         );
-        assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
+        assert_eq!(packet.read_int32().unwrap(), 0, "QuestLogItemID, D-M15");
         assert_eq!(packet.read_int32().unwrap(), 2);
         assert_eq!(packet.read_int32().unwrap(), 2);
     }
@@ -752,7 +755,10 @@ async fn quest_confirm_accept_source_item_ignores_objective_flags2_like_cpp() {
         obj_type: QUEST_OBJECTIVE_ITEM_LIKE_CPP_LOCAL,
         order: 0,
         storage_index: 0,
-        object_id: quest_log_item_id as i32,
+        // C++ `ItemAddedQuestCheck` credits the stored item's own entry and never
+        // the template's `QuestLogItemId` (D-M15), so the objective has to name the
+        // entry for this scenario to exercise the credit at all.
+        object_id: source_item_id as i32,
         amount: 2,
         flags: 0,
         flags2: 0x1,
@@ -824,7 +830,7 @@ async fn quest_confirm_accept_source_item_ignores_objective_flags2_like_cpp() {
             u8::from(wow_entities::INVENTORY_SLOT_BAG_0)
         );
         let _slot_in_bag = packet.read_int32().unwrap();
-        assert_eq!(packet.read_int32().unwrap(), quest_log_item_id as i32);
+        assert_eq!(packet.read_int32().unwrap(), 0, "QuestLogItemID, D-M15");
         assert_eq!(packet.read_int32().unwrap(), 2);
         assert_eq!(packet.read_int32().unwrap(), 2);
         for _ in 0..3 {

@@ -578,6 +578,34 @@ impl SpellInfo {
 }
 
 impl SpellEffectInfo {
+    /// C++ `SpellEffectInfo::IsEffect` (`SpellInfo.cpp:452-455`).
+    pub fn is_effect_like_cpp(&self) -> bool {
+        self.effect != 0
+    }
+
+    /// C++ `SpellEffectInfo::IsAreaAuraEffect` (`SpellInfo.cpp:477-489`).
+    pub fn is_area_aura_effect_like_cpp(&self) -> bool {
+        use spell_effect_types::*;
+        matches!(
+            self.effect,
+            SPELL_EFFECT_APPLY_AREA_AURA_PARTY
+                | SPELL_EFFECT_APPLY_AREA_AURA_RAID
+                | SPELL_EFFECT_APPLY_AREA_AURA_FRIEND
+                | SPELL_EFFECT_APPLY_AREA_AURA_ENEMY
+                | SPELL_EFFECT_APPLY_AREA_AURA_PET
+                | SPELL_EFFECT_APPLY_AREA_AURA_OWNER
+                | SPELL_EFFECT_APPLY_AREA_AURA_SUMMONS
+                | SPELL_EFFECT_APPLY_AREA_AURA_PARTY_NONRANDOM
+        )
+    }
+
+    /// C++ `SpellEffectInfo::IsTargetingArea` (`SpellInfo.cpp:472-475`):
+    /// `TargetA.IsArea() || TargetB.IsArea()`.
+    pub fn is_targeting_area_like_cpp(&self) -> bool {
+        implicit_targets::is_area_implicit_target_like_cpp(self.implicit_target_1)
+            || implicit_targets::is_area_implicit_target_like_cpp(self.implicit_target_2)
+    }
+
     pub fn is_aura_like_cpp(&self) -> bool {
         use spell_effect_types::*;
         matches!(

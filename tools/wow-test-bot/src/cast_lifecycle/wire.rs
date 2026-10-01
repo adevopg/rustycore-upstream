@@ -12,7 +12,7 @@ pub(super) fn record_sent(evidence: &mut Evidence, action: &str, opcode: u16, bo
     });
 }
 
-pub(super) fn build_cast_spell_payload(
+pub(crate) fn build_cast_spell_payload(
     spell_id: i32,
     cast_id: Guid,
     target: Option<Guid>,

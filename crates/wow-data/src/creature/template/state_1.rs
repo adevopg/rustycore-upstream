@@ -200,6 +200,15 @@ pub struct CreatureTemplateLifecycleRecordLikeCpp {
     pub regen_health: bool,
     pub spells: [u32; MAX_CREATURE_SPELLS_LIKE_CPP],
     pub models: Vec<CreatureTemplateLifecycleModelLikeCpp>,
+    /// C++ `CreatureTemplate::resistance`, filled by
+    /// `ObjectMgr::LoadCreatureTemplateResistances` from
+    /// `creature_template_resistance` (`Globals/ObjectMgr.cpp:536-570`) and seeded
+    /// into the live unit's `UNIT_MOD_RESISTANCE_*` base values by
+    /// `Creature::UpdateEntry` (`Entities/Creature/Creature.cpp:694-699`).
+    ///
+    /// Index zero is `SPELL_SCHOOL_NORMAL` and stays zero: C++ rejects a row for
+    /// it, because physical mitigation is armour, not resistance.
+    pub resistances: [i32; 7],
 }
 
 #[derive(Debug, Clone, Default)]
@@ -641,6 +650,30 @@ pub struct CreatureTemplateLifecycleStoreLikeCpp {
 }
 
 impl CreatureTemplateLifecycleStoreLikeCpp {
+    /// C++ `ObjectMgr::LoadCreatureTemplateResistances`
+    /// (`Globals/ObjectMgr.cpp:536-570`): each `(CreatureID, School, Resistance)`
+    /// row is written onto the already-loaded template. A row for school zero or
+    /// for a school at or past `MAX_SPELL_SCHOOL`, or for an entry with no
+    /// template, is an error C++ logs and skips. Returns how many rows applied.
+    pub fn apply_resistance_rows_like_cpp(
+        &mut self,
+        rows: impl IntoIterator<Item = (u32, u8, i16)>,
+    ) -> usize {
+        let mut applied = 0;
+        for (entry, school, resistance) in rows {
+            let school = usize::from(school);
+            if school == 0 || school >= 7 {
+                continue;
+            }
+            let Some(template) = self.templates.get_mut(&entry) else {
+                continue;
+            };
+            template.resistances[school] = i32::from(resistance);
+            applied += 1;
+        }
+        applied
+    }
+
     pub fn from_templates(
         templates: impl IntoIterator<Item = CreatureTemplateLifecycleRecordLikeCpp>,
     ) -> Self {

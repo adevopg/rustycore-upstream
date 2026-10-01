@@ -165,6 +165,12 @@ async fn main() -> Result<()> {
     if cli.area_trigger_smoke {
         return run_area_trigger_smoke_mode(&cli, bots).await;
     }
+    if cli.aura_save_smoke {
+        return run_aura_save_smoke_mode(&cli, bots).await;
+    }
+    if cli.spell_damage_smoke {
+        return run_spell_damage_smoke_mode(&cli, bots).await;
+    }
     if !cli.delete_character_guids.is_empty() {
         return run_delete_characters_mode(&cli, bots).await;
     }

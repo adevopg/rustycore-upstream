@@ -1663,6 +1663,20 @@ impl WorldSession {
 
         // 10. SendKnownSpells — populated from character_spell table
         info!("Sending {} known spells for {:?}", known_spells.len(), guid);
+        // Which spells the login actually granted is a question the row count
+        // cannot answer — `character_spell` deliberately holds no dependent
+        // skill-rewarded spell, so the set on the wire is the only place the
+        // whole grant is visible. Behind an env var so an ordinary login stays
+        // quiet.
+        if std::env::var_os("RUSTYCORE_KNOWN_SPELLS_TRACE").is_some() {
+            let mut traced = known_spells.clone();
+            traced.sort_unstable();
+            info!(
+                player_guid = guid.counter(),
+                known_spells = ?traced,
+                "RUST_KNOWN_SPELLS granted set on SMSG_SEND_KNOWN_SPELLS"
+            );
+        }
         self.send_packet(&SendKnownSpells {
             initial_login: true,
             known_spells,

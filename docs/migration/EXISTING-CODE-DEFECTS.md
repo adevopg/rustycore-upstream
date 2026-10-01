@@ -690,14 +690,111 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
 
 ## HIGH — broken mechanics / silent failure / exploit
 
-- [ ] **D-H1 Melee damage has no formula.** Uses raw weapon-damage range as final damage; **no
-  armor mitigation, no AP scaling, no level reduction.** `session.rs:7913-7942`. C++
-  `Unit::CalcArmorReducedDamage` / AP→damage.
-- [ ] **D-H2 Melee hit table absent.** miss/dodge/parry/block/glancing/crit all bypassed;
-  hardcoded `HIT_INFO_NORMAL_SWING|VICTIM_STATE_HIT`. `session.rs:47813-47823`. C++
-  `Unit::MeleeSpellHitResult`.
-- [ ] **D-H3 Spell damage/heal uses raw base points.** No coefficient, crit, or resist.
-  `session.rs:49014-49026`.
+- [x] **D-H1 and D-H2 are stale notes, closed on contrast 2026-10-01, not by new work.** Both
+  pointed at `session.rs:79xx`/`:478xx`, a file that no longer exists, and both were overtaken by
+  the #29/#61 slices. The current swing in
+  `session/mod.rs::represented_white_swing_damage_like_cpp` runs, in C++'s order:
+  `MeleeDamageBonusDone`'s flat and percentage pair, the autoattack multiplier,
+  `MeleeDamageBonusTaken`, `CalcArmorReducedDamage` with armour penetration, the target's
+  resistance aura and the caster bypass, then the attack-table roll, then the outcome switch with
+  its own damage. `session_rules::melee_outcome_damage_like_cpp` carries every C++ arm — immune,
+  evade, miss, dodge, parry, glancing with the level-difference reduction, block with
+  `GetBlockPercent`, crit with the damage multiplier, and the crushing arm kept with its C++
+  source expression — and `melee_outcome_presentation_like_cpp` publishes the real
+  `HitInfo`/`VictimState` instead of a hardcoded pair. Both entries are closed as **inaccurate
+  records**; nothing was implemented for them here.
+- [x] **D-H3 Spell hits had no coefficient, no critical and no resist. All four stages are now
+  done.** Restated on contrast 2026-10-01, because the original one-liner was wrong in two
+  directions; closed 2026-10-02 when the absorb stage landed.
+
+  * **Coefficient: already done before this session.** `SpellDamageBonusDone` is ported with
+    `BonusCoefficient`, `BonusCoefficientFromAP`, the `SPELL_ATTR3_IGNORE_CASTER_MODIFIERS`
+    short circuit and the percentage chain
+    (`session/spell_effects/effect_combat.rs:614-668`), and the healing side with it.
+  * **Critical: done 2026-10-01**, see the entry below.
+  * **Resist: done 2026-10-01**, see D-H21 below.
+  * **Absorb: done 2026-10-02.** `represented_spell_absorb_for_damage_like_cpp`
+    (`session/spell_effects/spell_absorb.rs`) runs C++'s school-absorb loop
+    (`Unit.cpp:2114-2178`) between the resist and `DealDamage`: it spends each shield in
+    `AbsorbAuraOrderPred` order through the canonical aura amount, publishes one
+    `SMSG_SPELL_ABSORB_LOG` per consuming shield before the damage log, removes a spent shield with
+    its slot update, and `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` carries the real `absorb`.
+
+    Two sentences of the paragraph this replaces were wrong, and saying so is part of the record.
+    The mutable amounts were **not** player-only: `creature_absorb_shields_like_cpp` had been reading
+    a creature's `applied_aura_amounts` since the melee creature-victim work. And the player victim
+    was not the easy side — it has no spell-damage path at all, because
+    `apply_damage_from_caster_like_cpp` resolves a creature target or returns and the creature spell
+    tick executes no effects. The implemented victim is therefore the creature, and the player victim
+    waits on creature spell effect execution, not on aura ownership.
+
+    Boundaries kept: `SPELL_AURA_MANA_SHIELD` has no creature-side projection, so C++'s second loop
+    (`:2179-2248`) is empty for this victim, exactly as it is for the melee creature victim; the
+    absorb scripts and their `defaultPrevented` escape (`:2140-2144`) are not ported, so an
+    infinite-absorb shield stays clamped to zero; the spell block stage is still zero.
+
+    Evidence: four scenarios in `session/tests/scenarios_spell_state_27.rs` — the shield spent with
+    its remainder surviving, a spent shield removed with its aura update and the rest of the hit
+    landing, the resist running first so the shield only sees what it left, and a shield of another
+    school absorbing nothing — plus `cargo test -p wow-world --lib`, 4278 passed. **Not live**: no
+    client-reachable shape exists yet in either direction. A player cannot shield a hostile creature
+    (absorb spells are self or friendly target, and this server has no GM command surface) and a
+    creature cannot cast damage at a shielded player (the tick above). The live run is owed when
+    creature spell effects land, and is not claimed here.
+- [x] **D-H20 Spell hits could never crit, in either direction.** Implemented 2026-10-01 as the
+  critical half of D-H3. The damage path applied no critical at all — the code said so in a
+  comment — so a caster's spell crit percentage, which the port already computes per school on
+  the Player, changed nothing, and `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` never carried
+  `SPELL_HIT_TYPE_CRIT`. Heals were the same: the log's `Crit` was a hardcoded `false`.
+
+  Ported as the chain C++ runs: `SPELL_ATTR0_CU_CAN_CRIT` as a store predicate, because this
+  port has no `AttributesCu` — the eleven effects at `Spells/SpellMgr.cpp:3367-3381` minus
+  `SPELL_ATTR2_CANT_CRIT` at `:3643-3645`; `Unit::SpellCritChanceDone`
+  (`Entities/Unit/Unit.cpp:7706-7772`) with its three early returns and the damage-class switch
+  that takes the larger of the physical and magical branches; `Unit::SpellCritChanceTaken`
+  (`:7774-7960`), including the arm that makes `SPELL_DAMAGE_CLASS_NONE` return zero however
+  large the done chance was; the single `roll_chance_f` C++ makes per target
+  (`Spells/Spell.cpp:8675-8684`); and the two different damage arms —
+  `Unit::SpellCriticalDamageBonus` for magic (`:7962-8003`) and the doubling arm
+  `CalculateSpellDamageTaken` runs inline for weapon-based spells (`:1266-1298`) — plus
+  `Unit::SpellCriticalHealingBonus` (`:8005-8036`), which is not the damage function renamed: it
+  computes the bonus alone, multiplies *that* by `MOD_CRIT_PERCENT_VERSUS`, adds it only when
+  positive, then multiplies the whole heal by `MOD_CRITICAL_HEALING_AMOUNT`.
+
+  **Named boundaries**, each a fact the represented runtime does not carry: every crit-chance and
+  crit-damage aura term is zero, and so is resilience, because those aura families are not
+  represented; `SpellInfo::IsPositive` is not represented, so the damage path passes harmful and
+  the heal path positive, which is what each one is by construction; a creature victim is taken
+  as standing, which is the stand state a represented creature has, so the always-crit-sitting
+  rule is reachable only for a player victim this path does not serve; the `SpellModOp::CritChance`
+  and `CritDamageAndHealing` spellmods need the talent spellmod owner; and the scripted class
+  blocks in `SpellCritChanceTaken` (`:7799-7930`: Shatter, Glyph of Shadowburn, Renewed Hope and
+  the per-family cases) need `SPELL_AURA_OVERRIDE_CLASS_SCRIPTS` effects this port has no
+  representation for.
+
+  **Excluded deliberately:** the reference fork's `alistar:`-marked warlock healthstone branch in
+  `getPhysicalCritChance` (`:7729-7736`). A patched region is not parity evidence for this build,
+  so the unpatched shape is what was ported, and the exclusion is recorded at the rule.
+
+  **Proven live on 2026-10-01, from a twenty-cast sampling run.** The run published two damage logs
+  and the second is the critical:
+
+  * `cast 1: damage=10 original=13 resisted=3 absorbed=0 school=0x04 flags=0x00`
+  * `cast 2: damage=14 original=19 resisted=5 absorbed=0 school=0x04 flags=0x02`
+
+  Every number in the second row is the C++ arithmetic. `flags = 0x02` is `SPELL_HIT_TYPE_CRIT` on
+  the wire. `original_damage` is **19** where an ordinary hit of the same spell is 13, which is
+  `SpellCriticalDamageBonus`'s magical arm exactly — `13 + 13/2` truncated to 19
+  (`Entities/Unit/Unit.cpp:7962-8003`). And the resist composed with it in C++'s order, not before
+  it: the critical raised the damage, `originalDamage` was assigned from that, and the resist then
+  took 5 of the 19, leaving the 14 the creature received. That ordering is
+  `CalculateSpellDamageTaken` followed by `CalcAbsorbResist` (`:1319-1347`), so the run is evidence
+  for D-H21's composition as much as for this entry's roll.
+
+  Reproduce with `--spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6
+  --spell-damage-casts 20` on a freshly started server. The mode fills the caster's mana first,
+  because a drained caster is refused with `SPELL_FAILED_NO_POWER` — correctly, see the withdrawn
+  D-H23. The deterministic scenarios keep both pinned outcomes beside this.
 - [x] **D-H4 Quest kill-credit — verified working on a live kill, 2026-10-01.** The contested
   reading is settled in favour of "monster kills advance". Quest 14106 was seeded as
   incomplete for the QA character (a fixture: the bot cannot take a quest from an NPC yet),
@@ -820,81 +917,435 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   (`Player.cpp:16970-16998`). The Rust rule is pure — status and quest only — so each needs
   that state threaded in. They still fail closed, which leaves a quest incomplete rather
   than completing it on an unchecked condition. Recorded as D-H17.
-- [ ] **D-H17 Four objective types cannot complete because the completion rule carries no
-  live player state.** `represented_quest_objective_complete_like_cpp` is pure, so
-  `QUEST_OBJECTIVE_MIN_REPUTATION` (6), `MAX_REPUTATION` (7), `MONEY` (8) and `CURRENCY` (4)
-  — plus `LEARNSPELL` (5) — fail closed where C++ `Player::IsQuestObjectiveComplete`
-  (`Entities/Player/Player.cpp:16970-16998`) asks `GetReputationMgr`, `HasEnoughMoney`,
-  `HasSpell` and `HasCurrency`. Found while closing D-H5, which repaired the flag-storing
-  group in the same `match`. Failing closed keeps a quest incomplete rather than completing
-  it on an unchecked condition, so this is a missing feature rather than a wrong grant, but
-  any quest whose completion depends on one of those five types cannot be finished.
-- [x] **D-H6 Quest item-loot objectives: the credit existed, the item did not.** Closed
-  2026-10-01 after reading the whole operation instead of the old one-line note. The loot
-  path did advance "collect X", but only for objectives the Rust side classified as
-  *non-bound*, and for the other class it credited the objective and threw the item away.
+- [x] **D-H17 Five objective types could not complete, because the completion rule carried no
+  live player state.** Closed 2026-10-01. C++ `Player::IsQuestObjectiveComplete`
+  (`Entities/Player/Player.cpp:16970-16998`) decides five of its branches by asking the
+  Player directly rather than reading stored progress: `MIN_REPUTATION` (6) and
+  `MAX_REPUTATION` (7) ask `GetReputationMgr().GetReputation(ObjectID)`, `MONEY` (8) asks
+  `HasEnoughMoney(Amount)`, `LEARNSPELL` (5) asks `HasSpell(ObjectID)` and `CURRENCY` (4)
+  asks `HasCurrency(ObjectID, Amount)`. `represented_quest_objective_complete_like_cpp` is
+  pure — status and quest only — so all five fell to its `_ => false`, and any quest whose
+  completion depended on one of them could never be finished.
 
-  The classifier was an import from a later TrinityCore, not from the target build.
-  `QuestObjective::Flags2` exists in 3.4.3 and RustyCore read bit 0 as
-  `QUEST_OBJECTIVE_FLAG_2_QUEST_BOUND_ITEM`, but in
-  `/home/server/woltk-trinity-legacy` that field is loaded in
-  `src/server/game/Quests/QuestDef.cpp:262`, written to the client in
-  `src/server/game/Server/Packets/QuestPackets.cpp:208` and read nowhere else — the whole
-  tree has no `QUEST_OBJECTIVE_FLAG_2` identifier at all. Three further anchors contradict
-  the imported design:
-  `Player::ItemAddedQuestCheck` takes two arguments (`Entities/Player/Player.h:1557`),
-  not the four the Rust comment quoted; `Player::StoreNewItem`
-  (`Entities/Player/Player.cpp:11590-11636`) always creates the Item, stores it and *then*
-  calls `ItemAddedQuestCheck`, with no early `nullptr` for a quest objective; and
-  `ItemPushResult::DisplayType` has exactly three values
-  (`Server/Packets/ItemPackets.h:328-332`), so the display type `3`
-  (`SendQuestUpdateAddItem`, a function this build does not contain) that the bound path
-  emitted is not a value of the target enum. `UpdateQuestObjectiveProgress`
-  (`Player.cpp:16631-16772`) credits every objective in the `(type, objectId)` range and
-  never breaks early.
+  In the installed world database that is **256 quests**: 165 objectives on
+  `MIN_REPUTATION`, 90 on `MONEY` and one on `MAX_REPUTATION`. `CURRENCY` and `LEARNSPELL`
+  have no rows in 3.4.3 data, and are ported anyway because C++ has them.
 
-  The consequence was not a missing count but an unrewardable quest:
-  `Player::CanRewardQuest` (`Player.cpp:14659-14674`) requires
-  `GetItemCount(obj.ObjectID) >= obj.Amount` for **every** `QUEST_OBJECTIVE_ITEM` and
-  exempts none, so an objective credited without its item can never be turned in. In the
-  installed world database the affected class is the majority: of 5746 `Type = 1`
-  objectives, **3533 carry `Flags2 & 1`**.
+  The rule stays pure. `RepresentedQuestObjectivePlayerFactsLikeCpp` is one borrowed
+  snapshot of exactly what C++ asks the Player for, resolved by the owner before the rule
+  runs and only for the ids that quest's own objectives name — one or two entries, not the
+  whole reputation list. A quest with none of those five types resolves to the default and
+  costs no session read at all. No trait per helper, no universal context, no second mirror:
+  the facts are a value, and the four readers behind them
+  (`resolved_player_money_like_cpp`, `with_reputation_mgr_like_cpp`,
+  `known_spells_like_cpp`, `player_currencies_like_cpp`) already had owners.
+  `stored_progress_only_player_facts_like_cpp` names the case where a caller provably cannot
+  need them, which is how `Player::HasQuestForGO`'s gameobject scan avoids paying for one;
+  that pairing moved into the rules as
+  `represented_gameobject_objective_is_pending_like_cpp`, which took three lines *out* of
+  `session/mod.rs`.
 
-  The repair removes the partition rather than patching one side of it: one credit path
-  (`apply_quest_item_added_objective_progress_with_generator_like_cpp` →
-  `apply_quest_item_added_to_statuses_like_cpp`), the item always stored, and the
-  out-of-range display type deleted from `ItemPushResultDisplayType`. The
-  `LootQuestBoundProgress` inventory transaction and the void-storage
-  `QuestBoundNoItem` withdrawal destination existed only to serve the removed branch and
-  went with it.
-- [ ] **D-H7 Auras not saved at logout.** All buffs/debuffs reset on relog. `session.rs:21656`.
-  C++ `Player::_SaveAuras`.
-- [ ] **D-H8 Periodic save represented-partial + incomplete logout save.** Issue #17 adds a
-  `CONFIG_INTERVAL_SAVE` / `PlayerSaveInterval` session timer for represented `Player::SaveToDB`,
-  but full inventory / mid-quest progress / newly-learned spells may still be outside the Rust
-  save surface; first-save randomization, capture diff, and manual live-client QA remain pending.
-  The installed runtime passed bot login/logout and action/travel/quest-objective preservation QA.
-  (Pairs with M0.4.)
-- [ ] **D-H9 Trainer skips req-skill-rank + prerequisite-spell checks.** Loaded but ignored →
-  learn spells you shouldn't. `handlers/trainer.rs:405-463`. C++ `Trainer.cpp:195-200`.
-- [ ] **D-H10 Movement trusts client position.** Only NaN/map-bounds checks; no speed/teleport
-  validation → speed/teleport hacking. `handlers/movement.rs:310-356`.
-- [ ] **D-H11 Vendor stock-limit TOCTOU → oversell.** Count read then commit without re-check.
-  `handlers/character.rs:10056-10070`.
-- [ ] **D-H12 Buyback slot TOCTOU + overwrite without cleanup → item loss.** `character.rs:10781-10882`.
-- [ ] **D-H13 Group created without leader in member list** on a creation-fail path → runtime/DB
-  mismatch. `handlers/group.rs:1050-1074`.
-- [ ] **D-H14 Duplicate-CREATE crash: async race window.** Fix relies on `client_visible_guids`
-  diff, but the set is mutated *after* send; async concurrency can resend CREATE (client
-  crash). `handlers/character.rs:6485-6488,7713-7716`.
-- [ ] **D-H15 Creature DESTROY_OBJECT deferred to player movement.** Creature that walks away
-  stays a phantom (targetable, not rendered) until the player moves. `handlers/movement.rs:274`.
-- [ ] **D-H16 PartyUpdate omits offline group members.** C++
-  `Group::SendUpdateToPlayer` serializes every `m_memberSlots` entry and marks disconnected
-  members through `PartyPlayerInfo.Connected`; Rust builds `PlayerList` with
-  `filter_map(PlayerRegistry::get)` but computes `MyIndex` from the complete member vector. The
-  issue #110 live race observed a two-entry leader/winner list and complete-list `MyIndex=4` for
-  a five-member persisted party. `handlers/group.rs:505-512`; C++ `Group.cpp:820-873`.
+  Each of the five branches has a positive and a negative test, including the two boundaries
+  C++ states precisely: `HasEnoughMoney(int64)` treats a negative requirement as satisfied
+  (`Entities/Player/Player.h:1663-1664`), and `HasCurrency` needs the currency to be present
+  *and* at least the amount (`Entities/Player/Player.cpp:7250-7254`).
+
+  Live: quest 13265 "Cloth Scavenging", whose only objective is `MONEY` for 50000, seeded
+  incomplete with the character holding 49995. Looting 11 copper from one kill took it to
+  50006 and the quest's persisted status went from `3` (incomplete) to `1` (complete). The
+  path is the real one — the loot-money change enqueues
+  `RepresentedQuestObjectiveProgressEventLikeCpp::MoneyChanged`, whose drain asks
+  `represented_can_complete_quest_after_objective_like_cpp` — and before this repair that
+  call could not return true for a money objective.
+
+  **Noticed in passing, not repaired here:** `reputation_for_faction_like_cpp` returns
+  `base_reputation + standing.unwrap_or(0)`, where C++ `ReputationMgr::GetReputation`
+  returns `0` outright for a faction the player has no `FactionState` for
+  (`Reputation/ReputationMgr.cpp:183-193`). For a faction whose race/class base is non-zero
+  the two disagree. It is pre-existing and shared with every other reputation consumer, so
+  it belongs to its own change rather than to this one; recorded as D-M18.
+- [x] **D-M18 withdrawn: it was a misreading, and the Rust reputation reader is faithful.**
+  Raised and withdrawn 2026-10-01, the same day. The claim was that
+  `reputation_for_faction_like_cpp` over-reports because it returns
+  `base_reputation + standing.unwrap_or(0)` where C++
+  `ReputationMgr::GetReputation(FactionEntry const*)` returns `0` outright for a faction with
+  no `FactionState` (`Reputation/ReputationMgr.cpp:183-193`).
+
+  That `return 0` is unreachable for any faction the comparison is about.
+  `ReputationMgr::Initialize` (`:395-426`) inserts a `FactionState` with `Standing = 0` for
+  **every** faction whose `CanHaveReputation()` holds, and `CanHaveReputation()` is exactly
+  `ReputationIndex >= 0` (`DataStores/DB2Structure.h:1280-1283`) — the same predicate as
+  Rust's `can_have_reputation_like_cpp`. So for a faction the player has never touched, C++
+  computes `GetBaseReputation + 0`, which is precisely what Rust's `unwrap_or(0)` computes.
+  The Rust port also calls its own `initialize_like_cpp` in production
+  (`session/progression/reputation.rs:243`), with its own regressions for the
+  reputation-faction-only state list, the race/class slot choice, friendship factions and
+  paragon flags.
+
+  Recorded rather than deleted: the finding was published in a commit message and a PR
+  before it was checked, and the correction belongs next to it.
+- [x] **D-H18 Player auras were loaded but never saved, so every buff and debuff died at
+  logout.** Opened and implemented 2026-10-01; live evidence below.
+
+  `Player::_LoadAuras` is composed in production — `handlers/character/world_entry.rs:2447`
+  reads `character_aura` and `character_aura_effect` and installs the applications — but there
+  was no write side anywhere. The only `save_auras` in the tree was the pet's
+  (`pet/ops_2.rs:207`), `PlayerCharacterSaveRequestLikeCpp` had no aura group, and the
+  `CharStatements::{DEL_CHAR_AURA, DEL_CHAR_AURA_EFFECT, INS_AURA, INS_AURA_EFFECT}`
+  statements existed with no caller. A character therefore logged back in with exactly the
+  auras of its last successful *write*, which was never, so with none.
+
+  Ported as C++ builds it, in the layers that own each part:
+
+  * `Aura::CanBeSaved` (`Spells/Auras/SpellAuras.cpp:1172-1209`) and `Aura::GenerateKey`
+    (`:1262-1281`) as pure rules in `wow-entities/src/unit_subsystems/aura_save.rs`, with the
+    two masks **derived** from the live effect list the way `GenerateKey` derives them, so a
+    caller cannot hand in a mask that disagrees with the effect rows beside it.
+  * `Player::_SaveAuras`'s statement order (`Entities/Player/Player.cpp:20089-20146`) as the
+    plan: `DEL_CHAR_AURA_EFFECT`, `DEL_CHAR_AURA`, then each kept aura followed by its own
+    effect rows. Both deletes are appended before C++ reads `m_ownedAuras`, so an empty aura
+    list still clears the stored rows; a group that could not be read is `None` and touches
+    neither table.
+  * the group's place in the transaction: between the action buttons and the equipment sets,
+    which is C++'s `_SaveActions` → `_SaveAuras` (`Player.cpp:19947-19948`). The frozen
+    statement-order fixture gained exactly those four entries at that point and nothing moved.
+  * the three `SpellInfo` predicates `CanBeSaved` consults, none of which existed:
+    `IsSingleTarget` (`SpellInfo.cpp:1789-1796`, `SPELL_ATTR5_LIMIT_N` alone), the
+    area-effect loop (`IsTargetingArea` + `IsAreaAuraEffect`, `SpellInfo.cpp:452-489`,
+    including the complete `AREA`/`CONE` set from `SpellImplicitTargetInfo::_data`), and
+    `SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED`. The last has no `AttributesCu` field here, so its
+    rules are read off the stores at the point of use: the aura-type list at
+    `SpellMgr.cpp:3340-3362` and the `LeaveWorld` interrupt flag at `:3604-3605`.
+
+  **Named boundaries, written at the call site rather than left silent.** Each is a fact the
+  represented runtime does not carry, not a choice:
+
+  * `castItemId` / `castItemLevel` are written as zero, because the represented aura carries
+    neither. The load side ignores both columns too, so the round trip is self-consistent.
+  * `remainCharges` is written as zero, because charge consumption is not tracked for Player
+    auras. `_LoadAuras` restores the spell's full `ProcCharges` for a stored zero, which is
+    the same branch it takes for a C++ aura that never spent a charge.
+  * per-effect `baseAmount` is the effect's `BasePoints`, which is what
+    `AuraEffect::AuraEffect` (`SpellAuraEffects.cpp:620`) computes when no stored base amount
+    was loaded. The port's `_LoadAuras` does not retain loaded base amounts, so a saved aura
+    comes back with the data value rather than its own.
+  * `recalculateMask` is the full effect mask, because `AuraEffect::m_canBeRecalculated`
+    starts true (`:622`) and is only cleared by a script amount handler this port does not run.
+  * the third source of `SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED`, liquid auras
+    (`SpellMgr.cpp:3649-3655`), reads `LiquidType.db2::SpellID`, which no store here loads.
+  * the installed `character_aura` has thirteen columns; the reference fork also writes
+    `critChance` and `applyResilience`. The port writes the thirteen that exist.
+
+  A permanent aura round-trips through the C++ `-1` marker: this port represents a permanent
+  aura as `duration_total == 0` (`spell_state/aura_application.rs:880-882`) and writes `-1` for
+  both duration columns, which is the value the loader's own permanent branch reads back
+  (`session/mod.rs:1586-1602`).
+
+  **Live evidence, 2026-10-01** (`tools/wow-test-bot --aura-save 6673`, exit 0, reproduced
+  twice). Seeding and then finding the row still present proves nothing — that is also what a
+  missing save looks like — so the fixture seeds two rows and the check is the difference
+  between them. A row for spell `90000001`, which no `Spell.db2` carries and `_LoadAuras`
+  therefore drops, **did not survive** the logout: the table really was cleared and rewritten.
+  The Battle Shout row survived with every seeded value replaced by the live one:
+  `recalculateMask` 0 → 1, `remainCharges` 5 → 0, and the effect's `baseAmount` 777777 → **14**,
+  which is that effect's `BasePoints`. `casterGuid` came back as 16 binary bytes. The relog
+  published `SMSG_AURA_UPDATE` twice, so what the save wrote came back as a live aura.
+
+  **A defect this introduced, caught by the tests before it reached the server.** The first
+  wiring asked the session for the Player again from inside the save projection. That
+  projection already runs with the canonical map mutex held — it is handed the `&Player` — and
+  `with_owned_player_like_cpp` locks the same mutex, so sixteen test threads deadlocked on it.
+  The aura rows are now built from the `Player` the projection was given; the session-based
+  wrapper is kept for callers that do not hold the lock, and says so.
+
+- [x] **D-H19 The kill-credit path applied none of the three gates C++ puts in front of
+  objective progress.** Opened and implemented 2026-10-01. The plan named one of them; reading
+  the whole operation found that `Player::UpdateQuestObjectiveProgress`
+  (`Entities/Player/Player.cpp:16631-16772`) refuses a matched objective for three separate
+  reasons before it touches progress, and the session-side path that credits kills, talk-to,
+  gameobject use and player kills checked **none** of them. Only the item path, which is a
+  second implementation of the same C++ function, applied one.
+
+  The three, in C++ order:
+
+  1. **The raid gate** (`:16644-16646`): unless `QuestObjective::CanAlwaysBeProgressedInRaid`
+     (`Quests/QuestDef.h:489-507`, eight types that are not earned by being somewhere or
+     killing something), a raid group blocks the objective for a quest that is not
+     `Quest::IsAllowedInRaid` (`Quests/QuestDef.cpp:511-549`: the `QuestInfoID` raid arms, then
+     `QUEST_FLAGS_RAID_GROUP_OK`, then the `Quests.IgnoreRaid` config). This is the classic
+     rule that a raid group cannot do ordinary quests, and it was absent.
+  2. **`IsQuestObjectiveCompletable`** (`:16650-16651`), which owns the sequenced and
+     progress-bar ordering. A kill could credit an objective whose predecessor was unfinished.
+  3. **`QUEST_FLAGS_EX_NO_CREDIT_FOR_PROXY`** (`:16653-16655`): a `QUEST_OBJECTIVE_MONSTER`
+     credit carrying an empty victim GUID is refused. That empty GUID is precisely how
+     `Player::KilledMonster` (`:16568-16570`) marks the credit it grants for a
+     `CreatureTemplate::KillCredit` proxy rather than for the unit that died — so the flag is
+     the only thing that distinguishes the two, and the D-H4 repair that added the proxy
+     expansion left it unread.
+
+  All three now live in one pure rule applied where C++ applies them, so the gate order is
+  stated once. `Quests.IgnoreRaid` is wired from the config registry through the composition
+  root; its row in `cpp-world-config-registry.tsv` moves from `missing_in_rust` to its real
+  consumer.
+
+  **The proxy half is latent on this installation, and recorded as such rather than as proven
+  in play.** Of 8,543 `quest_template` rows, 31 carry any `FlagsEx` at all and the only two
+  values present are `8` and `0x40000000`; **no quest here carries `0x4000`**, so none of the
+  2,734 `QUEST_OBJECTIVE_MONSTER` objectives could exercise it and no live run distinguishes
+  before from after. Both directions are covered by tests instead.
+
+  **The raid half has no live evidence yet**, because blocking it needs two accounts in a group
+  converted to a raid. What was checked instead is that it cannot change solo or party play:
+  `GROUP_FLAG_RAID` is `0x002` in both cores, and the only writer in this port is
+  `Group::convert_to_raid_like_cpp`, so an ordinary party never sets it.
+
+  **Live regression, 2026-10-01** — the point of which is that three new refusals were added to
+  a working credit path. With the quest reset to incomplete, one kill of entry 721 published
+  `SMSG_QUEST_UPDATE_ADD_CREDIT` and persisted `character_queststatus_objectives` `(14106, 0) = 1`
+  across the clean logout; a kill of entry 94 in the same session still paid 44 XP, 8 copper and
+  two looted items. Reproduce with `--loot-after-kill --melee-creature-entry 721`.
+
+  **Named boundary:** the raid gate reads the difficulty this port resolves for the player's
+  current map, which for a continent is `DIFFICULTY_NONE` exactly as C++ `Map::GetDifficultyID()`
+  is. A downscaled or locked instance whose own spawn mode differs from the player's selection is
+  not tracked separately, and is written at the call site.
+
+- [x] **D-H21 Creature resistances existed in the database and nowhere else, so no spell was ever
+  resisted.** Implemented 2026-10-01 as the resist half of D-H3. The installed world database has
+  1,606 `creature_template_resistance` rows across 786 creatures — a Kobold Miner in Elwynn has 21
+  fire resistance — and **not one of them was loaded**. `creature_template_resistance` had no
+  query, no store, no field on the template record and no value on the live creature, and
+  `Unit::CalcSpellResistedDamage` had no equivalent at all, so every spell hit landed in full and
+  the combat log reported `resisted = 0` always.
+
+  Ported as the chain C++ runs, in the layer that owns each part:
+
+  * `ObjectMgr::LoadCreatureTemplateResistances` (`Globals/ObjectMgr.cpp:536-570`) as an apply
+    step **onto the already-loaded templates**, which is what C++ does rather than building a
+    second store, including its two rejections: a row for the physical school, and a row for a
+    school at or past `MAX_SPELL_SCHOOL`.
+  * `Creature::UpdateEntry`'s seeding of `UNIT_MOD_RESISTANCE_*` from the template
+    (`Entities/Creature/Creature.cpp:694-699`) at spawn, beside the sparring application.
+  * `Unit::GetResistance(SpellSchoolMask)` (`Entities/Unit/Unit.cpp:13982-13993`), which returns
+    the **smallest** resistance among the schools in the mask — a detail easy to get backwards.
+  * `Unit::CalculateAverageResistReduction` (`:2035-2077`): the caster's target-resistance aura
+    and spell penetration, holy ignoring template values, the level-based term with level 20 as
+    the floor for both sides, and the level-83 boss constant of 510 instead of `level * 5`.
+  * `Unit::CalcSpellResistedDamage` (`:1970-2003`): the magic-only gate, the holy-on-NPCs-only
+    gate, both forms of the eleven-bucket discrete probability table, the `rand_norm()` bucket
+    draw, the resisted tenths, and the ignore-resistance percentage capped at 100.
+  * the publication: `damage` after the resist, `originalDamage` before it (C++ assigns it
+    between the critical arm and `CalcAbsorbResist`, `:1346-1347`), `resist` on the wire, and the
+    `HITINFO_FULL_RESIST`/`PARTIAL_RESIST` bit on the server-side `HitInfo`.
+
+  **A wire detail worth recording, because it looks like a bug and is not.** Those two resist
+  bits are `0x80` and `0x100`, and C++ writes `SpellNonMeleeDamageLog::Flags` in **seven bits**
+  (`Server/Packets/CombatLogPackets.cpp:39`). So C++ sets them on the server and then truncates
+  them off the packet: the client learns about a resist from the `Resisted` field, never from the
+  flags. This port now does exactly the same, and the scenario asserts the truncation rather than
+  asserting a flag the target build does not send.
+
+  **Named boundaries**, each a fact this port does not carry rather than a choice:
+
+  * `SPELL_ATTR0_CU_BINARY_SPELL` is taken as unset, so the level-based resistance always
+    applies. That is correct for the plain direct-damage spells this path serves, but the
+    attribute's own rule (`Spells/SpellMgr.cpp:3470-3520` plus the trigger pass at `:3608-3640`)
+    is not ported.
+  * the two ignore-resistance aura families and the Chaos Bolt family exception are zero.
+  * a school mask carrying both normal and magic does not get C++'s
+    `min(resisted, armourReduction)` comparison (`:2021-2028`), because this port does not run
+    the load-time pass that strips the normal school and records
+    `SPELL_ATTR0_CU_SCHOOLMASK_NORMAL_WITH_MAGIC`.
+  * the caster's target-resistance term reads the port's single aggregated
+    `mod_target_resistance` rather than a per-school aura sum.
+
+  **Live evidence, 2026-10-01, for the data path only and said so plainly.** The server applied
+  **1,606 of 1,606** `creature_template_resistance` rows against 30,018 loaded templates, so every
+  row found its template and a valid school; before this change the table was never read. A melee
+  kill in the same session still paid 44 XP, 12 copper and a looted item, which is the regression
+  that matters because every creature spawn now seeds resistances.
+
+  **The resist roll is proven live as of 2026-10-01**, on the caster-class character the plan
+  called for rather than another fixture on the warrior. A human mage was provisioned on the QA
+  account, and one Fireball at a Kobold Tunneler — entry 475, which carries 21 fire resistance in
+  `creature_template_resistance` — published
+  `damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00`. That is the formula
+  exactly: the average reduction is `21 / (21 + 100) = 0.174`, whose discrete table puts the
+  weight on the one- and two-tenth buckets, and `13 * 2/10` truncates to the published 2. The
+  server's own trace for the same cast reads `Dealt damage to creature ... damage=11`. The scenario
+  tests keep both pinned outcomes beside it. Reproduce with
+  `--spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6 --spell-damage-casts 1`.
+
+- [x] **D-H22 withdrawn in part: an empty `character_spell` is faithful, and the diagnosis behind
+  it was wrong.** Raised and corrected 2026-10-01, the same day, with the code change it motivated
+  reverted before publication.
+
+  The observation stands: a freshly created human mage has **zero** `character_spell` rows, and
+  this port does not write the spells its skills reward. What was wrong was calling that a defect.
+  C++ `Player::_SaveSpells` (`Entities/Player/Player.cpp:20647-20699`) inserts a row only for a
+  **non-dependent** new or changed spell — `// add only changed/new not dependent spells` — and
+  `LearnSkillRewardedSpells` learns through `LearnSpell(ability->Spell, /*dependent*/ true)`
+  (`:24186`), so C++ never writes those rows either. They are recomputed from `character_skills`
+  at every login, which is exactly what this port does: the mage's 11 default skills **are**
+  persisted, and the login log reports `loaded_skill_count=11 ... total_spell_count=43` on every
+  later login. Reading the bare row count as "the character knows nothing" was the error.
+
+  **A second claim in the first draft was also wrong and is worth keeping.** It said the DB2 side
+  of `LearnDefaultSkills` is not walked, citing `default_skill_count=0`. That figure is zero on a
+  *later* login because the skills are already known and C++ skips a known skill
+  (`:23990-23993`). On the character's **first** login the same line reads
+  `default_skill_count=11`, so the walk works.
+
+  The change this drove — marking a login-learned spell `New` rather than `Unchanged` in the
+  post-login spell map — was reverted. C++'s state does follow `learning` rather than loading
+  (`AddSpell`, `:2698`), so the port's `Unchanged` is unfaithful in principle, but every spell the
+  observed path learns is dependent and therefore never written, so the only observable effect
+  would have been an extra favourite-row delete per spell per save. A behaviour change in the save
+  path needs a case where it matters, and this evidence does not supply one.
+
+  **The remaining question is answered, 2026-10-01: the grant is correct.** A new
+  `RUSTYCORE_KNOWN_SPELLS_TRACE` logs the ids on `SMSG_SEND_KNOWN_SPELLS`, and a level-20 human
+  mage is granted 43 spells including **116 (Frostbolt)** and **133 (Fireball)** — the two the
+  class needs and the first of which `playercreateinfo_action` puts on action button 0. So nothing
+  about the caster lane was broken.
+
+  **Proven by removing the fixture rather than by reading a log.** With `character_spell` emptied
+  to zero rows and the bot's spellbook seeding turned off, the mage cast Fireball and the server
+  published `damage=12 original=13 resisted=1 absorbed=0 school=0x04 flags=0x00`. A character with
+  no rows in that table casts its class spells, which is the whole point of the dependent-spell
+  rule. The `--spell-damage` mode's seeding is now opt-in (`--spell-damage-seed-spell`), because
+  inserting a row there for a dependent spell writes one the target build never writes; the row
+  earlier runs of this session created was removed.
+
+- [x] **D-H23 withdrawn: the mage was out of mana, and the server said so once the harness could
+  read it.** Raised and withdrawn 2026-10-01, the same day, with nothing changed in the server.
+
+  The draft claimed a player gets one spell cast per session, from four requests producing one
+  execution and no refusals. Three measurements took that apart, in this order:
+
+  1. **The handler receives every request.** With
+     `RUST_LOG=wow_world::handlers::spell=debug`, all three `CMSG_CAST_SPELL` appear with their
+     own `cast_id`, so nothing is lost in transport or dispatch.
+  2. **Admission accepts every request.** A trace on the cast gate reports
+     `remaining=Some((0, 0))` for all three, so neither the global cooldown nor an active cast
+     holds them, and the retained-active-cast theory in the draft was wrong.
+  3. **The refusals were `SPELL_FAILED_NO_POWER`.** Once the harness reported the real
+     `SpellCastResult` — it had been printing every refusal as `SPELL_CAST_OK` because of a
+     packed-field slip — a three-cast run came back `[108, 108, 108]`, and 108 is
+     `SPELL_FAILED_NO_POWER` (`Miscellaneous/SharedDefines.h:1574`).
+
+  The mage simply runs out of mana. A session starts with the mana saved at the previous logout,
+  the previous run had spent it, so it gets about one cast and the server correctly refuses the
+  rest. The runs that looked silent were the harness's read window plus the queued-request path,
+  not a dropped request.
+
+  **The world-pass warning was never the cause either, and the measurement says so with numbers.**
+  In the session that produced the three casts the coordinator waited past its deadline 19 times,
+  median 11 ms and maximum 192 ms, with 53 synchronous database queries inside world ticks. That is
+  the ten-millisecond budget being exceeded by milliseconds, not a pass taking seconds.
+
+  **What this leaves is a harness gap, not a server defect:** a sampling run needs a mana fixture
+  (`characters.power1`) in the same place the mode already revives a dead character, since C++'s own
+  `SPELL_FAILED_NO_POWER` is what stops a drained caster. That fixture now exists.
+
+  **The last piece of the draft's story also dissolved, with the fixture in place.** A twenty-cast
+  run produced `casts_sent=20 refusals=0`, and the server executed **16** of them
+  (`Executing spell effect ... spell_id=133` ×16) while only **4** reached
+  `Dealt damage to creature`, for 10, 14, 11 and 11 damage. Those four add to 46, which is about a
+  Kobold Tunneler's health: the target died and the rest of the casts hit a corpse, which C++ also
+  refuses (`EffectSchoolDMG` requires a living target). So "the casts vanish" was a dead creature,
+  not a dropped request. One real harness residue remains, recorded rather than rounded off: the bot
+  captured 2 of the 4 published damage logs, so its drain loop still misses some.
+
+  The three traces added while measuring this are kept: the cast-admission pair, the two reasons a
+  pending request is held, and the residence-revision drop. Each one turns a silent branch into a line, which is what made the
+  difference here.
+
+- [x] **A harness defect worth recording beside it: the refusal reader reported every
+  `SMSG_CAST_FAILED` as success.** `SpellCastVisual` serialises **one** `uint32` on this branch —
+  `ScriptVisualID` is commented out in the C++ and the port's writer matches
+  (`wow-packet/src/packets/spell.rs:227-229`) — so reading two put the `SpellCastResult` four
+  bytes late and returned `FailedArg1`, which is zero, i.e. `SPELL_CAST_OK`. A refusal that reads
+  as success is worse than one that reads as garbage, so the fix is pinned by a test that places
+  the reason after exactly one visual field. This is the second packed-field slip in this harness
+  this session; both were caught by reading the server's own writer rather than by guessing.
+
+- [x] **D-H24 The absorb loop's ignore-absorb term was invented: a per-shield test, and a spell
+  attribute the 3.4.3 server never reads.** Found on 2026-10-02 while reading
+  `Unit::CalcAbsorbResist` for the spell side of D-H3, and fixed in the same reading.
+
+  C++ takes the attacker's `SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL` share out of the damage **once**,
+  before both shield loops, and puts it back **once** after them:
+  `absorbIgnoringDamage = CalculatePct(damageInfo.GetDamage(), auraAbsorbMod)` at `Unit.cpp:2106`,
+  `damageInfo.ModifyDamage(-absorbIgnoringDamage)` at `:2112`, and
+  `damageInfo.ModifyDamage(absorbIgnoringDamage)` at `:2250`. Inside the loops the shields only ever
+  read `damageInfo.GetDamage()`; there is no exemption test of any kind. The port instead subtracted
+  the share from **each** shield's cap inside both loops and never restored it, and gated that
+  subtraction on `SPELL_ATTR6_ABSORB_CANNOT_BE_IGNORE`. That attribute is declared in the reference
+  (`SharedDefines.h:697`, `enuminfo_SharedDefines.cpp:1042`) and **read nowhere in the server** — a
+  tree-wide search finds only the declaration and its reflection table — so no shield is exempt in
+  3.4.3, and `cannot_be_ignored` was state with no source.
+
+  Two observable consequences, both now gone: with the modifier active the final damage was short by
+  the ignored share (the port absorbed from the reduced damage and never added the share back), and
+  a shield carrying the attribute absorbed a whole hit that C++ would have let partly through. The
+  per-shield subtraction also compounded across shields.
+
+  The repair moves the term to where C++ keeps it. `represented_absorb_stages_like_cpp`
+  (`session_rules/rules_4.rs`) is now the single owner of C++'s absorb half: it holds the share out,
+  runs the school-absorb loop and then the mana-shield loop over what is left, and adds the share
+  back. Neither loop takes an ignore argument any more, and `cannot_be_ignored` is removed from both
+  shield projections. One more fidelity detail came out of the same reading and is now kept: C++
+  reads the percentage from the damage **before** `ResistDamage` (`:2106` precedes `:2111`), so the
+  composition takes both the pre-resist and post-resist damage; for a physical melee hit they are the
+  same value, because `CalcSpellResistedDamage` returns zero for a non-magic school mask
+  (`Unit.cpp:1972-1974`).
+
+  Evidence: `represented_ignore_absorb_matches_calc_absorb_resist_like_cpp` replaces the test that
+  asserted the invented shape and now pins the hold-out, the restore, the pre-resist basis, the
+  100%-ignored case and both loops in sequence;
+  `legacy_creature_melee_tick_once_honors_ignore_absorb_like_cpp` was likewise asserting the
+  exemption and now asserts that the attribute changes nothing.
+
+  One circumstantial detail, recorded as a lead rather than a conclusion: the comments carrying the
+  invented term also carried line numbers hundreds of lines away from the 3.4.3 functions they
+  named (`Unit.cpp:1791-1880` for a loop that lives at `:2114-2178`). The anchors therefore did not
+  come from the pinned reference. Which file they did come from is not established here — the
+  complementary 3.3.5a checkout is not present on this host, so that is a question for whoever has
+  it, not a claim. Corrected anchors are in the same commit.
+
+- [x] **D-H25 A creature's aura was written to the mirror that gets overwritten, so one no-op
+  mutation erased it.** Found and fixed on 2026-10-02 while implementing D-H3's absorb stage, which
+  could not see a shield that no longer existed.
+
+  A creature can exist twice: as a legacy-runtime `WorldCreature` and as a canonical map entity.
+  `mutate_world_creature` ends by calling `sync_canonical_creature_entity_like_cpp`, which replaces
+  the **whole** canonical entity from the legacy clone — deliberately, because death and respawn
+  hooks touch AI, combat, loot, aura, timer and plan state together
+  (`session/mod.rs:4013-4021`). `apply_creature_aura_with_provenance_like_cpp` wrote the application
+  only to the canonical side. So any legacy mutation of that creature discarded it, and a no-op one
+  was enough.
+
+  Measured rather than reasoned about: a probe applied a 300-point shield, read `Some(300)`, called
+  `mutate_world_creature(guid, |_| {})`, and read `None`. The spell-hit path mutates the legacy
+  creature twice before any shield is read — once to read resistance and level for the resist, once
+  to apply the damage — so the shield was always gone by then. In play this reached every creature
+  aura a player cast applied (`spell_effects/execution.rs:853`): a debuff landed, published its slot
+  to the client, and vanished at the victim's next swing or hit with no packet saying so.
+
+  The repair gives the aura state one owner per creature. `mutate_creature_aura_owner_like_cpp`
+  writes the legacy mirror when the creature is registered there — the sync then carries the state
+  to canonical, as it does for health — and the canonical entity directly otherwise, which is what a
+  summon or pet is. The registration body moved into
+  `register_creature_aura_application_like_cpp(&mut Creature, …)` so both mirrors share one
+  implementation rather than two aura tables, and the slot lookup, the expiry removal and the new
+  absorb stage all go through the same owner.
+
+  Evidence: `a_creature_aura_survives_a_legacy_mirror_mutation_like_cpp` is the probe turned into a
+  regression, and the four absorb scenarios would all fail without this. Boundary: this fixes the
+  aura table's owner. Whether any **other** canonical-only creature write has the same exposure is
+  not audited here; the sync's whole-entity replacement is unchanged and still the thing to check
+  before writing canonical-only creature state.
 
 ## MED — wrong values / loose checks / minor loss
 
@@ -960,22 +1411,44 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   The wider #524 family remains open because Rust does not yet load and consume
   `SkillLineXTraitTree` through a `TraitMgr`-equivalent production authority.
 
-- [ ] **D-M15 `QuestLogItemId` is credited and put on the wire, which the target build
-  does neither.** RustyCore reads `item_template_addon.QuestLogItemId`, credits
-  `QUEST_OBJECTIVE_ITEM` objectives keyed on it in addition to the item entry, and writes it
-  into `SMSG_ITEM_PUSH_RESULT.QuestLogItemID`. In
-  `/home/server/woltk-trinity-legacy` the field appears exactly once in the whole server,
-  as the commented-out line
+- [x] **D-M15 `QuestLogItemId` was credited and put on the wire, and the target build does
+  neither. Latent, not live.** Closed 2026-10-01.
+
+  RustyCore read `item_template_addon.QuestLogItemId`, credited `QUEST_OBJECTIVE_ITEM`
+  objectives keyed on it in addition to the item entry, and wrote it into
+  `SMSG_ITEM_PUSH_RESULT.QuestLogItemID`. In `/home/server/woltk-trinity-legacy` the field
+  appears exactly once in the whole server, as the commented-out line
   `//packet.QuestLogItemID = item->GetTemplate()->QuestLogItemId;`
-  (`src/server/game/Entities/Player/Player.cpp:13869`), so stock
-  `Player::SendNewItem` ships `0` and `ItemAddedQuestCheck(entry, count)`
-  (`:16533-16536`) only ever passes the item entry to
-  `UpdateQuestObjectiveProgress`. Two consequences: an item-push byte divergence, and
-  credit for objectives the target build would not credit. Found while closing D-H6, which
-  removed a separate invented objective gate in the same code; left open rather than folded
-  into that repair. Rust: `handlers/quest/objectives.rs`
-  (`apply_quest_item_added_objective_progress_with_generator_like_cpp`'s second objective
-  id) and `session_rules/rules_1.rs` (`quest_log_item_id` in the push plan).
+  (`Entities/Player/Player.cpp:13869`), so stock `Player::SendNewItem` ships the packet
+  default for every push; and `ItemAddedQuestCheck(uint32 entry, uint32 count)`
+  (`Entities/Player/Player.h:1557`, body at `:16533-16536`) hands
+  `UpdateQuestObjectiveProgress` the item entry and nothing else.
+
+  Both halves are repaired at the one point each becomes observable: the push-result
+  conversion writes `0`, and the credit paths key on the item entry alone. A positive and a
+  negative test pin it — an objective on the stored item's entry advances, one on the
+  template's `QuestLogItemId` is left untouched — and the `SMSG_ITEM_PUSH_RESULT` mapping test
+  now asserts `0` however the plan was filled.
+
+  **It could not have shown up in play, and that is worth stating rather than dressing up.**
+  All 625 rows of the installed `item_template_addon` have `QuestLogItemId = 0`, so no item on
+  this installation could produce a non-zero credit id or a non-zero wire field. There is
+  therefore no live run that distinguishes before from after, and none was staged. The
+  evidence is the source, which is conclusive on its own, plus the capture-diff semantic rule
+  for the issue-106 `ItemPushResult`, which already requires `QuestLogItemID == 0` from the
+  real byte stream (`capture-diff/src/semantic/state_4.rs:358,388`).
+
+  **Deliberately not done:** retiring the ~89 remaining references that compute and carry the
+  value through the loot, item-store, void-storage and spell paths. With both decision points
+  faithful and every data row zero, they are inert rather than wrong, and removing them is a
+  twenty-file mechanical change with no behaviour at stake. It belongs with the next change
+  that owns `item_template_addon`, not bolted onto this one. Recorded as D-L4.
+- [ ] **D-L4 The inert `QuestLogItemId` plumbing should be retired.** After D-M15 the value is
+  read from `item_template_addon`, cached, threaded through the loot, item-store,
+  void-storage, spell and quest paths and then ignored at both points where it used to be
+  observable. About 89 non-test references across twenty files carry a number nothing
+  consumes, which is how the original divergence survived unnoticed. No behaviour depends on
+  it, so this is cleanup to fold into the next change that owns `item_template_addon`.
 - [x] **D-M16 The global player-melee phase used the boundary radius as a second range
   requirement, so a facing attacker four yards away never swung.** Closed 2026-10-01. Found
   by chasing a swing that three live runs could not land: the phase counted

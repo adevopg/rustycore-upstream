@@ -10,7 +10,27 @@ pub(super) use plan::*;
 use report::*;
 use wire::*;
 
-const CMSG_CAST_SPELL: u16 = 0x329C;
+pub(crate) const CMSG_CAST_SPELL: u16 = 0x329C;
+
+/// The `CMSG_CAST_SPELL` body for one unit-targeted cast, built by the same wire
+/// code the cast-lifecycle mode uses so there is one request builder.
+pub(crate) fn build_unit_target_cast_payload_like_cpp(
+    spell_id: i32,
+    cast_id: (u64, u64),
+    target: (u64, u64),
+) -> Vec<u8> {
+    wire::build_cast_spell_payload(
+        spell_id,
+        Guid {
+            low: cast_id.0,
+            high: cast_id.1,
+        },
+        Some(Guid {
+            low: target.0,
+            high: target.1,
+        }),
+    )
+}
 const CMSG_CANCEL_CAST: u16 = 0x329F;
 const CMSG_CANCEL_QUEUED_SPELL: u16 = 0x3182;
 const SMSG_SPELL_PREPARE: u16 = 0x2C35;

@@ -5,6 +5,84 @@
 
 use super::*;
 
+/// Register one represented aura application on a creature entity.
+///
+/// C++ `Aura::Create` plus its `AuraApplication`: the owned aura, one
+/// `AuraEffect` per applied effect slot with its own amount and misc value, the
+/// loaded duration state, the published slot and the cast provenance. Returns
+/// `None` when the creature already carries this `(spell, caster)` application or
+/// no visible slot is free.
+///
+/// It takes the entity rather than a map, because a creature registered in the
+/// legacy runtime and one on the canonical map are two mirrors of the same
+/// creature and the caller picks which mirror it is writing (see
+/// `apply_creature_aura_with_provenance_like_cpp`).
+fn register_creature_aura_application_like_cpp(
+    creature: &mut wow_entities::Creature,
+    spell_key: u32,
+    caster_guid: ObjectGuid,
+    effects: &[(i32, i32, i32, u8)],
+    duration_ms: u32,
+    provenance: wow_entities::AuraCastProvenanceLikeCpp,
+) -> Option<()> {
+    let auras = &mut creature.unit_mut().subsystems_mut().auras;
+    if auras
+        .applied_auras
+        .iter()
+        .any(|aura| aura.spell_id == spell_key && aura.caster_guid == caster_guid)
+    {
+        return None;
+    }
+    let slot = (0..u8::MAX).find(|slot| !auras.visible_auras.contains_key(slot))?;
+    auras.add_owned(wow_entities::OwnedAuraRef::new(
+        spell_key,
+        caster_guid,
+        None,
+    ));
+    // C++ `Aura::Create` builds one `AuraEffect` per applied slot
+    // and `GetAuraEffectsByType` reads those effects individually.
+    // The per-slot `AppliedAuraRef` keeps each slot's own amount
+    // and misc value, the convention the pet-load and
+    // threat-snapshot paths already use.
+    for (aura_type, amount, misc_value, effect_index) in effects {
+        let effect_ref = wow_entities::AppliedAuraRef::new(
+            spell_key,
+            caster_guid,
+            slot,
+            1_u32 << u32::from(*effect_index),
+        );
+        auras.register_applied_aura_effect_like_cpp(effect_ref, *aura_type, *amount, *misc_value);
+    }
+    auras.set_loaded_aura_state_like_cpp(
+        wow_entities::AuraRef::new(spell_key, caster_guid),
+        wow_entities::LoadedAuraStateLikeCpp::new(
+            i32::try_from(duration_ms).unwrap_or(i32::MAX),
+            i32::try_from(duration_ms).unwrap_or(i32::MAX),
+            0,
+            1,
+            0,
+        ),
+    );
+    auras.set_visible_with_application_like_cpp(
+        slot,
+        wow_entities::AuraRef::new(spell_key, caster_guid),
+        wow_entities::VisibleAuraApplicationLikeCpp::new(
+            0,
+            effects
+                .iter()
+                .map(
+                    |(_, amount, _, effect_index)| wow_entities::VisibleAuraEffectAmountLikeCpp {
+                        effect_index: *effect_index,
+                        amount: *amount,
+                    },
+                )
+                .collect(),
+        ),
+    );
+    auras.set_aura_cast_provenance_like_cpp(slot, provenance);
+    Some(())
+}
+
 impl WorldSession {
     pub(crate) fn mutate_canonical_creature_by_guid_like_cpp<R>(
         &mut self,
@@ -540,6 +618,31 @@ impl WorldSession {
     /// refused, like the spawn-addon path), the duration comes from the
     /// caller's represented value rather than `SpellDuration.db2`, and the
     /// periodic effect amount is registered but not yet ticked.
+    /// Mutate the creature mirror that owns its represented aura state.
+    ///
+    /// A creature can exist as a legacy-runtime entity, as a canonical map
+    /// entity, or as both. When both exist the legacy one is the authority this
+    /// session writes, because `sync_canonical_creature_entity_like_cpp` replaces
+    /// the canonical entity wholesale from it: a write that lands only on the
+    /// canonical side is discarded by the next legacy mutation, aura state
+    /// included. Writing here and letting the sync carry it keeps one authority
+    /// per creature instead of two divergent aura tables.
+    pub(in crate::session) fn mutate_creature_aura_owner_like_cpp<R>(
+        &mut self,
+        guid: ObjectGuid,
+        f: impl FnOnce(&mut wow_entities::Creature) -> R,
+    ) -> Option<R> {
+        let mut f = Some(f);
+        if let Some(result) = self.mutate_world_creature(guid, |creature| {
+            f.take().expect("the aura mutator is called once")(&mut creature.creature)
+        }) {
+            return Some(result);
+        }
+        self.mutate_canonical_creature_by_guid_like_cpp(guid, |creature| {
+            f.take().expect("the aura mutator is called once")(creature)
+        })
+    }
+
     pub(crate) fn apply_creature_aura_like_cpp(
         &mut self,
         spell_id: i32,
@@ -595,71 +698,23 @@ impl WorldSession {
         if effects.is_empty() {
             return Err("no represented effects for this aura");
         }
+        // The legacy runtime mirror is the source the canonical creature is synced
+        // from (`sync_canonical_creature_entity_like_cpp` replaces the whole
+        // entity), so an aura written only to the canonical side is discarded by
+        // the next legacy mutation. Write the mirror that exists: the legacy one
+        // when the creature is registered there, the canonical one otherwise, as
+        // a summon or pet is.
         let applied = self
-            .mutate_canonical_creature_by_guid_like_cpp(target_guid, |creature| {
-                let auras = &mut creature.unit_mut().subsystems_mut().auras;
-                if auras
-                    .applied_auras
-                    .iter()
-                    .any(|aura| aura.spell_id == spell_key && aura.caster_guid == caster_guid)
-                {
-                    return None;
-                }
-                let slot = (0..u8::MAX).find(|slot| !auras.visible_auras.contains_key(slot))?;
-                auras.add_owned(wow_entities::OwnedAuraRef::new(
+            .mutate_creature_aura_owner_like_cpp(target_guid, |creature| {
+                register_creature_aura_application_like_cpp(
+                    creature,
                     spell_key,
                     caster_guid,
-                    None,
-                ));
-                // C++ `Aura::Create` builds one `AuraEffect` per applied slot
-                // and `GetAuraEffectsByType` reads those effects individually.
-                // The per-slot `AppliedAuraRef` keeps each slot's own amount
-                // and misc value, the convention the pet-load and
-                // threat-snapshot paths already use.
-                for (aura_type, amount, misc_value, effect_index) in &effects {
-                    let effect_ref = wow_entities::AppliedAuraRef::new(
-                        spell_key,
-                        caster_guid,
-                        slot,
-                        1_u32 << u32::from(*effect_index),
-                    );
-                    auras.register_applied_aura_effect_like_cpp(
-                        effect_ref,
-                        *aura_type,
-                        *amount,
-                        *misc_value,
-                    );
-                }
-                auras.set_loaded_aura_state_like_cpp(
-                    wow_entities::AuraRef::new(spell_key, caster_guid),
-                    wow_entities::LoadedAuraStateLikeCpp::new(
-                        i32::try_from(duration_ms).unwrap_or(i32::MAX),
-                        i32::try_from(duration_ms).unwrap_or(i32::MAX),
-                        0,
-                        1,
-                        0,
-                    ),
-                );
-                auras.set_visible_with_application_like_cpp(
-                    slot,
-                    wow_entities::AuraRef::new(spell_key, caster_guid),
-                    wow_entities::VisibleAuraApplicationLikeCpp::new(
-                        0,
-                        effects
-                            .iter()
-                            .map(|(_, amount, _, effect_index)| {
-                                wow_entities::VisibleAuraEffectAmountLikeCpp {
-                                    effect_index: *effect_index,
-                                    amount: *amount,
-                                }
-                            })
-                            .collect(),
-                    ),
-                );
-                auras.set_aura_cast_provenance_like_cpp(slot, provenance);
-                Some(())
+                    &effects,
+                    duration_ms,
+                    provenance,
+                )
             })
-            .flatten()
             .ok_or("creature target unavailable or aura already applied")?;
         let _ = applied;
         let slot = self
@@ -686,7 +741,7 @@ impl WorldSession {
         spell_id: u32,
         caster_guid: ObjectGuid,
     ) -> Option<u8> {
-        self.mutate_canonical_creature_by_guid_like_cpp(target_guid, |creature| {
+        self.mutate_creature_aura_owner_like_cpp(target_guid, |creature| {
             creature
                 .unit()
                 .subsystems()
@@ -772,7 +827,7 @@ impl WorldSession {
             .collect();
         for aura in expired {
             let removed = self
-                .mutate_canonical_creature_by_guid_like_cpp(aura.target_guid, |creature| {
+                .mutate_creature_aura_owner_like_cpp(aura.target_guid, |creature| {
                     let auras = &mut creature.unit_mut().subsystems_mut().auras;
                     let spell_id = u32::try_from(aura.spell_id).unwrap_or(0);
                     // One per-slot `AppliedAuraRef` per applied effect slot;

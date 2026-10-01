@@ -88,6 +88,37 @@ pub(super) enum PlayerCharacterSaveStepLikeCpp {
     DeleteSkills {
         guid: u64,
     },
+    DeleteAuraEffects {
+        guid: u64,
+    },
+    DeleteAuras {
+        guid: u64,
+    },
+    InsertAura {
+        guid: u64,
+        caster_guid_binary: Vec<u8>,
+        item_guid_binary: Vec<u8>,
+        spell_id: u32,
+        effect_mask: u32,
+        recalculate_mask: u32,
+        difficulty: u8,
+        stack_count: u8,
+        max_duration_ms: i32,
+        remain_time_ms: i32,
+        remain_charges: u8,
+        cast_item_id: u32,
+        cast_item_level: i32,
+    },
+    InsertAuraEffect {
+        guid: u64,
+        caster_guid_binary: Vec<u8>,
+        item_guid_binary: Vec<u8>,
+        spell_id: u32,
+        effect_mask: u32,
+        effect_index: u8,
+        amount: i32,
+        base_amount: i32,
+    },
     InsertSkill {
         guid: u64,
         skill_id: u16,
@@ -375,6 +406,68 @@ pub(super) fn player_character_save_statement_like_cpp(
                 PreparedStatement::for_statement(CharStatements::INS_CHAR_SPELL_FAVORITE);
             stmt.set_u64(0, *guid);
             stmt.set_i32(1, *spell_id);
+            stmt
+        }
+        Step::DeleteAuraEffects { guid } => {
+            let mut stmt = PreparedStatement::for_statement(CharStatements::DEL_CHAR_AURA_EFFECT);
+            stmt.set_u64(0, *guid);
+            stmt
+        }
+        Step::DeleteAuras { guid } => {
+            let mut stmt = PreparedStatement::for_statement(CharStatements::DEL_CHAR_AURA);
+            stmt.set_u64(0, *guid);
+            stmt
+        }
+        Step::InsertAura {
+            guid,
+            caster_guid_binary,
+            item_guid_binary,
+            spell_id,
+            effect_mask,
+            recalculate_mask,
+            difficulty,
+            stack_count,
+            max_duration_ms,
+            remain_time_ms,
+            remain_charges,
+            cast_item_id,
+            cast_item_level,
+        } => {
+            let mut stmt = PreparedStatement::for_statement(CharStatements::INS_AURA);
+            stmt.set_u64(0, *guid);
+            stmt.set_bytes(1, caster_guid_binary.clone());
+            stmt.set_bytes(2, item_guid_binary.clone());
+            stmt.set_u32(3, *spell_id);
+            stmt.set_u32(4, *effect_mask);
+            stmt.set_u32(5, *recalculate_mask);
+            stmt.set_u8(6, *difficulty);
+            stmt.set_u8(7, *stack_count);
+            stmt.set_i32(8, *max_duration_ms);
+            stmt.set_i32(9, *remain_time_ms);
+            stmt.set_u8(10, *remain_charges);
+            stmt.set_u32(11, *cast_item_id);
+            stmt.set_i32(12, *cast_item_level);
+            stmt
+        }
+        Step::InsertAuraEffect {
+            guid,
+            caster_guid_binary,
+            item_guid_binary,
+            spell_id,
+            effect_mask,
+            effect_index,
+            amount,
+            base_amount,
+        } => {
+            let mut stmt = PreparedStatement::for_statement(CharStatements::INS_AURA_EFFECT);
+            stmt.set_u64(0, *guid);
+            stmt.set_bytes(1, caster_guid_binary.clone());
+            stmt.set_bytes(2, item_guid_binary.clone());
+            stmt.set_u32(3, *spell_id);
+            stmt.set_u32(4, *effect_mask);
+            stmt.set_u8(5, *effect_index);
+            stmt.set_i32(6, *amount);
+            stmt.set_i32(7, *base_amount);
             stmt
         }
         Step::DeleteSkills { guid } => {
