@@ -237,6 +237,7 @@ mod tests {
                 regen_health: true,
                 spells: [0; crate::MAX_CREATURE_SPELLS_LIKE_CPP],
                 models: Vec::new(),
+                resistances: [0; 7],
             },
             crate::CreatureTemplateLifecycleRecordLikeCpp {
                 entry: 101,
@@ -271,6 +272,7 @@ mod tests {
                 string_id: String::new(),
                 regen_health: true,
                 spells: [0; crate::MAX_CREATURE_SPELLS_LIKE_CPP],
+                resistances: [0; 7],
                 models: Vec::new(),
             },
         ]);

@@ -392,8 +392,8 @@ async fn spell_crit_scenario_like_cpp(
 }
 
 /// The one `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` the hit published, as
-/// `(damage, original_damage, flags)`.
-fn spell_non_melee_damage_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32, u32) {
+/// `(damage, original_damage, resisted, flags)`.
+fn spell_non_melee_damage_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32, i32, u32) {
     let bytes = packets
         .iter()
         .find(|bytes| {
@@ -416,14 +416,16 @@ fn spell_non_melee_damage_log_values_like_cpp(packets: &[Vec<u8>]) -> (i32, i32,
     packet.read_int32().expect("overkill");
     packet.read_uint8().expect("school mask");
     packet.read_int32().expect("absorbed");
-    packet.read_int32().expect("resisted");
+    let resisted = packet.read_int32().expect("resisted");
     packet.read_int32().expect("shield block");
     packet.read_uint32().expect("world text viewers");
     packet.read_uint32().expect("supporters");
     // One `Periodic` bit, then the seven `HitInfo` bits.
     packet.read_bit().expect("periodic");
+    // C++ writes `Flags` in seven bits (`CombatLogPackets.cpp:39`), so only
+    // `HitInfo` bits below `0x80` reach the client at all.
     let flags = packet.read_bits(7).expect("hit info");
-    (damage, original_damage, flags)
+    (damage, original_damage, resisted, flags)
 }
 
 /// C++ rolls one spell critical chance per target before the hit
@@ -453,7 +455,7 @@ async fn a_critical_spell_hit_adds_half_again_and_flags_the_log_like_cpp() {
         .expect("the creature must still be registered");
     assert_eq!(hp, 500 - 150, "a magical critical adds half again");
 
-    let (damage, original_damage, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    let (damage, original_damage, _, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
     assert_eq!(damage, 150);
     assert_eq!(
         original_damage, 150,
@@ -484,7 +486,100 @@ async fn a_non_critical_spell_hit_keeps_its_damage_and_flags_like_cpp() {
         .expect("the creature must still be registered");
     assert_eq!(hp, 500 - 100);
 
-    let (damage, _, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
+    let (damage, _, _, flags) = spell_non_melee_damage_log_values_like_cpp(&packets);
     assert_eq!(damage, 100);
+    assert_eq!(flags, 0);
+}
+
+/// C++ `Unit::CalcAbsorbResist` takes the resisted share out of the hit before the
+/// victim sees it (`Entities/Unit/Unit.cpp:2080-2111`), and
+/// `CalculateSpellDamageTaken` publishes it as `resist` with a partial- or
+/// full-resist `HitInfo` bit (`:1346-1360`).
+///
+/// The creature's fire resistance is what C++ seeds from
+/// `creature_template_resistance`. With 100 resistance at level 20 on both sides
+/// the average reduction is `100 / (100 + 100)`, whose table puts half the damage
+/// in bucket five, so a draw inside it resists exactly half.
+#[tokio::test]
+async fn a_resisted_spell_hit_loses_that_share_and_reports_it_like_cpp() {
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_003).await;
+    session
+        .mutate_world_creature(creature_guid, |creature| {
+            creature
+                .creature
+                .set_resistances_like_cpp([0, 0, 100, 0, 0, 0, 0]);
+            creature.creature.unit_mut().set_level(20);
+        })
+        .expect("the creature must be registered");
+    // No critical, and a resist draw inside the half-damage bucket.
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+    let _resist = crate::session::spell_effects::PinnedResistRollLikeCpp::pin(0.5);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 200)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 100, "half the hit was resisted");
+
+    let (damage, original_damage, resisted, flags) =
+        spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 100, "the log reports the damage after the resist");
+    assert_eq!(
+        original_damage, 200,
+        "C++ assigns originalDamage before CalcAbsorbResist"
+    );
+    assert_eq!(
+        resisted, 100,
+        "the client learns the resist from this field"
+    );
+    // `HITINFO_PARTIAL_RESIST` is `0x100` and C++ writes `Flags` in seven bits, so
+    // the bit it sets on the server never reaches the client on this packet. The
+    // truncation is C++'s, not this port's.
+    assert_eq!(flags, 0);
+}
+
+/// A creature with no resistance row resists nothing, and the physical school is
+/// never resisted at all: C++ returns before the roll for both.
+#[tokio::test]
+async fn an_unresisted_spell_hit_reports_no_resist_like_cpp() {
+    let (mut session, manager, creature_guid, spell_id, send_rx) =
+        spell_crit_scenario_like_cpp(27_004).await;
+    session
+        .mutate_world_creature(creature_guid, |creature| {
+            creature.creature.unit_mut().set_level(20);
+        })
+        .expect("the creature must be registered");
+    let _no_crit = crate::session::spell_effects::PinnedSpellCritRollLikeCpp::pin(90.0);
+    let _resist = crate::session::spell_effects::PinnedResistRollLikeCpp::pin(0.99);
+
+    let _ = drain_server_packet_bytes(&send_rx);
+    session
+        .apply_damage(Some(spell_id), creature_guid, 200)
+        .await
+        .expect("the represented spell damage must apply");
+    let packets = drain_server_packet_bytes(&send_rx);
+
+    let hp = manager
+        .read()
+        .unwrap()
+        .find_creature(0, 0, creature_guid)
+        .map(|creature| creature.current_hp())
+        .expect("the creature must still be registered");
+    assert_eq!(hp, 500 - 200);
+    let (damage, original_damage, resisted, flags) =
+        spell_non_melee_damage_log_values_like_cpp(&packets);
+    assert_eq!(damage, 200);
+    assert_eq!(original_damage, 200);
+    assert_eq!(resisted, 0);
     assert_eq!(flags, 0);
 }

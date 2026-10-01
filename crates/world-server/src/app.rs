@@ -695,6 +695,22 @@ async fn run_inner(
         "Loaded {} DB-backed creature_template lifecycle rows for loaded-grid Creature::LoadFromDB",
         creature_template_lifecycle_store.len()
     );
+    // C++ `ObjectMgr::LoadCreatureTemplateResistances` writes onto the templates
+    // already loaded (`Globals/ObjectMgr.cpp:536-570`), so it runs here and not as
+    // a second store.
+    let creature_template_resistance_rows =
+        crate::world::object_catalog::apply_creature_template_resistances_like_cpp(
+            &world_object_catalog_persistence,
+            Arc::make_mut(&mut creature_template_lifecycle_store),
+        )
+        .await
+        .context(
+            "Failed to load creature_template_resistance rows for C++ Creature::UpdateEntry",
+        )?;
+    info!(
+        "Applied {} creature_template_resistance rows",
+        creature_template_resistance_rows
+    );
     let creature_template_sparring_store = Arc::new(
         crate::world::object_catalog::load_creature_sparring_like_cpp(
             &world_object_catalog_persistence,

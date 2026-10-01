@@ -1376,7 +1376,18 @@ impl WorldSession {
             spell_school_mask,
             damage_amount,
         );
-        let damage_amount = critical.damage;
+        // C++ assigns `originalDamage` after the critical arm and before
+        // `CalcAbsorbResist` (`Unit.cpp:1346-1347`), so it carries the critical
+        // but not the resist.
+        let original_damage_amount = critical.damage;
+        let resist = self.represented_spell_resist_for_damage_like_cpp(
+            spell_id,
+            caster_guid,
+            target_guid,
+            spell_school_mask,
+            critical.damage,
+        );
+        let damage_amount = resist.damage;
 
         // Si target es otra criatura — mutate canonical shared map state.
         let damage_outcome = self
@@ -1474,11 +1485,13 @@ impl WorldSession {
 
         // C++ `Unit::DealSpellDamage` sends the combat log for the hit before
         // the kill cascade (`Unit.cpp:1250-1260`, `Unit::SendSpellNonMeleeDamageLog`
-        // `Unit.cpp:5353-5380`). The represented hit has no spell absorb, resist
-        // or block stage for a creature target yet, so those fields stay zero;
-        // `HitInfo` carries the critical the roll above resolved.
+        // `Unit.cpp:5353-5380`). `HitInfo`, `damage`, `originalDamage` and `resist`
+        // carry what the critical and resist rolls above resolved; the absorb
+        // shields and the spell block stage have no represented equivalent for a
+        // creature target yet, so those two fields stay zero.
         if let Some(spell_id) = spell_id {
             let damage = damage_amount.min(i32::MAX as u32) as i32;
+            let original_damage = original_damage_amount.min(i32::MAX as u32) as i32;
             self.send_packet(&wow_packet::packets::combat::SpellNonMeleeDamageLog {
                 target: target_guid,
                 caster: caster_guid,
@@ -1486,7 +1499,7 @@ impl WorldSession {
                 spell_id,
                 visual_id: spell_visual_id.min(i32::MAX as u32) as i32,
                 damage,
-                original_damage: damage,
+                original_damage,
                 overkill: if damage_amount > pre_hit_health {
                     i32::try_from(damage_amount - pre_hit_health).unwrap_or(i32::MAX)
                 } else {
@@ -1494,10 +1507,10 @@ impl WorldSession {
                 },
                 school_mask: spell_school_mask.min(u32::from(u8::MAX)) as u8,
                 absorbed: 0,
-                resisted: 0,
+                resisted: resist.resisted.min(i32::MAX as u32) as i32,
                 shield_block: 0,
                 periodic: false,
-                flags: critical.hit_info,
+                flags: critical.hit_info | resist.hit_info,
             });
         }
         if let Some(threat_value) = threat_value {

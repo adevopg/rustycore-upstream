@@ -712,10 +712,11 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
     short circuit and the percentage chain
     (`session/spell_effects/effect_combat.rs:614-668`), and the healing side with it.
   * **Critical: done 2026-10-01**, see the entry below.
-  * **Resist and absorb: still open.** `Unit::CalcAbsorbResist` has no represented equivalent
-    for a creature target, so `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` still reports `absorbed = 0` and
-    `resisted = 0` and the victim's resistances change nothing. That is the remaining half of
-    this entry, and it needs the victim resistance plumbing a creature template already carries.
+  * **Resist: done 2026-10-01**, see D-H21 below.
+  * **Absorb: still open.** `Unit::CalcAbsorbResist`'s shield loop has no represented
+    equivalent for a creature target, so `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` still reports
+    `absorbed = 0`. It needs the victim's `SPELL_AURA_SCHOOL_ABSORB` amounts as mutable state,
+    which only the session's own player has today. That is what is left of this entry.
 - [x] **D-H20 Spell hits could never crit, in either direction.** Implemented 2026-10-01 as the
   critical half of D-H3. The damage path applied no critical at all — the code said so in a
   comment — so a caster's spell crit percentage, which the port already computes per school on
@@ -1070,6 +1071,68 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   current map, which for a continent is `DIFFICULTY_NONE` exactly as C++ `Map::GetDifficultyID()`
   is. A downscaled or locked instance whose own spawn mode differs from the player's selection is
   not tracked separately, and is written at the call site.
+
+- [x] **D-H21 Creature resistances existed in the database and nowhere else, so no spell was ever
+  resisted.** Implemented 2026-10-01 as the resist half of D-H3. The installed world database has
+  1,606 `creature_template_resistance` rows across 786 creatures — a Kobold Miner in Elwynn has 21
+  fire resistance — and **not one of them was loaded**. `creature_template_resistance` had no
+  query, no store, no field on the template record and no value on the live creature, and
+  `Unit::CalcSpellResistedDamage` had no equivalent at all, so every spell hit landed in full and
+  the combat log reported `resisted = 0` always.
+
+  Ported as the chain C++ runs, in the layer that owns each part:
+
+  * `ObjectMgr::LoadCreatureTemplateResistances` (`Globals/ObjectMgr.cpp:536-570`) as an apply
+    step **onto the already-loaded templates**, which is what C++ does rather than building a
+    second store, including its two rejections: a row for the physical school, and a row for a
+    school at or past `MAX_SPELL_SCHOOL`.
+  * `Creature::UpdateEntry`'s seeding of `UNIT_MOD_RESISTANCE_*` from the template
+    (`Entities/Creature/Creature.cpp:694-699`) at spawn, beside the sparring application.
+  * `Unit::GetResistance(SpellSchoolMask)` (`Entities/Unit/Unit.cpp:13982-13993`), which returns
+    the **smallest** resistance among the schools in the mask — a detail easy to get backwards.
+  * `Unit::CalculateAverageResistReduction` (`:2035-2077`): the caster's target-resistance aura
+    and spell penetration, holy ignoring template values, the level-based term with level 20 as
+    the floor for both sides, and the level-83 boss constant of 510 instead of `level * 5`.
+  * `Unit::CalcSpellResistedDamage` (`:1970-2003`): the magic-only gate, the holy-on-NPCs-only
+    gate, both forms of the eleven-bucket discrete probability table, the `rand_norm()` bucket
+    draw, the resisted tenths, and the ignore-resistance percentage capped at 100.
+  * the publication: `damage` after the resist, `originalDamage` before it (C++ assigns it
+    between the critical arm and `CalcAbsorbResist`, `:1346-1347`), `resist` on the wire, and the
+    `HITINFO_FULL_RESIST`/`PARTIAL_RESIST` bit on the server-side `HitInfo`.
+
+  **A wire detail worth recording, because it looks like a bug and is not.** Those two resist
+  bits are `0x80` and `0x100`, and C++ writes `SpellNonMeleeDamageLog::Flags` in **seven bits**
+  (`Server/Packets/CombatLogPackets.cpp:39`). So C++ sets them on the server and then truncates
+  them off the packet: the client learns about a resist from the `Resisted` field, never from the
+  flags. This port now does exactly the same, and the scenario asserts the truncation rather than
+  asserting a flag the target build does not send.
+
+  **Named boundaries**, each a fact this port does not carry rather than a choice:
+
+  * `SPELL_ATTR0_CU_BINARY_SPELL` is taken as unset, so the level-based resistance always
+    applies. That is correct for the plain direct-damage spells this path serves, but the
+    attribute's own rule (`Spells/SpellMgr.cpp:3470-3520` plus the trigger pass at `:3608-3640`)
+    is not ported.
+  * the two ignore-resistance aura families and the Chaos Bolt family exception are zero.
+  * a school mask carrying both normal and magic does not get C++'s
+    `min(resisted, armourReduction)` comparison (`:2021-2028`), because this port does not run
+    the load-time pass that strips the normal school and records
+    `SPELL_ATTR0_CU_SCHOOLMASK_NORMAL_WITH_MAGIC`.
+  * the caster's target-resistance term reads the port's single aggregated
+    `mod_target_resistance` rather than a per-school aura sum.
+
+  **Live evidence, 2026-10-01, for the data path only and said so plainly.** The server applied
+  **1,606 of 1,606** `creature_template_resistance` rows against 30,018 loaded templates, so every
+  row found its template and a valid school; before this change the table was never read. A melee
+  kill in the same session still paid 44 XP, 12 copper and a looted item, which is the regression
+  that matters because every creature spawn now seeds resistances.
+
+  **The resist roll itself has no live evidence**, and that needs stating precisely rather than
+  implied: resistance applies to magic schools only, and the QA character is a level-2 warrior
+  with no damaging magic spell, so no cast it can make reaches the roll. The route to live
+  evidence is a caster-class QA character, not another fixture on this one. Both outcomes are
+  pinned deterministically in scenarios instead — half the damage resisted at an average of
+  `100/(100+100)`, and nothing resisted without a resistance row.
 
 ## MED — wrong values / loose checks / minor loss
 

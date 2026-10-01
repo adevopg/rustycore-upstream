@@ -147,15 +147,26 @@ single roll per target and the three distinct bonus arms, with `SPELL_HIT_TYPE_C
 It carries no live evidence, which the entry states: forcing a crit needs a repeated-cast campaign
 or a sitting player victim, and the QA character is a warrior with no damaging magic.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** the
-remaining half of D-H3, the spell resist and absorb stage. `Unit::CalcAbsorbResist` has no
-represented equivalent for a creature target, so `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` reports
-`absorbed = 0` and `resisted = 0` for every spell hit and a creature's resistances change nothing.
-Unlike the critical, this one has a live shape that works with the current QA character, because
-the resist roll does not need a caster-side percentage the warrior lacks: a physical-school spell
-hit on a creature with a non-zero `creature_template.resistance*` row is enough to read the
-published `resisted` field back. Scope it from `Unit::CalcAbsorbResist` plus the average-resist
-table, and keep the absorb half separate if the shield aura state is not represented.
+**The resist half is done (D-H21), and the live-shape prediction in the earlier wording was
+wrong — worth keeping.** It claimed a physical-school spell hit would show a resist. It cannot:
+`CalcSpellResistedDamage` returns zero immediately unless the school mask carries magic
+(`Entities/Unit/Unit.cpp:1973-1975`), because physical mitigation is armour. The resistances also
+turned out to live in `creature_template_resistance`, a table the port never read at all — 1,606
+rows across 786 creatures, all of them inert. That whole vertical is now ported, from the query to
+the publication, and the server applies all 1,606 rows live. The roll itself has no live evidence:
+the QA character is a level-2 warrior with no damaging magic, so nothing it can cast reaches the
+roll, and the route is a caster-class QA character rather than another fixture.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** provision a
+caster-class QA character, then take the live evidence three closed entries are now waiting on.
+D-H20's spell critical, D-H21's resist roll and D-H3's remaining absorb stage all need a player
+who can cast damaging magic, and none of them can be reached by a fixture on the warrior: the crit
+needs a caster-side percentage it does not have, and the resist needs a magic school it cannot
+produce. The bot already creates characters (`--create-character`), so the work is a mage or priest
+on the QA account, its starting spell in the spellbook, and one cast at a creature with a known
+resistance row — after which all three entries can be settled from the same session instead of
+each waiting separately. The absorb stage itself stays scoped behind that, since asserting it needs
+a victim shield the port represents only for the session's own player.
 
 ## 1. Direction from here
 

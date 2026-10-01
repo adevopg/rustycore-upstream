@@ -3556,6 +3556,7 @@ fn creature_template_lifecycle_store_for_test(
             string_id: String::new(),
             regen_health: true,
             spells: [0; wow_data::MAX_CREATURE_SPELLS_LIKE_CPP],
+            resistances: [0; 7],
             models: Vec::new(),
         },
     ))

@@ -82,6 +82,7 @@ pub(crate) fn creature_template_lifecycle_record_for_test(
         regen_health: true,
         spells: [0; MAX_CREATURE_SPELLS_LIKE_CPP],
         models: Vec::new(),
+        resistances: [0; 7],
     }
 }
 

@@ -157,6 +157,32 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**Creature resistances were in the database and nowhere else; spells are resisted now (D-H21).**
+The installed world database has 1,606 `creature_template_resistance` rows across 786 creatures —
+the Kobold Miners in Elwynn carry 21 fire resistance — and none of them was loaded: no query, no
+store, no field on the template record, no value on the live creature, and no equivalent of
+`Unit::CalcSpellResistedDamage`. Every spell hit landed in full and the combat log always said
+`resisted = 0`.
+
+The chain is ported in the layer that owns each part: the apply-onto-loaded-templates step C++
+uses rather than a second store, the spawn seeding `Creature::UpdateEntry` does, the
+`GetResistance(mask)` rule that returns the **smallest** resistance among the mask's schools, the
+average-reduction formula with its level floor of 20 and its level-83 boss constant, and the
+eleven-bucket discrete table with its `rand_norm()` draw.
+
+One wire detail is worth keeping because it reads like a bug: the two resist `HitInfo` bits are
+`0x80` and `0x100`, and C++ writes that field in **seven bits**, so it sets them and then
+truncates them off the packet. The client learns of a resist from the `Resisted` field. This port
+now does the same, and the scenario asserts the truncation instead of a flag the target build
+never sends.
+
+Live evidence covers the data path only, and the entry says so: **1,606 of 1,606 rows applied**
+against 30,018 templates, with a melee kill in the same session still paying 44 XP, 12 copper and
+a looted item — the regression that matters, since every spawn now seeds resistances. The resist
+roll has **no** live evidence, because resistance applies to magic schools and the QA character is
+a level-2 warrior with no damaging magic; the route is a caster-class QA character, not another
+fixture on this one. What remains of D-H3 after this is the absorb shields.
+
 **Spell hits can crit now, and two HIGH combat entries turned out to be stale records
 (D-H20, D-H1/D-H2).** The plan's next responsibility was to contrast the three open HIGH combat
 notes against current code before implementing any of them, and that was the right order: D-H1

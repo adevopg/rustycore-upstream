@@ -62,6 +62,11 @@ pub struct Creature {
     pub(super) spell_focus: CreatureSpellFocusStateLikeCpp,
     pub(super) combat_log_stats: CreatureCombatLogStatsLikeCpp,
     pub(super) avoidance_like_cpp: CreatureAvoidanceLikeCpp,
+    /// C++ `Unit::GetResistance(SpellSchools)` for this creature: the
+    /// `UNIT_MOD_RESISTANCE_*` base values `Creature::UpdateEntry` seeds from
+    /// `CreatureTemplate::resistance` (`Entities/Creature/Creature.cpp:694-699`).
+    /// Index zero is physical and stays zero, because armour owns it.
+    pub(super) resistances_like_cpp: [i32; 7],
     /// Monotonic identity for the creature loot-producing lifetime. Async
     /// `Unit::Kill` generation captures this value and may install its pools
     /// only while the same death lifetime is still current. Corpse removal

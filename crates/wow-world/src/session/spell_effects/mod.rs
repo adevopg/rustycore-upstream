@@ -17,7 +17,10 @@ mod execution;
 pub(in crate::session) use execution::weapon_damage_effect_amount_like_cpp;
 mod execution_overloads;
 mod spell_crit;
+mod spell_resist;
 #[cfg(test)]
 pub(in crate::session) use spell_crit::PinnedSpellCritRollLikeCpp;
+#[cfg(test)]
+pub(in crate::session) use spell_resist::PinnedResistRollLikeCpp;
 mod threat;
 mod ticks;
