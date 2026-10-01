@@ -9,7 +9,7 @@ use super::creature_melee_sync::{
 use super::*;
 
 /// C++ `Unit::CalcAbsorbResist`'s represented stages for a player victim
-/// (`Unit.cpp:1789-1930`), committed inside the same map-owned phase as the
+/// (`Unit.cpp:2080-2250`), committed inside the same map-owned phase as the
 /// victim's health write: the school-absorb loop, then the mana-shield loop.
 ///
 /// C++ spends each shield effect's amount and the mana-shield drain while it
@@ -59,7 +59,7 @@ fn apply_melee_absorb_to_canonical_player_like_cpp(
         difficulty_store,
         school_mask,
     );
-    let absorb = crate::session_rules::represented_melee_absorb_like_cpp(
+    let absorb = crate::session_rules::represented_school_absorb_like_cpp(
         &shields,
         damage,
         ignore_absorb_pct,
@@ -77,7 +77,7 @@ fn apply_melee_absorb_to_canonical_player_like_cpp(
     }
 
     // C++ runs the mana-shield loop after the school-absorb loop
-    // (`Unit.cpp:1886-1930`) over the damage the school shields left.
+    // (`Unit.cpp:2179-2248`) over the damage the school shields left.
     let mana_shields = crate::session_rules::player_mana_shields_like_cpp(
         &auras,
         spell_store,
@@ -89,7 +89,7 @@ fn apply_melee_absorb_to_canonical_player_like_cpp(
         .unit()
         .get_power(wow_constants::PowerType::Mana)
         .max(0);
-    let mana_absorb = crate::session_rules::represented_melee_mana_absorb_like_cpp(
+    let mana_absorb = crate::session_rules::represented_mana_shield_absorb_like_cpp(
         &mana_shields,
         absorb.damage,
         mana_before as u32,
@@ -176,7 +176,7 @@ fn apply_melee_absorb_to_canonical_creature_like_cpp(
         difficulty_store,
         school_mask,
     );
-    let absorb = crate::session_rules::represented_melee_absorb_like_cpp(
+    let absorb = crate::session_rules::represented_school_absorb_like_cpp(
         &shields,
         damage,
         ignore_absorb_pct,
@@ -1108,7 +1108,7 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
                                 spell_store,
                                 map_difficulty_id,
                                 config.difficulty_store.as_deref(),
-                                crate::session_rules::represented_melee_ignore_absorb_like_cpp(
+                                crate::session_rules::represented_ignore_absorb_pct_like_cpp(
                                     &attacker_effects,
                                     0x01,
                                 ),
@@ -1484,7 +1484,7 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
                                 spell_store,
                                 map_difficulty_id,
                                 config.difficulty_store.as_deref(),
-                                crate::session_rules::represented_melee_ignore_absorb_like_cpp(
+                                crate::session_rules::represented_ignore_absorb_pct_like_cpp(
                                     &attacker_effects,
                                     0x01,
                                 ),

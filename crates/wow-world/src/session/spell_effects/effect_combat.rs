@@ -81,7 +81,7 @@ impl WorldSession {
         // Si target es el mismo jugador
         if target_guid == player_guid {
             // C++ `Unit::HealBySpell` runs `CalcHealAbsorb` before `DealHeal`
-            // (`Unit.cpp:6557-6562`, `2020-2084`), so the heal the target
+            // (`Unit.cpp:7079-7086`, `2360-2426`), so the heal the target
             // receives is what the heal-absorb shields left.
             let (heal_amount, absorbed) =
                 self.apply_owned_player_heal_absorb_like_cpp(spell_id, healer_guid, heal_amount);
@@ -211,7 +211,7 @@ impl WorldSession {
         });
     }
 
-    /// C++ `Unit::CalcHealAbsorb` (`Unit.cpp:2020-2084`) for the session's own
+    /// C++ `Unit::CalcHealAbsorb` (`Unit.cpp:2360-2426`) for the session's own
     /// player target: every `SPELL_AURA_SCHOOL_HEAL_ABSORB` whose `MiscValue`
     /// covers the heal's school spends its amount before the heal lands,
     /// publishes one `SMSG_SPELL_HEAL_ABSORB_LOG` per consuming shield and is
@@ -277,7 +277,7 @@ impl WorldSession {
                 && consumption.consumed > 0
             {
                 // C++ `healInfo.GetTarget()->SendMessageToSet(absorbLog.Write(), true)`
-                // (`Unit.cpp:2070-2083`); the represented rail is session-local.
+                // (`Unit.cpp:2410-2424`); the represented rail is session-local.
                 self.send_packet(&wow_packet::packets::combat::SpellHealAbsorbLog {
                     target: victim_guid,
                     absorb_caster,

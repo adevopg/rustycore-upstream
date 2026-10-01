@@ -793,7 +793,7 @@ pub(crate) fn melee_damage_taken_apply_like_cpp(
     (((damage as i32 + taken.flat) as f32) * taken.pct).max(0.0) as u32
 }
 
-/// `Trinity::AbsorbAuraOrderPred`'s rank (`SpellAuraEffects.h:365-407`).
+/// `Trinity::AbsorbAuraOrderPred`'s rank (`SpellAuraEffects.h:333-374`).
 ///
 /// C++ sorts the victim's school-absorb effects so Fel Blossom (`28527`), the
 /// Ice Barrier category (`471`) and Sacrifice (`7812`) are spent first, while
@@ -839,7 +839,7 @@ pub(crate) struct RepresentedAbsorbConsumptionLikeCpp {
 
 /// C++ `Unit::CalcAbsorbResist`'s school-absorb result for one hit.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct RepresentedMeleeAbsorbLikeCpp {
+pub(crate) struct RepresentedSchoolAbsorbLikeCpp {
     /// C++ `DamageInfo::GetAbsorb()`.
     pub absorbed: u32,
     /// C++ `DamageInfo::GetDamage()` after the shields were spent.
@@ -848,8 +848,10 @@ pub(crate) struct RepresentedMeleeAbsorbLikeCpp {
     pub consumed: Vec<RepresentedAbsorbConsumptionLikeCpp>,
 }
 
-/// C++ `Unit::CalcAbsorbResist`'s school-absorb loop
-/// (`Unit.cpp:1791-1880`) for one physical melee hit.
+/// C++ `Unit::CalcAbsorbResist`'s school-absorb loop (`Unit.cpp:2114-2178`).
+///
+/// C++ runs the same loop for every hit, so both the represented melee swing
+/// and the represented spell hit are its callers.
 ///
 /// The incoming damage is offered to each shield in
 /// `Trinity::AbsorbAuraOrderPred` order. A negative amount is an infinite
@@ -864,10 +866,10 @@ pub(crate) struct RepresentedMeleeAbsorbLikeCpp {
 /// path does not own, and `Unit::CalcSpellResistedDamage` returns zero for a
 /// non-magic school mask (`Unit.cpp:2058-2060`), so physical melee never resists.
 /// C++ `Unit::CalcAbsorbResist`'s `auraAbsorbMod`
-/// (`Unit.cpp:1803-1811`): the attacker's
+/// (`Unit.cpp:2086-2106`): the attacker's
 /// `GetMaxPositiveAuraModifierByMiscMask(SPELL_AURA_MOD_TARGET_ABSORB_SCHOOL,
 /// schoolMask)` clamped to `[0, 100]`.
-pub(crate) fn represented_melee_ignore_absorb_like_cpp(
+pub(crate) fn represented_ignore_absorb_pct_like_cpp(
     attacker_effects: &[crate::session_rules::AppliedAuraEffectLikeCpp],
     school_mask: u32,
 ) -> f32 {
@@ -884,19 +886,19 @@ pub(crate) fn represented_melee_ignore_absorb_like_cpp(
 
 /// C++ `CalculatePct(damage, auraAbsorbMod)`: the damage portion the attacker's
 /// ignore-absorb modifier removes from what a shield may take.
-pub(crate) fn represented_melee_ignored_absorb_amount_like_cpp(damage: u32, pct: f32) -> u32 {
+pub(crate) fn represented_ignored_absorb_amount_like_cpp(damage: u32, pct: f32) -> u32 {
     if pct <= 0.0 {
         return 0;
     }
     ((damage as f32) * pct / 100.0) as u32
 }
 
-pub(crate) fn represented_melee_absorb_like_cpp(
+pub(crate) fn represented_school_absorb_like_cpp(
     shields: &[crate::session_rules::RepresentedAbsorbShieldLikeCpp],
     damage: u32,
     ignore_absorb_pct: f32,
-) -> RepresentedMeleeAbsorbLikeCpp {
-    let mut result = RepresentedMeleeAbsorbLikeCpp {
+) -> RepresentedSchoolAbsorbLikeCpp {
+    let mut result = RepresentedSchoolAbsorbLikeCpp {
         absorbed: 0,
         damage,
         consumed: Vec::new(),
@@ -904,7 +906,7 @@ pub(crate) fn represented_melee_absorb_like_cpp(
     if damage == 0 || shields.is_empty() {
         return result;
     }
-    let ignore = represented_melee_ignored_absorb_amount_like_cpp(damage, ignore_absorb_pct);
+    let ignore = represented_ignored_absorb_amount_like_cpp(damage, ignore_absorb_pct);
     let mut ordered: Vec<&crate::session_rules::RepresentedAbsorbShieldLikeCpp> =
         shields.iter().collect();
     ordered.sort_by_key(|shield| represented_absorb_priority_like_cpp(shield));
@@ -967,7 +969,7 @@ pub(crate) struct RepresentedManaShieldConsumptionLikeCpp {
 
 /// C++ `Unit::CalcAbsorbResist`'s mana-shield result for one hit.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct RepresentedMeleeManaAbsorbLikeCpp {
+pub(crate) struct RepresentedManaShieldAbsorbLikeCpp {
     /// C++ `DamageInfo::GetAbsorb()` after the mana scaling.
     pub absorbed: u32,
     /// C++ `DamageInfo::GetDamage()` after the shields were spent.
@@ -978,8 +980,8 @@ pub(crate) struct RepresentedMeleeManaAbsorbLikeCpp {
     pub consumed: Vec<RepresentedManaShieldConsumptionLikeCpp>,
 }
 
-/// C++ `Unit::CalcAbsorbResist`'s mana-shield loop (`Unit.cpp:1886-1930`) for
-/// one physical melee hit.
+/// C++ `Unit::CalcAbsorbResist`'s mana-shield loop (`Unit.cpp:2179-2248`),
+/// which runs after the school-absorb loop over the damage it left.
 ///
 /// Each shield's amount caps the damage it may take, the drain is
 /// `amount * SpellEffectInfo::CalcValueMultiplier` (the data `Amplitude`), and
@@ -992,13 +994,13 @@ pub(crate) struct RepresentedMeleeManaAbsorbLikeCpp {
 /// `CalcValueMultiplier` stay unrepresented (`mana_multiplier` is the data
 /// amplitude alone), and a zero drain resolves to no absorb instead of C++'s
 /// `0 / 0` float division.
-pub(crate) fn represented_melee_mana_absorb_like_cpp(
+pub(crate) fn represented_mana_shield_absorb_like_cpp(
     shields: &[crate::session_rules::RepresentedManaShieldLikeCpp],
     damage: u32,
     available_mana: u32,
     ignore_absorb_pct: f32,
-) -> RepresentedMeleeManaAbsorbLikeCpp {
-    let mut result = RepresentedMeleeManaAbsorbLikeCpp {
+) -> RepresentedManaShieldAbsorbLikeCpp {
+    let mut result = RepresentedManaShieldAbsorbLikeCpp {
         absorbed: 0,
         damage,
         mana_spent: 0,
@@ -1007,7 +1009,7 @@ pub(crate) fn represented_melee_mana_absorb_like_cpp(
     if damage == 0 || shields.is_empty() {
         return result;
     }
-    let ignore = represented_melee_ignored_absorb_amount_like_cpp(damage, ignore_absorb_pct);
+    let ignore = represented_ignored_absorb_amount_like_cpp(damage, ignore_absorb_pct);
     let mut remaining_damage = damage;
     let mut remaining_mana = available_mana;
     for shield in shields {
@@ -1081,7 +1083,7 @@ pub(crate) struct RepresentedHealAbsorbLikeCpp {
     pub consumed: Vec<RepresentedAbsorbConsumptionLikeCpp>,
 }
 
-/// C++ `Unit::CalcHealAbsorb`'s loop (`Unit.cpp:2026-2068`) for one heal.
+/// C++ `Unit::CalcHealAbsorb`'s loop (`Unit.cpp:2365-2425`) for one heal.
 ///
 /// Each heal-absorb shield's amount is clamped to the heal left, an
 /// amount-counting shield is depleted and removed at zero, and a negative
