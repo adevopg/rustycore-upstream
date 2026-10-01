@@ -752,11 +752,14 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   `getPhysicalCritChance` (`:7729-7736`). A patched region is not parity evidence for this build,
   so the unpatched shape is what was ported, and the exclusion is recorded at the rule.
 
-  **No live evidence, and that is stated rather than implied.** Forcing a crit live needs either
-  a repeated-cast campaign against a ~5% chance or a sitting *player* victim, and the QA
-  character is a warrior with no damaging magic spell. The deterministic scenario pins C++'s draw
-  instead and asserts both outcomes of the same hit: 100 damage becomes 150 with `flags = 0x02`
-  on the wire, and stays 100 with `flags = 0` when the draw is above the chance.
+  **No live critical has been observed yet, and that is stated rather than implied.** The
+  caster-class QA character now exists and its casts are proven live — see D-H21 — but the one
+  captured cast published `flags = 0x00`, which is a non-critical hit at a level-20 mage's few
+  percent. Seeing one needs a sampling run, which the `--spell-damage` mode supports and this host
+  does not sustain yet: only the first cast of a session reliably completes while the world pass
+  runs past its deadline, a condition that predates this work. The deterministic scenario pins
+  C++'s draw instead and asserts both outcomes of the same hit: 100 damage becomes 150 with
+  `flags = 0x02`, and stays 100 with `flags = 0` when the draw is above the chance.
 - [x] **D-H4 Quest kill-credit — verified working on a live kill, 2026-10-01.** The contested
   reading is settled in favour of "monster kills advance". Quest 14106 was seeded as
   incomplete for the QA character (a fixture: the bot cannot take a quest from an NPC yet),
@@ -1127,12 +1130,36 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   kill in the same session still paid 44 XP, 12 copper and a looted item, which is the regression
   that matters because every creature spawn now seeds resistances.
 
-  **The resist roll itself has no live evidence**, and that needs stating precisely rather than
-  implied: resistance applies to magic schools only, and the QA character is a level-2 warrior
-  with no damaging magic spell, so no cast it can make reaches the roll. The route to live
-  evidence is a caster-class QA character, not another fixture on this one. Both outcomes are
-  pinned deterministically in scenarios instead — half the damage resisted at an average of
-  `100/(100+100)`, and nothing resisted without a resistance row.
+  **The resist roll is proven live as of 2026-10-01**, on the caster-class character the plan
+  called for rather than another fixture on the warrior. A human mage was provisioned on the QA
+  account, and one Fireball at a Kobold Tunneler — entry 475, which carries 21 fire resistance in
+  `creature_template_resistance` — published
+  `damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00`. That is the formula
+  exactly: the average reduction is `21 / (21 + 100) = 0.174`, whose discrete table puts the
+  weight on the one- and two-tenth buckets, and `13 * 2/10` truncates to the published 2. The
+  server's own trace for the same cast reads `Dealt damage to creature ... damage=11`. The scenario
+  tests keep both pinned outcomes beside it. Reproduce with
+  `--spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6 --spell-damage-casts 1`.
+
+- [ ] **D-H22 A newly created character has an empty spellbook.** Found 2026-10-01 while
+  provisioning the caster the three spell entries needed. `CMSG_CREATE_CHARACTER` writes the
+  `characters` row correctly — a human mage came back `race=1 class=8 level=1 at_login=32` and
+  logged in cleanly — but `character_spell` has **zero** rows for it, so the character knows
+  nothing and `Spell::CheckCast` refuses every cast with `SPELL_FAILED_NOT_KNOWN`.
+
+  C++ `Player::Create` ends in `LearnDefaultSkills`, which walks the character's
+  `SkillLineAbility` rows and learns each one whose `AcquireMethod` is
+  `SKILL_LINE_ABILITY_LEARNED_ON_SKILL_LEARN`, then `LearnDefaultSkill` grants the spells that
+  come with each skill. The server log shows the port reaching the same place with nothing to do:
+  `Applied C++ LearnDefaultSkills and LearnSkillRewardedSpells ... loaded_skill_count=11
+  default_skill_count=0 default_dependent_spell_count=0`. `playercreateinfo_spell_custom` is empty
+  on this installation, which is correct for 3.4.3 — the data is in DB2, not SQL — so the gap is
+  the DB2 side of that walk, not a missing table.
+
+  Scope note for whoever takes it: `playercreateinfo_action` does carry the starting action bar
+  (a human mage's button 0 is spell 116, Frostbolt), so the action-bar half has data to check
+  against. Until then, the `--spell-damage` live mode seeds the one spell row it needs and says
+  so in its output.
 
 ## MED — wrong values / loose checks / minor loss
 

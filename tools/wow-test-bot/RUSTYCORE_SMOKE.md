@@ -187,6 +187,72 @@ This mode writes: it clears and seeds both aura tables for the QA character and 
 one a previous run left dead. The rows after the run are left as the server wrote them,
 because they are the evidence.
 
+## Player spell damage, criticals and resists — live and mutating
+
+`--spell-damage` is the mode three closed entries were waiting on. A spell critical
+needs a caster-side percentage (`Unit::SpellCritChanceDone`, `Unit.cpp:7706-7772`)
+and a spell resist needs a magic school (`Unit::CalcSpellResistedDamage`,
+`:1973-1975`), so **neither can be reached with a warrior**, however it is
+fixtured. The mode drives a caster-class character and reports every published
+field of every cast, drawing no conclusion in the harness.
+
+Provision the caster once:
+
+```bash
+set -a; . ./.env.local; set +a
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --create-character-name Rustymage --create-character-race 1 --create-character-class 8
+```
+
+That character starts with an **empty spellbook**: this port does not yet grant
+starting spells on creation, which C++ `Player::LearnDefaultSkills` does from
+`SkillLineAbility`. The mode therefore seeds the one spell row it needs, the same
+class of fixture the quest and aura modes use, and says whether it seeded it or
+found it already known. A level-1 caster also has the mana for only a couple of
+casts, so a `characters.level` fixture is worth applying by hand for a longer
+sequence.
+
+```bash
+cargo run -- --config config.json --single TESTBOT1@bot.local \
+  --spell-damage 133 --spell-damage-entry 475 --spell-damage-character 6 --spell-damage-casts 1
+```
+
+The sequence is `resolve the spawn from world.creature -> seed the spellbook row and
+stand 12 yards off -> login -> CMSG_MOVE_INIT_ACTIVE_MOVER_COMPLETE -> read the
+CREATE block for the runtime ObjectGuid -> CMSG_CAST_SPELL -> record every
+SMSG_SPELL_NON_MELEE_DAMAGE_LOG -> clean logout -> restore the position`. A run
+fails if the server published no damage log at all.
+
+Reference run, Fireball (133) at a Kobold Tunneler (entry 475, 21 fire resistance
+in `creature_template_resistance`):
+`cast 1: damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00`.
+The average reduction is `21 / (21 + 100) = 0.17`, whose discrete table puts the
+weight on the one- and two-tenth buckets, and `13 * 2/10` truncates to the 2 the
+server published. `flags` stays zero for a non-critical hit, and it stays zero for
+a critical resist too: C++ writes that field in **seven bits**
+(`CombatLogPackets.cpp:39`) while `HITINFO_*_RESIST` are `0x80` and `0x100`, so the
+client learns of a resist from `Resisted` and never from the flags.
+
+Two things to know before reading a zero-log run as a defect:
+
+* **the target must be alive and in range.** A previous run can leave the nearest
+  spawn of that entry dead, and `--spell-damage-entry` then resolves to a corpse:
+  the casts complete and deal nothing. Pass a different entry or wait for the
+  respawn.
+* **only the first cast of a session reliably completes** while the world pass is
+  past its deadline, which this host logs continuously and did before this mode
+  existed. Prefer `--spell-damage-casts 1` on a freshly started server for exact
+  evidence, and treat a longer sequence as a sampling run.
+
+`WOW_BOT_SPELL_DAMAGE_TRACE=1` logs every opcode on both sockets, which is how the
+`SMSG_SPELL_START` / `SMSG_SPELL_GO` / `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` order above
+was established.
+
+This mode writes: it seeds one `character_spell` row, restores a character a
+previous run left dead, and moves the character beside the spawn. The position is
+restored whether the run passes or fails; the spellbook row is left, because it is
+what makes a repeat run cheap.
+
 ## The death exit — live and mutating
 
 `--death-smoke` drives the whole corpse circuit and reports what the server

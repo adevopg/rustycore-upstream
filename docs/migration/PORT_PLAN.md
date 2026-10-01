@@ -157,16 +157,30 @@ the publication, and the server applies all 1,606 rows live. The roll itself has
 the QA character is a level-2 warrior with no damaging magic, so nothing it can cast reaches the
 roll, and the route is a caster-class QA character rather than another fixture.
 
-**Next prepared responsibility, selected by evidence rather than by document order:** provision a
-caster-class QA character, then take the live evidence three closed entries are now waiting on.
-D-H20's spell critical, D-H21's resist roll and D-H3's remaining absorb stage all need a player
-who can cast damaging magic, and none of them can be reached by a fixture on the warrior: the crit
-needs a caster-side percentage it does not have, and the resist needs a magic school it cannot
-produce. The bot already creates characters (`--create-character`), so the work is a mage or priest
-on the QA account, its starting spell in the spellbook, and one cast at a creature with a known
-resistance row — after which all three entries can be settled from the same session instead of
-each waiting separately. The absorb stage itself stays scoped behind that, since asserting it needs
-a victim shield the port represents only for the session's own player.
+**That is done: the caster exists and the resist roll is proven live.** A human mage was created
+through the ordinary `CMSG_CREATE_CHARACTER` path, and the new `--spell-damage` bot mode captured
+`damage=11 original=13 resisted=2 school=0x04` for one Fireball at a creature with 21 fire
+resistance — the C++ formula to the truncated point. D-H21's roll is settled. D-H20's critical is
+not: the captured cast was a normal hit, and seeing a critical needs a sampling run this host does
+not sustain yet.
+
+**Next prepared responsibility, selected by evidence rather than by document order:** the empty
+spellbook a newly created character gets, recorded as **D-H22**. It was found while provisioning
+that caster and it is a blocker in its own right: `CMSG_CREATE_CHARACTER` writes a correct
+`characters` row, but `character_spell` has **no** rows, so the character knows nothing and every
+cast is refused as unknown. C++ `Player::Create` ends in `LearnDefaultSkills`, which walks the
+character's `SkillLineAbility` rows and learns each one marked learned-on-skill-learn, then grants
+each skill's spells; the port reaches the same place with nothing to do
+(`default_skill_count=0`), and `playercreateinfo_spell_custom` is empty because in 3.4.3 the data
+is in DB2 rather than SQL. So the work is the DB2 side of that walk, with
+`playercreateinfo_action`'s starting action bar as the cross-check. It unblocks every caster
+scenario — including D-H20's critical — without another fixture, and it is what a real first login
+needs before anything else in the class lane.
+
+Two conditions found during that run belong with it rather than inside it: **only the first cast of
+a session reliably completes** while the world pass runs past its deadline, which this host has
+logged continuously since before this work and which the runtime track owns; and a live cast needs
+an **alive** target, because a previous run can leave the nearest spawn of that entry dead.
 
 ## 1. Direction from here
 

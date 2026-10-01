@@ -32,6 +32,7 @@ mod runtime_3;
 mod runtime_4;
 mod social;
 mod spell;
+mod spell_damage_smoke;
 mod sql_fixtures;
 mod void_storage_1;
 mod void_storage_2;
@@ -90,6 +91,7 @@ pub(crate) use runtime_4::*;
 pub(crate) use social::*;
 #[allow(unused_imports)]
 pub(crate) use spell::*;
+pub(crate) use spell_damage_smoke::*;
 #[allow(unused_imports)]
 pub(crate) use sql_fixtures::*;
 #[allow(unused_imports)]

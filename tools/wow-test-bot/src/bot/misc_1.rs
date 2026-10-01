@@ -10,6 +10,12 @@ pub(crate) const SMSG_STAND_STATE_UPDATE: u16 = 0x271C;
 pub(crate) const CMSG_PING: u16 = 0x3768;
 pub(crate) const SMSG_PONG: u16 = 0x304E;
 pub(crate) const SMSG_UPDATE_OBJECT: u16 = 0x27CB;
+/// C++ `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` (`wow-constants/src/opcodes/server.rs`).
+pub(crate) const SMSG_SPELL_NON_MELEE_DAMAGE_LOG: u16 = 0x2C2F;
+/// C++ `SMSG_CAST_FAILED`, the client-facing refusal of a cast request.
+pub(crate) const SMSG_CAST_FAILED: u16 = 0x2C54;
+/// C++ `SMSG_SPELL_FAILURE`, the broadcast failure of an in-progress cast.
+pub(crate) const SMSG_SPELL_FAILURE: u16 = 0x2C50;
 pub(crate) const SMSG_AURA_UPDATE: u16 = 0x2C1F;
 pub(crate) const SMSG_SEND_KNOWN_SPELLS: u16 = 0x2C27;
 pub(crate) const SMSG_TIME_SYNC_REQUEST: u16 = 0x2DD2;

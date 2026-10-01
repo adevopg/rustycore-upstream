@@ -157,6 +157,24 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**There is a caster on the QA account now, and the spell resist is proven live.** The plan's step
+was to provision a caster-class character because neither a spell critical nor a spell resist can
+be reached with a warrior — the first needs a caster-side percentage it does not have, the second a
+magic school it cannot produce. A human mage was created through the ordinary
+`CMSG_CREATE_CHARACTER` path and one Fireball at a Kobold Tunneler, which carries 21 fire
+resistance, published `damage=11 original=13 resisted=2 absorbed=0 school=0x04 flags=0x00`. That is
+the C++ formula exactly: `21 / (21 + 100) = 0.174` average, whose table weights the one- and
+two-tenth buckets, and `13 * 2/10` truncates to the published 2. The new `--spell-damage` bot mode
+drives it and reports every published field without drawing a conclusion.
+
+Two things that run found and the entries now record. **A newly created character has an empty
+spellbook** (D-H22): the `characters` row is right but `character_spell` has no rows, because the
+DB2 side of C++ `Player::LearnDefaultSkills` is not walked, so the character knows nothing and
+every cast is refused as unknown. And **only the first cast of a session reliably completes** while
+the world pass runs past its deadline — a condition this host logs continuously and did before any
+of this work — so the critical still has no live sighting: the one captured cast was a normal hit.
+The mode's reference run is therefore a single cast on a freshly started server.
+
 **Creature resistances were in the database and nowhere else; spells are resisted now (D-H21).**
 The installed world database has 1,606 `creature_template_resistance` rows across 786 creatures —
 the Kobold Miners in Elwynn carry 21 fire resistance — and none of them was loaded: no query, no
