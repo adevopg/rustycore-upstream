@@ -248,8 +248,8 @@ impl PlayerCreateData {
         // two agree. A scaled player would need the entity's own values here;
         // `PlayerCreateData` does not carry them yet, and no RustyCore path
         // scales a player.
-        buf.write_float(DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP); // BoundingRadius
-        buf.write_float(DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP); // CombatReach
+        buf.write_float(wow_constants::object::DEFAULT_PLAYER_BOUNDING_RADIUS_LIKE_CPP);
+        buf.write_float(wow_constants::object::DEFAULT_PLAYER_COMBAT_REACH_LIKE_CPP);
         buf.write_float(1.0); // DisplayScale
 
         // NativeDisplayID, NativeXDisplayScale, MountDisplayID

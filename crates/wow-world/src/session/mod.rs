@@ -628,10 +628,7 @@ pub struct AreaTriggerCatalogsLikeCpp {
     pub destinations: Arc<AreaTriggerStore>,
     pub scripts: Arc<AreaTriggerScriptStoreLikeCpp>,
     pub taverns: Arc<TavernAreaTriggerStoreLikeCpp>,
-    /// C++ `ObjectMgr::mQuestAreaTriggerStore`, read by
-    /// `HandleAreaTriggerOpcode` through `GetQuestsForAreaTrigger`
-    /// (`Handlers/MiscHandler.cpp:534`).
-    pub quest_relations: Arc<wow_data::QuestAreaTriggerStoreLikeCpp>,
+    pub quest_relations: Arc<wow_data::QuestAreaTriggerStoreLikeCpp>, // MiscHandler.cpp:534
     pub script_dispatcher: Option<AreaTriggerScriptDispatcherLikeCpp>,
 }
 
@@ -9212,15 +9209,7 @@ impl WorldSession {
         let bootstrap_phase_shift = self.represented_player_phase_shift.clone();
         *player.unit_mut().world_mut().phase_shift_mut() = bootstrap_phase_shift;
         player.unit_mut().world_mut().object_mut().add_to_world();
-        // C++ `Player::LoadFromDB` calls `SetObjectScale(1.0f)`
-        // (`Entities/Player/Player.cpp:17645`), as `Player::Create` does at
-        // `:439`. That is the only writer of the player's `BoundingRadius` and
-        // `CombatReach`, and every server-side distance check reads them:
-        // `Unit::GetMeleeRange`, `Unit::IsWithinBoundaryRadius` and
-        // `WorldObject::_IsWithinDist`'s combat-reach term all do. Without it
-        // the fields stayed at zero while the CREATE packet sent the correct
-        // literals, so the client and the server disagreed about every reach.
-        player.set_object_scale_like_cpp(1.0);
+        player.set_object_scale_like_cpp(1.0); // C++ Player::LoadFromDB, Player.cpp:17645.
         player.set_race_class_gender(
             self.player_race_like_cpp(),
             self.player_class_like_cpp(),

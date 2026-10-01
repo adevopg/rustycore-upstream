@@ -2615,36 +2615,13 @@ async fn run_inner(
             .await
             .context("Failed to load quest store")?,
     );
-    // C++ `ObjectMgr::LoadQuestAreaTriggers` runs after `LoadQuests` because it
-    // validates every `areatrigger_involvedrelation` row against the quest store
-    // (`Globals/ObjectMgr.cpp:6470-6532`).
-    let quest_area_trigger_outcome =
+    let quest_area_trigger_store =
         crate::area::trigger_world_catalog::load_quest_area_trigger_store_like_cpp(
             &area_trigger_world_persistence,
             area_trigger_db2_store.as_ref(),
             quest_store.as_ref(),
         )
         .await?;
-    let quest_area_trigger_store = Arc::new(quest_area_trigger_outcome.store);
-    info!(
-        "Loaded {} C++ quest area triggers ({} rows seen, {} from relations, {} from objectives; {} skipped missing AreaTrigger.db2, {} skipped missing quest, {} skipped obsolete quest)",
-        quest_area_trigger_store.len(),
-        quest_area_trigger_outcome.report.rows_seen,
-        quest_area_trigger_outcome.report.loaded_from_relation,
-        quest_area_trigger_outcome.report.loaded_from_objectives,
-        quest_area_trigger_outcome
-            .report
-            .skipped_missing_area_trigger
-            .len(),
-        quest_area_trigger_outcome
-            .report
-            .skipped_missing_quest
-            .len(),
-        quest_area_trigger_outcome
-            .report
-            .skipped_obsolete_quest
-            .len(),
-    );
     let lfg_world_catalog_persistence =
         wow_database::MariaDbLfgWorldCatalogPersistenceAdapterLikeCpp::new(Arc::clone(&world_db));
     let lfg_load_outcome = catalogs::lfg_world::load_lfg_dungeon_store_like_cpp(

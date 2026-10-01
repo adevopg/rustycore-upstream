@@ -1039,16 +1039,10 @@ pub(crate) fn run_legacy_player_melee_tick_and_deliver_once_like_cpp(
                 in_combat_reconciles = outcome.in_combat_reconciles,
                 commands = outcome.commands.len(),
                 delivered = delivery.commands_seen,
-                // `delivered` only counts commands this phase handed to the
-                // rail. Whether the session actually received one is the
-                // queue outcome, so report it: a full bounded queue drops the
-                // swing with nothing else to show for it.
+                // `delivered` counts commands handed to the rail; `queued` and
+                // `dropped_durable` say whether the session received one.
                 queued = delivery.candidates_queued,
                 dropped_durable = delivery.candidates_dropped_durable,
-                skipped_missing_attacker = delivery.candidates_skipped_missing_attacker,
-                skipped_not_in_world = delivery.candidates_skipped_not_in_world,
-                skipped_wrong_map = delivery.candidates_skipped_wrong_map,
-                skipped_wrong_instance = delivery.candidates_skipped_wrong_instance,
                 "RUST_PLAYER_MELEE phase"
             );
         }
