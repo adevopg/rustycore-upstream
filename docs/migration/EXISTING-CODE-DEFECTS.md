@@ -1414,8 +1414,23 @@ bulk-closed, retested or reclassified as parity-proven by this planning review.
   end, where a 10-base-point spell with `DieSides 6` and `RealPointsPerLevel 2.0` at level 20 deals
   **52**, not 10. `cargo test -p wow-data --lib` 765 passed; `-p wow-world --lib` 4280 passed; `-p world-server --lib` 607 passed.
 
-  **Not proven live.** The next `--spell-damage` sampling run should now show a *range* of
-  `original_damage` where it showed a constant 13, and that is the acceptance owed.
+  **Proven live on 2026-10-02**, which is what this entry predicted and what the earlier run could not
+  show. Fireball rank 1 against a Kobold Tunneler, QA mage at level 20, server trace at
+  `RUSTYCORE_CALCVALUE_TRACE`:
+
+  ```
+  base_points=13 die_sides=9 real_points_per_level=0.6 base_level=1 max_level=5 spell_level=1 caster_level=20
+  values: 18 18 21 20 16 19 18 19 17 23 23 23 23 17 20 23
+  ```
+
+  Sixteen executions, every value in `[16, 23]`, where the same spell produced a constant **13** before
+  the fix. The band is the arithmetic exactly: the caster's level 20 clamps to `MaxLevel 5`, minus
+  `max(BaseLevel 1, SpellLevel 1)` leaves 4 steps of `0.6` truncated to 2, so `13 + 2 = 15` plus
+  `irand(1, 9)` is 16 to 24. Three of the casts reached the creature before it died, for 15, 15 and 19
+  damage after the resist; the rest hit a corpse, which C++ refuses too.
+
+  The trace that produced this is kept at `debug!`: it is the only place a spell value's inputs are all
+  visible at once, and separating the level term from the die roll needed exactly that.
 
 ## MED — wrong values / loose checks / minor loss
 

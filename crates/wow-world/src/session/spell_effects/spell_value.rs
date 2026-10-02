@@ -41,7 +41,7 @@ impl WorldSession {
                 )
             })
             .unwrap_or_default();
-        effect.calc_value_with_caster_and_die_roll_like_cpp(
+        let value = effect.calc_value_with_caster_and_die_roll_like_cpp(
             levels,
             Some(wow_data::spell::CalcValueCasterLikeCpp {
                 level: u32::from(self.player_level_like_cpp()),
@@ -51,7 +51,25 @@ impl WorldSession {
             }),
             None,
             represented_calc_value_die_roll_like_cpp,
-        )
+        );
+        // Kept at debug: it is the only place the inputs of a spell's value are
+        // all visible at once, and the live run that proved D-H26 read exactly
+        // these lines to separate the level term from the die roll.
+        tracing::debug!(
+            target: "RUSTYCORE_CALCVALUE_TRACE",
+            spell_id,
+            effect_index = effect.effect_index,
+            base_points = effect.effect_base_points,
+            die_sides = effect.effect_die_sides,
+            real_points_per_level = effect.effect_real_points_per_level,
+            base_level = levels.base_level,
+            max_level = levels.max_level,
+            spell_level = levels.spell_level,
+            caster_level = self.player_level_like_cpp(),
+            value,
+            "CalcValue trace"
+        );
+        value
     }
 }
 

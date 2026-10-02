@@ -347,11 +347,33 @@ useful before the one above it, which is why they are not all one commit:
 5. **Live acceptance**, which this macro finally makes reachable: a creature casting a damage spell
    at the QA character, and the same run proves the absorb stage that D-H3 left owed.
 
-Slices 1 to 4 are in: a creature's damage spell now deals damage a client sees. What remains is
-**slice 5, the live acceptance**, which is also what the absorb stage from D-H3 has been owed since
-it landed — a creature casting at the QA character, with a shield on the character for the absorb
-half. The run needs a creature whose template carries a damaging spell in range of a reachable spawn;
-`creature_template.spell1..8` is the column to pick it from.
+Slices 1 to 4 are in: a creature's damage spell now deals damage a client sees. **Slice 5, the live
+run, was attempted on 2026-10-02 and is not reachable with the installed data.** The measurement, so
+nobody repeats it:
+
+* `CombatAI` is never selected by permit — `CombatAI::Permissible` returns `PERMIT_BASE_NO`
+  (`AI/CoreAI/CombatAI.h:49`), which this port matches — so it needs an explicit
+  `creature_template.AIName = 'CombatAI'`, and the installed world DB has **zero** such rows
+  (20,665 empty, 9,326 SmartAI, 18 PassiveAI, 8 NullCreatureAI, 1 TurretAI).
+* That one `TurretAI` is **Scarlet Ballista** (29104), whose spell 53117 is effect 32
+  `SPELL_EFFECT_TRIGGER_MISSILE` with `TargetA = 53` and `TriggerSpell = 53118` — outside the admitted
+  topology by design — and whose 22 spawns are all on map 609, where the QA characters are not.
+* The topology itself is not the obstacle: **471** spells in the installed client data pass the gate
+  (single instant `SPELL_EFFECT_SCHOOL_DAMAGE`, `TargetA = 6`, no TargetB, chain, radius or trigger, no
+  power rows), and creatures on map 0 do carry some of them — `Flamescale Broodling` with 13342 is the
+  nearest at about 951 units from the QA mage. Every one of those is `SmartAI`, whose casting goes
+  through `smart_scripts`, a path this port does not drive at all.
+
+So the live proof needs a decision rather than more code, and it is the user's to make:
+
+1. a scoped, revertible world-DB fixture — set `AIName = 'CombatAI'` on one nearby creature that
+   already carries an admissible spell — which proves the chain exactly as written but writes world
+   data, not the character rows the QA fixtures have used so far; or
+2. widening what the tick drives, which is a macro of its own: `SmartAI` template casting, or the
+   trigger-missile topology the Scarlet Ballista needs.
+
+Until one is chosen, the creature-cast chain and the absorb stage from D-H3 keep their deterministic
+scenarios and their owed live run, stated as owed.
 
 Two boundaries stay recorded rather than closed. The validation still invalidates the creature's
 runtime RNG authority on a HIT, because this slice consumes its own draws without claiming C++'s exact

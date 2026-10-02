@@ -242,6 +242,14 @@ captured non-critical Fireball row read `original_damage = 13`, and the critical
 The missing arms are ported in C++'s order, the two effect columns that were read from DB2 and never
 carried into the runtime effect now are, and `SpellLevels.db2` — loaded and keyed but never reaching
 the spell store — lands in a side table with the spell-hit metadata's difficulty-fallback walk.
+**Proven live on 2026-10-02.** Fireball rank 1, QA mage at level 20, sixteen executions traced at
+`RUSTYCORE_CALCVALUE_TRACE`: `base_points=13 die_sides=9 real_points_per_level=0.6 base_level=1
+max_level=5 spell_level=1`, values `18 18 21 20 16 19 18 19 17 23 23 23 23 17 20 23` — every one in
+`[16, 23]` where the same spell produced a constant **13** before. The band is the arithmetic exactly:
+level 20 clamps to `MaxLevel 5`, minus `max(BaseLevel, SpellLevel)` leaves 4 steps of `0.6` truncated
+to 2, so `13 + 2 = 15` plus `irand(1, 9)`. Three casts reached the creature before it died, for 15, 15
+and 19 after the resist.
+
 The creature-level multiplication went in too, after a correction worth recording: I first wrote it
 off as unreachable, having looked only inside `dbc/<locale>/` and concluded the data shipped no
 GameTable files and the port had no reader. Both were wrong —
