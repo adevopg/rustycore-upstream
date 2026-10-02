@@ -415,10 +415,57 @@ spell. It does not, for two independent reasons:
   in melee range to use it.
 
 So with the installed data the creature-cast damage chain **cannot** be proven live at all, and the
-remaining path is the one the fence itself points at: the melee tick modelling its own draws
-(`RollMeleeOutcomeAgainst` and the later proc/daze draws it skips, `creature_melee_tick.rs:552-557`) so
-the shared-RNG authority survives a swing. That is the #29/#31 melee-parity work, and it is the next
-prepared responsibility.
+remaining path is the one the fence itself points at.
+
+### Analysis of that responsibility before it is decomposed — 2026-10-02
+
+The fence's comment says the bridge "does not model RollMeleeOutcomeAgainst or later proc/daze draws".
+Reading both sides shows the gap is **narrower than that sentence**, and one half of it is already done
+carefully.
+
+**What C++ draws for one creature melee swing against a player**, in order:
+
+1. the weapon damage roll inside `CalculateMeleeDamage`;
+2. `RollMeleeOutcomeAgainst` — exactly **one** `urand(0, 9999)` (`Unit.cpp:2620`);
+3. the outcome switch: no draws (`:1485-1530`);
+4. `CalcAbsorbResist`: no draw for a physical swing, because `CalcSpellResistedDamage` returns zero for
+   a non-magic school and the absorb loops roll nothing;
+5. `DealMeleeDamage`'s daze (`:1789-1810`): `roll_chance_f(chance)`, but **only** when the outcome is
+   CRIT/CRUSHING/NORMAL/GLANCING, the attacker is a creature not controlled by a player, **and**
+   `!victim->HasInArc(M_PI, this)` — a victim facing the attacker is not dazeable, so the common case
+   makes no draw at all;
+6. `ProcSkillsAndAuras`: PPM proc draws, none of which this port represents.
+
+**What the port draws, and from where.** `WorldCreature::roll_damage`
+(`map_manager/combat.rs:402-413`) already draws from the creature's own `runtime_rng_like_cpp` — the
+authority RNG — and even burns one `next_u32()` when `min == max` to keep the position. That is step 1,
+done right. `rolled_melee_outcome_like_cpp` (`session_rules/rules_4.rs:278-292`) draws
+`wow_core::urand_like_cpp(0, 9999)` from the **global** thread RNG instead, so step 2 never advances the
+creature's RNG. That single mismatch is what the blanket invalidation at `creature_melee_tick.rs:557`
+protects against, and it is why a creature that melees can never cast.
+
+**Slices, in dependency order:**
+
+1. **The attack-table draw moves onto the creature's RNG.** Give `WorldCreature` a
+   `random_melee_outcome_roll_like_cpp()` beside `random_creature_spell_hit_roll_like_cpp`, and have the
+   player-victim branch take its roll from there, after the damage roll, in C++'s order. The pin the
+   scenarios rely on has to keep working, so either the pin moves onto the creature or the rules
+   function takes the roll as an argument its owner supplies — the second is the shape every other rule
+   in `session_rules` already uses.
+2. **The daze gate becomes a decision rather than an assumption.** Represent the five conditions at
+   `:1789-1791`, above all `HasInArc(M_PI)` for the victim. When the gate is false C++ makes no draw and
+   the authority is intact; when it is true the swing either makes the draw from the creature's RNG or
+   invalidates, and that choice should be explicit and counted rather than implied.
+3. **Stop invalidating when every represented draw was made in order.** The invalidation becomes
+   conditional on the cases that genuinely cannot be reproduced — a proc-bearing attacker or victim, and
+   any swing that took the compatibility path without a spell store — instead of unconditional.
+4. **The creature-cast live run**, which the spell macro has owed since it landed: with the authority
+   surviving a swing, Thistle Lasher (17343) casting 34644 at the QA character proves the damage chain,
+   and a shield on the character proves D-H3's absorb stage in the same session.
+
+Not started here. Slice 1 changes where a roll comes from for every creature melee swing against a
+player — the one chain this project has already proven live — so it wants its own acceptance run rather
+than being appended to this one.
 
 The filter that finally encodes every gate the tick enforces — instant on every slot, no power cost,
 no casting requirement, no shapeshift mask, `DefenseType = MELEE`, physical school,
