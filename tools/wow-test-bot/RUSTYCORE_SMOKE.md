@@ -424,6 +424,25 @@ The server-side switches that explain a failure are
 `RUSTYCORE_CREATURE_VIS_TRACE=1` (why a creature is or is not visible) and
 `RUSTYCORE_PLAYER_MELEE_TRACE=1` (why a swing did or did not happen).
 
+Two more traces belong to the creature spell chain, and both are env-var gated at
+info like every other trace in this server rather than `target:`-tagged at debug —
+a tagged debug line needs its target named in `RUST_LOG`, which nobody reading this
+file would guess:
+
+* `RUSTYCORE_CREATURE_SPELL_TRACE=1` prints one throttled line per tick that saw a
+  creature — whether or not anything happened — with every gate as a number: `casts_ready`, `spell_hits`,
+  `spell_misses`, `damage_executed`, `damage_unresolved`, `effects_unrepresented`,
+  `noninstant`, `projectiles`, and the range, line-of-sight, target, cooldown,
+  incarnation and casting-requirement rejections. Without it, a creature that never
+  casts is indistinguishable from one the gates refused. It reports on every tick
+  with a creature on purpose: "saw thirty creatures, did nothing, every gate at
+  zero" is the most useful line it can print, and the first version of this trace
+  only spoke when a counter moved, so it stayed silent for exactly that case.
+* `RUSTYCORE_CALCVALUE_TRACE=1` prints the inputs of every spell effect's value:
+  base points, die sides, per-level term, the spell's `SpellLevels` trio, the
+  caster's level and the result. It is what separated the level term from the die
+  roll when D-H26 was proven live.
+
 This mode writes: it moves and saves the character's position, and it puts the
 character in combat. Use it only against authorized test identities.
 

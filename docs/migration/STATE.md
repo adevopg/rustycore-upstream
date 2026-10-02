@@ -157,6 +157,37 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**The creature-cast live run was attempted with a scoped world fixture on 2026-10-02 and is still
+owed; the blocker turned out to be outside the chain, and finding that needed two new traces.**
+
+The fixture: `AIName = 'CombatAI'` on Riverpaw Scout (500), one slot, spell 6660, instant and
+admissible, with the QA mage moved beside a spawn. Both reverted afterwards, with the statements
+written down before they were applied.
+
+What it showed: `creatures_seen=489` and **every gate at zero**, `schedules_initialized` included, so
+the spell tick refused nothing — the CombatAI branch was never entered for that creature. The creature
+never fought back at all, not even with melee, while surviving both Fireballs and living another nine
+seconds. Fireball carries none of the threat-suppressing attributes, so the damage path should have
+entered combat; something between that call and the tick's view of the AI state disagrees. That is the
+next step, and it belongs to the combat-entry path rather than to this macro.
+
+Two traces came out of the attempt and both stay, because each one turned a silent branch into a
+number. `RUSTYCORE_CREATURE_SPELL_TRACE=1` prints one throttled line per tick that saw a creature with
+all twenty gates; `RUSTYCORE_CALCVALUE_TRACE=1` prints the inputs of every spell effect's value. Both
+are env-var gated at info like the melee and visibility traces beside them, documented in
+`RUSTYCORE_SMOKE.md`, and **the first version of the tick trace repeated the very fault it was built to
+expose**: it only spoke when a counter moved, so "saw 489 creatures, did nothing, every gate at zero" —
+the single most useful line it can print — was exactly the case it stayed silent for.
+
+Three dead ends, recorded so they are not re-walked. Flamescale Broodling (7049) has two slots and the
+second is non-instant, which the tick suppresses on purpose; that also corrected the measurement, since
+the 471-spell admissible count looked only at slot zero while the gate requires every slot to be
+instant, leaving 13 candidates on map 0. A `RUST_LOG` filter naming the module cannot enable a
+`target:`-tagged line, which is why the house convention is an env var. And the port's
+`cast_time_ms = max(base, minimum)` diverges from C++ `CalcCastTime`, which never reads `Minimum` — but
+no installed `SpellCastTimes` row has `base == 0` with a non-zero minimum, so it is latent and is **not**
+recorded as a defect.
+
 **A creature's damage spell deals damage now, and the client sees it (slices 3 and 4,
 2026-10-02).** The tick's own comment — "Effect execution is intentionally not invented here:
 damage/heal calculation belongs to M3.2" — is retired for the one effect its topology gate admits. On

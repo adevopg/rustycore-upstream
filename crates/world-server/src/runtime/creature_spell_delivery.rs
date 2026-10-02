@@ -75,6 +75,45 @@ pub(crate) fn run_legacy_creature_spell_tick_and_deliver_once_like_cpp(
         canonical_map_manager,
         config,
     );
+    // Nothing logged the tick's own refusals, which made a creature that never
+    // casts indistinguishable from one the gates rejected.
+    // `RUSTYCORE_CREATURE_SPELL_TRACE=1` turns every gate into a readable number,
+    // in the same env-var-gated, throttled shape as the melee trace beside it.
+    //
+    // It speaks on every tick that saw a creature, not only on one where a
+    // counter moved: "saw thirty creatures and did nothing, with every gate at
+    // zero" is the single most useful line this trace can print, and the first
+    // version of it stayed silent for exactly that case.
+    if outcome.creatures_seen > 0 && std::env::var_os("RUSTYCORE_CREATURE_SPELL_TRACE").is_some() {
+        static TRACE_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let tick = TRACE_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if tick % 100 == 0 {
+            tracing::info!(
+                creatures_seen = outcome.creatures_seen,
+                casts_ready = outcome.casts_ready,
+                schedules_initialized = outcome.schedules_initialized,
+                spell_hits = outcome.spell_hits,
+                spell_misses = outcome.spell_misses,
+                damage_executed = outcome.spell_damage_effects_executed,
+                damage_unresolved = outcome.spell_damage_effects_unresolved,
+                effects_unrepresented = outcome.spell_effects_unrepresented,
+                noninstant = outcome.noninstant_casts_unrepresented,
+                projectiles = outcome.spell_projectiles_unrepresented,
+                missing_spell_metadata = outcome.missing_spell_metadata,
+                range_rejections = outcome.spell_range_rejections,
+                los_rejections = outcome.spell_los_rejections,
+                hit_results_unrepresented = outcome.spell_hit_results_unrepresented,
+                target_rejections = outcome.canonical_cast_target_rejections,
+                missing_target = outcome.canonical_cast_missing_target,
+                cooldown_rejections = outcome.canonical_cast_cooldown_rejections,
+                disabled = outcome.spells_disabled,
+                casting_requirements = outcome.spell_casting_requirements_unrepresented,
+                incarnation_rejections = outcome.caster_incarnation_rejections,
+                unit_state_skips = outcome.unit_state_casting_skips,
+                "creature spell tick"
+            );
+        }
+    }
     // START and GO are committed map events and enter every eligible
     // observer's durable FIFO in plan order.
     let plan_delivery = deliver_runtime_plan_like_cpp(&outcome.plan, registry);

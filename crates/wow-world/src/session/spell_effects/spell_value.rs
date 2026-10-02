@@ -52,23 +52,27 @@ impl WorldSession {
             None,
             represented_calc_value_die_roll_like_cpp,
         );
-        // Kept at debug: it is the only place the inputs of a spell's value are
-        // all visible at once, and the live run that proved D-H26 read exactly
-        // these lines to separate the level term from the die roll.
-        tracing::debug!(
-            target: "RUSTYCORE_CALCVALUE_TRACE",
-            spell_id,
-            effect_index = effect.effect_index,
-            base_points = effect.effect_base_points,
-            die_sides = effect.effect_die_sides,
-            real_points_per_level = effect.effect_real_points_per_level,
-            base_level = levels.base_level,
-            max_level = levels.max_level,
-            spell_level = levels.spell_level,
-            caster_level = self.player_level_like_cpp(),
-            value,
-            "CalcValue trace"
-        );
+        // `RUSTYCORE_CALCVALUE_TRACE=1` is the only place the inputs of a spell's
+        // value are all visible at once, and the live run that proved D-H26 read
+        // exactly these lines to separate the level term from the die roll. It is
+        // env-var gated at info, like every other trace in this server, because a
+        // `target:`-tagged debug line needs the target named in `RUST_LOG` and
+        // nobody reading RUSTYCORE_SMOKE.md would guess that.
+        if std::env::var_os("RUSTYCORE_CALCVALUE_TRACE").is_some() {
+            tracing::info!(
+                spell_id,
+                effect_index = effect.effect_index,
+                base_points = effect.effect_base_points,
+                die_sides = effect.effect_die_sides,
+                real_points_per_level = effect.effect_real_points_per_level,
+                base_level = levels.base_level,
+                max_level = levels.max_level,
+                spell_level = levels.spell_level,
+                caster_level = self.player_level_like_cpp(),
+                value,
+                "CalcValue trace"
+            );
+        }
         value
     }
 }

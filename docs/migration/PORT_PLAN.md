@@ -364,16 +364,38 @@ nobody repeats it:
   nearest at about 951 units from the QA mage. Every one of those is `SmartAI`, whose casting goes
   through `smart_scripts`, a path this port does not drive at all.
 
-So the live proof needs a decision rather than more code, and it is the user's to make:
+**The scoped world fixture was tried on 2026-10-02 and the live run is still owed, with the blocker
+now located outside the spell chain.** `AIName = 'CombatAI'` on Riverpaw Scout (500) — one spell slot,
+6660, instant and admissible — plus the QA mage moved beside a spawn. Both reverted afterwards.
 
-1. a scoped, revertible world-DB fixture — set `AIName = 'CombatAI'` on one nearby creature that
-   already carries an admissible spell — which proves the chain exactly as written but writes world
-   data, not the character rows the QA fixtures have used so far; or
-2. widening what the tick drives, which is a macro of its own: `SmartAI` template casting, or the
-   trigger-missile topology the Scarlet Ballista needs.
+What the run showed, from the new `RUSTYCORE_CREATURE_SPELL_TRACE=1`: `creatures_seen=489` and
+**every gate at zero**, `schedules_initialized` included. So the spell tick refused nothing; the
+CombatAI branch was never entered for that creature. And the creature never fought back *at all* — no
+melee either, no combat entry, no damage to the player — while surviving both Fireballs (19 and 20,
+no kill) and living another nine seconds in the world.
 
-Until one is chosen, the creature-cast chain and the absorb stage from D-H3 keep their deterministic
-scenarios and their owed live run, stated as owed.
+So the blocker is the combat-entry path, not the chain this macro built. Fireball carries none of the
+threat-suppressing attributes (`attr1/2/4` are all zero), so
+`apply_damage_from_caster_like_cpp` should have called `enter_combat` and added threat; something
+between that call and the tick's view of the creature's AI state does not agree. Locating it needs
+per-creature tracing of the AI state inside the tick, which is the next concrete step and is a
+different responsibility from this macro.
+
+Two earlier candidate creatures were ruled out along the way, and the reasons are worth keeping.
+Flamescale Broodling (7049) has **two** slots and the second is non-instant, which
+`creature_ai_has_temporally_unrepresented_noninstant_spell_like_cpp` suppresses on purpose — correct
+behaviour, wrong target. That also corrected the measurement: the 471-spell count looked only at slot
+zero, while the gate requires **every** slot of the creature to be instant, which leaves 13 candidates
+on map 0.
+
+One inaccuracy found and deliberately not recorded as a defect: the port computes
+`cast_time_ms = max(base, minimum)` while C++ `SpellInfo::CalcCastTime` (`SpellInfo.cpp:3806-3821`)
+never reads `Minimum`. No `SpellCastTimes` row in the installed data has `base == 0` with a non-zero
+minimum, so it changes nothing here; it is latent, and saying otherwise would have been a false
+defect report.
+
+The instrument is also wrong for this proof: `--spell-damage` kills its target and logs out. A mode
+that aggros and dwells — the melee smoke's shape — is what the creature-cast capture needs.
 
 Two boundaries stay recorded rather than closed. The validation still invalidates the creature's
 runtime RNG authority on a HIT, because this slice consumes its own draws without claiming C++'s exact
