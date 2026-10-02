@@ -5282,6 +5282,8 @@ async fn run_inner(
         wow_data::ExpectedStatStore::load(&data_dir, &locale)
             .ok()
             .map(Arc::new);
+    legacy_creature_aggro_config.npc_mana_cost_scaler_table =
+        load_npc_mana_cost_scaler_game_table_like_cpp(&data_dir);
     legacy_creature_aggro_config.faction_template_store = Some(Arc::clone(&faction_template_store));
     legacy_creature_aggro_config.faction_store = Some(Arc::clone(&progression_faction_store));
     legacy_creature_aggro_config.map_store = Some(Arc::clone(&map_store));

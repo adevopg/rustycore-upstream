@@ -18,14 +18,14 @@ use crate::canonical_player_access::{
 use crate::loot_persistence::DurableLootMoneyPersistenceTrackerLikeCpp;
 use crate::session::SharedCanonicalMapManager;
 use crate::session::mailbox::{
-    ApplyCreatureMeleeDamageLikeCppCommand, ApplyLootMoneyLikeCppCommand,
-    ApplyPlayerMeleeResultLikeCppCommand, CreatureAttackStartLikeCppCommand,
-    CreatureAttackStopLikeCppCommand, DestroyVisibleObjectLikeCppCommand,
-    DurableCreatureRuntimeCommandsLikeCpp, LootRollCommandIdentityLikeCpp,
-    ReconcilePvpCombatExpiryLikeCppCommand, RefreshVisibleWorldCreaturesLikeCppCommand,
-    SendCreatureSpellCastIfVisibleLikeCppCommand, SendIfVisibleLikeCppCommand,
-    SendPlayerSpellIfVisibleLikeCppCommand, SessionCommand, SharedClientVisibleGuidsLikeCpp,
-    SharedClientVisibleTransportsLikeCpp,
+    ApplyCreatureMeleeDamageLikeCppCommand, ApplyCreatureSpellDamageLikeCppCommand,
+    ApplyLootMoneyLikeCppCommand, ApplyPlayerMeleeResultLikeCppCommand,
+    CreatureAttackStartLikeCppCommand, CreatureAttackStopLikeCppCommand,
+    DestroyVisibleObjectLikeCppCommand, DurableCreatureRuntimeCommandsLikeCpp,
+    LootRollCommandIdentityLikeCpp, ReconcilePvpCombatExpiryLikeCppCommand,
+    RefreshVisibleWorldCreaturesLikeCppCommand, SendCreatureSpellCastIfVisibleLikeCppCommand,
+    SendIfVisibleLikeCppCommand, SendPlayerSpellIfVisibleLikeCppCommand, SessionCommand,
+    SharedClientVisibleGuidsLikeCpp, SharedClientVisibleTransportsLikeCpp,
 };
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
@@ -489,6 +489,8 @@ struct PlayerRegistryEntry {
     durable_loot_money: Arc<DurableLootMoneyPersistenceTrackerLikeCpp>,
 }
 
+#[path = "directory/durable_publishers.rs"]
+mod durable_publishers;
 #[path = "directory/group_state.rs"]
 mod group_state;
 #[path = "directory/identity.rs"]
@@ -1972,154 +1974,6 @@ impl PlayerRegistry {
                 PlayerDirectoryReliableSendOutcome::Retrying
             }
         }
-    }
-
-    fn with_current_durable_runtime(
-        &self,
-        registration: PlayerRegistration,
-    ) -> Option<Arc<Mutex<DurableCreatureRuntimeCommandsLikeCpp>>> {
-        let entry = self.entries.get(&registration.guid)?;
-        (entry.generation == registration.generation)
-            .then(|| Arc::clone(&entry.durable_creature_runtime_commands_like_cpp))
-    }
-
-    pub fn publish_current_attack_start(
-        &self,
-        registration: PlayerRegistration,
-        command: CreatureAttackStartLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut durable| durable.publish_attack_start_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_attack_stop(
-        &self,
-        registration: PlayerRegistration,
-        command: CreatureAttackStopLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut durable| durable.publish_attack_stop_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_melee_damage(
-        &self,
-        registration: PlayerRegistration,
-        command: ApplyCreatureMeleeDamageLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut durable| durable.publish_melee_damage_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    /// Publish one map-owned player auto-attack resolution to its attacker.
-    ///
-    /// Generation-checked like every other current-incarnation publish: a
-    /// result resolved for a session that has since reconnected is dropped
-    /// here rather than delivered to the new one.
-    pub fn publish_current_player_melee_result(
-        &self,
-        registration: PlayerRegistration,
-        command: ApplyPlayerMeleeResultLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut durable| durable.publish_player_melee_result_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_send_if_visible(
-        &self,
-        registration: PlayerRegistration,
-        command: SendIfVisibleLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut durable| durable.publish_send_if_visible_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_destroy_visible_object(
-        &self,
-        registration: PlayerRegistration,
-        command: DestroyVisibleObjectLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut durable| durable.publish_destroy_visible_object_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_player_spell_if_visible(
-        &self,
-        registration: PlayerRegistration,
-        command: SendPlayerSpellIfVisibleLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable
-                    .lock()
-                    .ok()
-                    .map(|mut queue| queue.publish_player_spell_if_visible_like_cpp(command))
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_creature_spell_cast_if_visible(
-        &self,
-        registration: PlayerRegistration,
-        command: SendCreatureSpellCastIfVisibleLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable.lock().ok().map(|mut durable| {
-                    durable.publish_creature_spell_cast_if_visible_like_cpp(command)
-                })
-            })
-            .unwrap_or(false)
-    }
-
-    pub fn publish_current_pvp_combat_expiry(
-        &self,
-        registration: PlayerRegistration,
-        command: ReconcilePvpCombatExpiryLikeCppCommand,
-    ) -> bool {
-        self.with_current_durable_runtime(registration)
-            .and_then(|durable| {
-                durable.lock().ok().map(|mut durable| {
-                    durable.publish_pvp_combat_expiry_like_cpp(command);
-                    true
-                })
-            })
-            .unwrap_or(false)
     }
 
     /// Clone the only non-canonical fixture value without exposing storage.

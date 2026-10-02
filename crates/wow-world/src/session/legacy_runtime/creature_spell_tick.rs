@@ -758,10 +758,82 @@ pub fn run_legacy_creature_spell_tick_once_like_cpp(
         );
 
         match validation {
-            CreatureSpellCastValidationResultLikeCpp::Ready(hit_result) => {
+            CreatureSpellCastValidationResultLikeCpp::Ready {
+                hit_result,
+                cast_id,
+            } => {
                 outcome.canonical_cast_preconditions_passed += 1;
                 match hit_result {
-                    CreatureSpellTargetHitResultLikeCpp::Hit => outcome.spell_hits += 1,
+                    CreatureSpellTargetHitResultLikeCpp::Hit => {
+                        outcome.spell_hits += 1;
+                        // C++ runs the effect handlers for a HIT target in
+                        // `Spell::handle_immediate`, after the GO this plan
+                        // already carries (`Spells/Spell.cpp:4081-4120`). The
+                        // topology gate upstream admitted only a single instant
+                        // school-damage effect at one enemy unit, so that is the
+                        // one effect executed here.
+                        let command = {
+                            let Ok(mut canonical) = canonical_map_manager.lock() else {
+                                outcome.spell_damage_effects_unresolved += 1;
+                                continue;
+                            };
+                            // C++ reads the caster's level and its
+                            // `GetSpellModOwner()` off the unit itself; a creature
+                            // has the latter only while a player charms or owns it.
+                            let caster_facts = canonical
+                                .find_map_mut(
+                                    u32::from(pending_cast.command.map_id),
+                                    pending_cast.command.instance_id,
+                                )
+                                .and_then(|managed| {
+                                    managed
+                                        .map_mut()
+                                        .get_typed_creature_mut(pending_cast.command.caster_guid)
+                                        .map(|creature| {
+                                            (
+                                                u8::try_from(creature.unit().data().level)
+                                                    .unwrap_or(u8::MAX),
+                                                creature
+                                                    .unit()
+                                                    .subsystems()
+                                                    .control
+                                                    .charmer_or_owner_guid()
+                                                    .is_some_and(|guid| guid.is_player()),
+                                            )
+                                        })
+                                });
+                            let Some((caster_level, caster_is_player_controlled)) = caster_facts
+                            else {
+                                outcome.spell_damage_effects_unresolved += 1;
+                                continue;
+                            };
+                            super::creature_spell_damage::resolve_creature_spell_damage_effect_like_cpp(
+                                &mut canonical,
+                                u32::from(pending_cast.command.map_id),
+                                pending_cast.command.instance_id,
+                                super::creature_spell_damage::CreatureSpellAttackerFactsLikeCpp {
+                                    guid: pending_cast.command.caster_guid,
+                                    level: caster_level,
+                                    is_player_controlled: caster_is_player_controlled,
+                                },
+                                pending_cast.command.target_guid,
+                                pending_cast.command.spell_id,
+                                cast_id,
+                                pending_cast.command.spell_x_spell_visual_id,
+                                spell_store,
+                                pending_cast.difficulty_id,
+                                config.difficulty_store.as_deref(),
+                                config.npc_mana_cost_scaler_table.as_deref(),
+                            )
+                        };
+                        match command {
+                            Some(command) => {
+                                outcome.spell_damage_effects_executed += 1;
+                                outcome.spell_damage_commands.push(command);
+                            }
+                            None => outcome.spell_damage_effects_unresolved += 1,
+                        }
+                    }
                     CreatureSpellTargetHitResultLikeCpp::Miss => outcome.spell_misses += 1,
                 }
             }

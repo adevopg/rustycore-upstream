@@ -10,6 +10,7 @@ pub mod character;
 pub(crate) mod character_rules;
 pub mod chat;
 pub mod combat;
+pub(crate) mod creature_spell_delivery;
 pub mod group;
 pub mod inspect;
 pub mod loot;

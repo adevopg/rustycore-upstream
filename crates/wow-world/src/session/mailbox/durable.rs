@@ -14,11 +14,11 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use super::protocol::{
-    ApplyCreatureMeleeDamageLikeCppCommand, ApplyPlayerMeleeResultLikeCppCommand,
-    CreatureAttackStartLikeCppCommand, CreatureAttackStopLikeCppCommand,
-    DestroyVisibleObjectLikeCppCommand, ReconcilePvpCombatExpiryLikeCppCommand,
-    SendCreatureSpellCastIfVisibleLikeCppCommand, SendIfVisibleLikeCppCommand,
-    SendPlayerSpellIfVisibleLikeCppCommand, SessionCommand,
+    ApplyCreatureMeleeDamageLikeCppCommand, ApplyCreatureSpellDamageLikeCppCommand,
+    ApplyPlayerMeleeResultLikeCppCommand, CreatureAttackStartLikeCppCommand,
+    CreatureAttackStopLikeCppCommand, DestroyVisibleObjectLikeCppCommand,
+    ReconcilePvpCombatExpiryLikeCppCommand, SendCreatureSpellCastIfVisibleLikeCppCommand,
+    SendIfVisibleLikeCppCommand, SendPlayerSpellIfVisibleLikeCppCommand, SessionCommand,
 };
 
 /// Retained FIFO handoff for committed map-owned creature transitions and
@@ -83,6 +83,18 @@ impl DurableCreatureRuntimeCommandsLikeCpp {
         command: ApplyCreatureMeleeDamageLikeCppCommand,
     ) -> bool {
         self.publish_like_cpp(SessionCommand::ApplyCreatureMeleeDamageLikeCpp(command))
+    }
+
+    /// Publish one map-owned creature spell hit to its player victim.
+    ///
+    /// Durable like the melee hit and for the same reason: the hit is already
+    /// committed on the canonical player, so dropping the delivery would leave
+    /// the client showing health the server no longer believes in.
+    pub fn publish_creature_spell_damage_like_cpp(
+        &mut self,
+        command: ApplyCreatureSpellDamageLikeCppCommand,
+    ) -> bool {
+        self.publish_like_cpp(SessionCommand::ApplyCreatureSpellDamageLikeCpp(command))
     }
 
     /// Publish one map-owned player auto-attack resolution.

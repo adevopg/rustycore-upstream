@@ -332,16 +332,32 @@ useful before the one above it, which is why they are not all one commit:
    of an `if`, so a player-controlled creature gets the arm. A player victim also never resists holy
    (`:1977-1978`). Four scenarios pin the composition, including that a hit on a victim who is already
    dead is refused the way `DealSpellDamage` refuses it.
-3. **Delivery and publication.** A spell-damage delivery command for the victim session, the
-   `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` in C++'s order after the absorb logs, and the death cascade
-   the existing player-damage owner already has.
-4. **Wire the tick** to slices 1-3 behind the topology gate it already enforces, with the
-   `spell_effects_unrepresented` counters kept for everything still outside it.
+3. **Delivery and publication — done 2026-10-02.** `ApplyCreatureSpellDamageLikeCppCommand` carries
+   one committed hit to its victim session, which publishes it in C++'s order: the per-shield
+   `SMSG_SPELL_ABSORB_LOG` and aura removals, then the power update, then
+   `SMSG_SPELL_NON_MELEE_DAMAGE_LOG`, then the health. The absorb publication is the melee hit's own,
+   generalised with the `AbsorbedSpellID` C++ writes — zero for a white swing, the hit's spell for a
+   spell — because both reach one `CalcAbsorbResist` there too.
+4. **Wire the tick — done 2026-10-02.** On a HIT the tick now resolves the one school-damage effect
+   its topology gate admits, through `CalcValue` with the creature caster (slice 1's first production
+   consumer, including the `NpcManaCostScaler` arm), and hands the result to slice 2's stage. The
+   outcome reports `spell_damage_effects_executed` and `spell_damage_effects_unresolved` beside the
+   existing `spell_effects_unrepresented` counters, so a run says how many hits became damage and how
+   many could not.
 5. **Live acceptance**, which this macro finally makes reachable: a creature casting a damage spell
    at the QA character, and the same run proves the absorb stage that D-H3 left owed.
 
-Slices 1 and 2 are in. Slice 3 — the delivery command and the publication order — is the next cut,
-and it is what turns this stage into something a client can see.
+Slices 1 to 4 are in: a creature's damage spell now deals damage a client sees. What remains is
+**slice 5, the live acceptance**, which is also what the absorb stage from D-H3 has been owed since
+it landed — a creature casting at the QA character, with a shield on the character for the absorb
+half. The run needs a creature whose template carries a damaging spell in range of a reachable spawn;
+`creature_template.spell1..8` is the column to pick it from.
+
+Two boundaries stay recorded rather than closed. The validation still invalidates the creature's
+runtime RNG authority on a HIT, because this slice consumes its own draws without claiming C++'s exact
+shared-RNG position; that conservative fence is unchanged. And the damage effect is the only effect
+executed — a creature's heal, buff or debuff cast still publishes START/GO and does nothing, which the
+`spell_effects_unrepresented` counters keep visible.
 
 One condition stays beside it rather than inside it: a live cast needs an **alive** target, because
 a previous run can leave the nearest spawn of that entry dead.

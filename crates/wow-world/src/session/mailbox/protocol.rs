@@ -173,6 +173,8 @@ pub enum SessionCommand {
     KickLikeCpp(KickLikeCppCommand),
     WorldSessionShutdownFlushLikeCpp(WorldSessionShutdownFlushLikeCppCommand),
     ApplyCreatureMeleeDamageLikeCpp(ApplyCreatureMeleeDamageLikeCppCommand),
+    /// One map-owned creature spell hit, for its player victim.
+    ApplyCreatureSpellDamageLikeCpp(ApplyCreatureSpellDamageLikeCppCommand),
     /// One map-owned player auto-attack resolution, for the attacker (#28).
     ApplyPlayerMeleeResultLikeCpp(ApplyPlayerMeleeResultLikeCppCommand),
     CreatureAttackStartLikeCpp(CreatureAttackStartLikeCppCommand),
@@ -455,6 +457,49 @@ pub struct ApplyCreatureMeleeDamageLikeCppCommand {
     /// share target. C++ sends these after AttackerStateUpdate and before the
     /// primary DealDamage health publication.
     pub self_share_health_updates: Vec<u64>,
+}
+
+/// Payload for one map-owned creature spell hit on a player victim.
+///
+/// The map-owned stage already resolved C++'s whole
+/// `CalculateSpellDamageTaken` → `CalcAbsorbResist` → `DealDamage` chain and
+/// committed the shield amounts, the mana drain and the health. What is left is
+/// publication, which the victim session owns: the per-shield
+/// `SMSG_SPELL_ABSORB_LOG`, the aura removals, the power update, the
+/// `SMSG_SPELL_NON_MELEE_DAMAGE_LOG` and the health.
+#[derive(Clone, Debug)]
+pub struct ApplyCreatureSpellDamageLikeCppCommand {
+    pub attacker_guid: ObjectGuid,
+    pub victim_guid: ObjectGuid,
+    pub map_id: u16,
+    pub instance_id: u32,
+    pub spell_id: i32,
+    /// C++ `SpellNonMeleeDamage::castId`, the cast the client correlates with
+    /// `SMSG_SPELL_GO`.
+    pub cast_id: ObjectGuid,
+    /// C++ `SpellNonMeleeDamage::SpellVisual`.
+    pub spell_visual_id: u32,
+    pub school_mask: u8,
+    /// C++ `SpellNonMeleeDamage::damage`, after resist and absorb.
+    pub damage: u32,
+    /// C++ `SpellNonMeleeDamage::originalDamage`, after the critical arm and
+    /// before `CalcAbsorbResist`.
+    pub original_damage: u32,
+    /// C++ `packet.Overkill`: the excess over the pre-hit health, or `-1`.
+    pub overkill: i32,
+    pub resisted: u32,
+    pub absorbed: u32,
+    /// The mana the mana-shield loop already drained; the session publishes the
+    /// resulting `SMSG_POWER_UPDATE`.
+    pub mana_spent: u32,
+    /// C++ `SpellNonMeleeDamage::HitInfo`, in the `i32` the combat-log packet
+    /// writes rather than the `u32` the melee attacker-state packet uses.
+    pub hit_info: i32,
+    pub absorb_consumptions: Vec<CreatureMeleeAbsorbConsumptionLikeCpp>,
+    pub victim_health_after: u64,
+    pub victim_health_state_revision_after: u64,
+    /// Whether this hit took the victim to zero.
+    pub killed: bool,
 }
 
 /// One school-absorb shield spent by the map-owned melee absorb stage.

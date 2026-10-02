@@ -750,8 +750,36 @@ fn legacy_creature_combat_ai_no_attack_miss_consumes_roll_then_tombstones_launch
             .unit()
             .data()
             .health,
-        100,
-        "M2.6 emits the cast wire without fabricating M3.2 damage"
+        93,
+        "the HIT target takes the effect's CalcValue: 7 base points, no die and no \
+         per-level term, and a physical school no resist applies to"
+    );
+    assert_eq!(
+        cast.spell_damage_effects_executed, 1,
+        "the one school-damage effect the topology gate admits is executed"
+    );
+    assert_eq!(cast.spell_damage_effects_unresolved, 0);
+    assert_eq!(cast.spell_damage_commands.len(), 1);
+    let damage_command = &cast.spell_damage_commands[0];
+    assert_eq!(damage_command.victim_guid, victim_guid);
+    assert_eq!(damage_command.attacker_guid, creature_guid);
+    assert_eq!(damage_command.spell_id, spell_id);
+    assert_eq!(
+        damage_command.cast_id, start.cast_id,
+        "the combat log repeats the cast id START and GO carried"
+    );
+    assert_eq!(damage_command.damage, 7);
+    assert_eq!(damage_command.original_damage, 7);
+    assert_eq!(
+        damage_command.resisted, 0,
+        "a physical school never resists"
+    );
+    assert_eq!(damage_command.absorbed, 0);
+    assert_eq!(damage_command.victim_health_after, 93);
+    assert!(!damage_command.killed);
+    assert_eq!(
+        damage_command.overkill, -1,
+        "C++ sends -1 when the damage did not exceed the pre-hit health"
     );
 
     let (repeat_due_in_ms, rng_is_authoritative, actual_next_roll) = session

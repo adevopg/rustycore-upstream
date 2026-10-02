@@ -157,6 +157,46 @@ installed `item_template_addon` hold `0`: no item here could have exercised it, 
 distinguishes before from after and none was staged. The ~89 inert references that still carry
 the value are recorded as D-L4 for the next change that owns that table.
 
+**A creature's damage spell deals damage now, and the client sees it (slices 3 and 4,
+2026-10-02).** The tick's own comment — "Effect execution is intentionally not invented here:
+damage/heal calculation belongs to M3.2" — is retired for the one effect its topology gate admits. On
+a HIT it resolves that `SPELL_EFFECT_SCHOOL_DAMAGE` effect through `CalcValue` with the creature
+caster, which is slice 1's first production consumer and includes the `NpcManaCostScaler` arm, hands
+it to slice 2's map-owned stage, and emits one `ApplyCreatureSpellDamageLikeCppCommand` for the
+victim session. The session publishes it in C++'s order: the per-shield `SMSG_SPELL_ABSORB_LOG` and
+aura removals, the power update, `SMSG_SPELL_NON_MELEE_DAMAGE_LOG`, then the health.
+
+The absorb publication is the melee hit's own, generalised with the `AbsorbedSpellID` C++ writes —
+zero for a white swing, the hit's spell for a spell hit — because both reach one `CalcAbsorbResist`
+there too. That is the third duplication this macro deleted rather than added, after the absorb stage
+and `GetResistance`.
+
+**The physical ratchet came out better than it went in**, which is worth recording because the
+alternative was four bumped ceilings. The additions tripped `session/mod.rs`, `session/directory.rs`,
+`handlers/loot/handlers.rs`, `wow-data/src/spell/mod.rs` and `runtime/delivery.rs`, every one of them
+a #584 C4 entry or at the 2,000-line production budget. None was bumped. Instead: the ten
+`publish_current_*` publishers and their shared generation check moved out of `directory.rs` into
+`session/directory/durable_publishers.rs`, which took that file from 2,461 to 2,295 and **fixed one of
+the three failures this branch inherited**; the creature-spell delivery, its game table and its tick
+driver moved to `runtime/creature_spell_delivery.rs`; the new victim handler got its own
+`handlers/creature_spell_delivery.rs` instead of growing the loot handlers it has nothing to do with;
+`CreatureSpellCastValidationResultLikeCpp` moved beside its only two readers; and the one new spell
+attribute constant lives in its single consumer rather than in a C4 file at its ceiling. Two inherited
+failures remain and neither is touched here.
+
+One scenario changed its expectation rather than its code, deliberately:
+`legacy_creature_combat_ai_no_attack_miss_consumes_roll_then_tombstones_launch_rng_like_cpp` asserted
+the victim's health stayed at 100 with the message "M2.6 emits the cast wire without fabricating M3.2
+damage". That gap is what closed, so it now asserts the 7 damage the effect's `CalcValue` produces and
+the command fields that carry it, including the cast id START and GO already sent.
+
+Still owed, and now finally reachable: the live run. A creature casting at the QA character proves
+this and the absorb stage from D-H3 in the same session. Two boundaries stay open and named: the
+validation still invalidates the creature's runtime RNG authority on a HIT, because this slice
+consumes its own draws without claiming C++'s exact shared-RNG position, and the damage effect is the
+only effect executed, so a creature's heal, buff or debuff cast still publishes START/GO and does
+nothing.
+
 **The player-victim spell hit chain is in as a map-owned stage, and it removed two duplications
 instead of adding any (slice 2, 2026-10-02).**
 `apply_creature_spell_damage_to_canonical_player_like_cpp` runs C++'s order for one creature spell hit

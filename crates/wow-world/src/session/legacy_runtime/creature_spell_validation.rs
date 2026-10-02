@@ -4,6 +4,30 @@
 
 use super::*;
 
+/// What one creature spell cast's canonical validation decided.
+///
+/// Moved out of the session root with the `cast_id` the damage effect needs:
+/// only this module and the spell tick read it, and the #584 C4 boundary wants
+/// creature-spell types beside the creature-spell code rather than in the
+/// 19,000-line root.
+pub(in crate::session) enum CreatureSpellCastValidationResultLikeCpp {
+    Ready {
+        hit_result: CreatureSpellTargetHitResultLikeCpp,
+        /// C++ `Spell::m_castId`, the GUID START and GO already carried. The
+        /// damage effect's combat log repeats it so the client can correlate the
+        /// two.
+        cast_id: ObjectGuid,
+    },
+    OutOfRange,
+    LosRejected,
+    MissingTarget,
+    TargetRejected,
+    CooldownRejected,
+    HitResultUnrepresented,
+    RuntimeRngAuthorityRejected,
+    CasterIncarnationRejected,
+}
+
 pub(in crate::session) fn validate_and_append_creature_spell_cast_like_cpp(
     canonical_map_manager: &SharedCanonicalMapManager,
     legacy_map_manager: &crate::map_manager::SharedMapManager,
@@ -401,5 +425,8 @@ pub(in crate::session) fn validate_and_append_creature_spell_cast_like_cpp(
         // melee and movement continue best-effort instead of freezing gameplay.
         creature.invalidate_runtime_rng_authority_like_cpp();
     }
-    CreatureSpellCastValidationResultLikeCpp::Ready(hit_result)
+    CreatureSpellCastValidationResultLikeCpp::Ready {
+        hit_result,
+        cast_id,
+    }
 }

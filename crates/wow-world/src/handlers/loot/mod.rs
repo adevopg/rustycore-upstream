@@ -37,14 +37,14 @@ use tracing::{debug, info, warn};
 
 use crate::session::directory::{PlayerRegistry, PrepareLootMoneyApplicationLikeCpp};
 use crate::session::mailbox::{
-    ApplyCreatureMeleeDamageLikeCppCommand, ApplyGroupJoinLikeCppCommand,
-    ApplyGroupRemovalLikeCppCommand, ApplyLootMoneyLikeCppCommand, ApplyLootMoneyResultLikeCpp,
-    CancelRepresentedTradeLikeCppCommand, CreatureAttackStartLikeCppCommand,
-    CreatureAttackStopLikeCppCommand, KickLikeCppCommand, LootRollCommandIdentityLikeCpp,
-    LootRollStoreWinnerCommand, LootRollVoteCommand, MasterLootGiveCommand, MasterLootGiveResult,
-    NotifyLootMoneyRemovedLikeCppCommand, ReconcilePvpCombatExpiryLikeCppCommand,
-    RefreshVisibleWorldCreaturesLikeCppCommand, SendAddonIfRegisteredLikeCppCommand,
-    SendCreatureLootReleaseValuesUpdateLikeCppCommand,
+    ApplyCreatureMeleeDamageLikeCppCommand, ApplyCreatureSpellDamageLikeCppCommand,
+    ApplyGroupJoinLikeCppCommand, ApplyGroupRemovalLikeCppCommand, ApplyLootMoneyLikeCppCommand,
+    ApplyLootMoneyResultLikeCpp, CancelRepresentedTradeLikeCppCommand,
+    CreatureAttackStartLikeCppCommand, CreatureAttackStopLikeCppCommand, KickLikeCppCommand,
+    LootRollCommandIdentityLikeCpp, LootRollStoreWinnerCommand, LootRollVoteCommand,
+    MasterLootGiveCommand, MasterLootGiveResult, NotifyLootMoneyRemovedLikeCppCommand,
+    ReconcilePvpCombatExpiryLikeCppCommand, RefreshVisibleWorldCreaturesLikeCppCommand,
+    SendAddonIfRegisteredLikeCppCommand, SendCreatureLootReleaseValuesUpdateLikeCppCommand,
     SendCreatureSpellCastIfVisibleLikeCppCommand, SendIfVisibleLikeCppCommand,
     SendPartyUpdateLikeCppCommand, SendRepeatableTurnInRequestItemsLikeCppCommand,
     SendRepresentedDuelCountdownLikeCppCommand, SendRepresentedDuelRequestedLikeCppCommand,

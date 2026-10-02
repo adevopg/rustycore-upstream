@@ -12,17 +12,20 @@
 //! The victim session still owns every publication: this returns what it must
 //! send rather than sending anything.
 //!
-//! Its production caller is the next slice of this macro — the creature spell
-//! tick, which has to gain a delivery command before anything here reaches a
-//! client. Until then the scenarios in `session/tests/scenarios_combat_5.rs` are
-//! the only callers, which is why everything below carries an explicit
-//! `#[allow(dead_code)]` rather than a silent warning.
+//! Its production caller is the creature spell tick, which executes the one
+//! damage effect its topology gate admits and hands the result to the victim
+//! session as a delivery command.
 
 use super::*;
 
+/// C++ `SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL` (`SharedDefines.h:472`): "For
+/// non-player casts, scale impact and power cost with caster's level". It lives
+/// here rather than in `wow_data::spell::attributes` because that module is a
+/// #584 C4 file at its line ceiling and this is its only reader.
+const SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL_LIKE_CPP: u32 = 0x0008_0000;
+
 /// What one creature spell hit did to a player victim, and what the victim
 /// session has to publish for it.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(in crate::session) struct CreatureSpellDamageOutcomeLikeCpp {
     /// C++ `SpellNonMeleeDamage::originalDamage`, assigned after the critical arm
@@ -52,7 +55,6 @@ pub(in crate::session) struct CreatureSpellDamageOutcomeLikeCpp {
 }
 
 /// Facts about the attacker that C++ reads off the caster rather than the victim.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::session) struct CreatureSpellAttackerFactsLikeCpp {
     pub guid: ObjectGuid,
@@ -80,7 +82,6 @@ pub(in crate::session) struct CreatureSpellAttackerFactsLikeCpp {
 ///   cast path, so the level-based resistance term always applies.
 /// * the split-damage families (`Unit.cpp:2252-2358`) stay with the melee path
 ///   that represents them.
-#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub(in crate::session) fn apply_creature_spell_damage_to_canonical_player_like_cpp(
     canonical_manager: &mut wow_map::MapManager,
@@ -264,7 +265,6 @@ pub(in crate::session) fn apply_creature_spell_damage_to_canonical_player_like_c
 
 /// The two draws C++ makes for one spell hit, injected so a scenario can pin
 /// them.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::session) struct CreatureSpellDamageRollsLikeCpp {
     /// C++ `roll_chance_f(crit_chance)`'s draw (`Spells/Spell.cpp:8675-8684`),
@@ -274,7 +274,6 @@ pub(in crate::session) struct CreatureSpellDamageRollsLikeCpp {
     pub resist: f32,
 }
 
-#[allow(dead_code)]
 impl CreatureSpellDamageRollsLikeCpp {
     /// The live draws the server makes outside a scenario.
     pub(in crate::session) fn live_like_cpp() -> Self {
@@ -283,4 +282,137 @@ impl CreatureSpellDamageRollsLikeCpp {
             resist: wow_core::rand_norm_like_cpp(),
         }
     }
+}
+
+/// C++ `Spell::_handle_immediate_phase` → `DoProcessTargetContainer` →
+/// `TargetInfo::DoTargetSpellHit`/`DoDamageAndTriggers` for the one effect this
+/// slice represents (`Spells/Spell.cpp:4258-4276`, `:2794-2985`).
+///
+/// The topology gate upstream has already narrowed the cast to a single instant
+/// `SPELL_EFFECT_SCHOOL_DAMAGE` effect with `TARGET_UNIT_TARGET_ENEMY`, so this
+/// resolves that effect's `CalcValue` with the creature caster and hands it to
+/// the hit chain. Returns `None` when there is nothing to resolve it from, which
+/// the caller counts rather than guessing a value.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::session) fn resolve_creature_spell_damage_effect_like_cpp(
+    canonical_manager: &mut wow_map::MapManager,
+    map_id: u32,
+    instance_id: u32,
+    attacker: CreatureSpellAttackerFactsLikeCpp,
+    victim_guid: ObjectGuid,
+    spell_id: i32,
+    cast_id: ObjectGuid,
+    spell_visual_id: u32,
+    spell_store: &wow_data::SpellStore,
+    difficulty_id: u8,
+    difficulty_store: Option<&wow_data::DifficultyStore>,
+    npc_mana_cost_scaler: Option<&wow_data::NpcManaCostScalerGameTableLikeCpp>,
+) -> Option<crate::session::mailbox::ApplyCreatureSpellDamageLikeCppCommand> {
+    let effects =
+        spell_store.effects_for_difficulty_like_cpp(spell_id, difficulty_id, difficulty_store)?;
+    let effect = effects.iter().find(|effect| {
+        effect.effect == wow_data::spell::spell_effect_types::SPELL_EFFECT_SCHOOL_DAMAGE
+    })?;
+    let levels =
+        spell_store.spell_levels_for_difficulty_like_cpp(spell_id, difficulty_id, difficulty_store);
+    // C++ hands `EffectSchoolDMG` the effect's `CalcValue(caster)`, never the raw
+    // `EffectBasePoints`; for a creature caster that includes the
+    // `NpcManaCostScaler` arm under `SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL`.
+    let damage = effect
+        .calc_value_with_caster_and_die_roll_like_cpp(
+            levels,
+            Some(wow_data::spell::CalcValueCasterLikeCpp {
+                level: u32::from(attacker.level),
+                // No represented creature tracks combo points.
+                combo_points: 0,
+                is_controlled_by_player: attacker.is_player_controlled,
+                scales_with_creature_level: spell_store.has_attribute_for_difficulty_like_cpp(
+                    spell_id,
+                    difficulty_id,
+                    difficulty_store,
+                    0,
+                    SPELL_ATTR0_SCALES_WITH_CREATURE_LEVEL_LIKE_CPP,
+                ),
+            }),
+            npc_mana_cost_scaler,
+            |min, max| wow_core::irand_like_cpp(min, max),
+        )
+        .max(0) as u32;
+
+    let outcome = apply_creature_spell_damage_to_canonical_player_like_cpp(
+        canonical_manager,
+        map_id,
+        instance_id,
+        attacker,
+        victim_guid,
+        spell_id,
+        damage,
+        spell_store,
+        difficulty_id,
+        difficulty_store,
+        CreatureSpellDamageRollsLikeCpp::live_like_cpp(),
+    )?;
+    let metadata = spell_store.hit_metadata_for_difficulty_like_cpp(
+        spell_id,
+        difficulty_id,
+        difficulty_store,
+    )?;
+    Some(
+        crate::session::mailbox::ApplyCreatureSpellDamageLikeCppCommand {
+            attacker_guid: attacker.guid,
+            victim_guid,
+            map_id: u16::try_from(map_id).unwrap_or(0),
+            instance_id,
+            spell_id,
+            cast_id,
+            spell_visual_id,
+            school_mask: metadata.school_mask,
+            damage: outcome.damage,
+            original_damage: outcome.original_damage,
+            // C++ `if (log->damage > log->preHitHealth) Overkill = damage -
+            // preHitHealth; else Overkill = -1` (`Unit.cpp:5890-5893`).
+            overkill: if u64::from(outcome.damage) > outcome.victim_health_before {
+                i32::try_from(u64::from(outcome.damage) - outcome.victim_health_before)
+                    .unwrap_or(i32::MAX)
+            } else {
+                -1
+            },
+            resisted: outcome.resisted,
+            absorbed: outcome.absorbed,
+            mana_spent: outcome.mana_spent,
+            hit_info: outcome.hit_info,
+            absorb_consumptions: outcome
+                .absorb_consumptions
+                .iter()
+                .map(
+                    |consumption| crate::session::mailbox::CreatureMeleeAbsorbConsumptionLikeCpp {
+                        slot: consumption.slot,
+                        consumed: consumption.consumed,
+                        removed: consumption.removed,
+                    },
+                )
+                .collect(),
+            victim_health_after: outcome.victim_health_after,
+            victim_health_state_revision_after: creature_spell_victim_health_revision_like_cpp(
+                canonical_manager,
+                map_id,
+                instance_id,
+                victim_guid,
+            )?,
+            killed: outcome.killed,
+        },
+    )
+}
+
+/// The victim's health-state revision after the commit, which the delivery gate
+/// compares against the session's own canonical view.
+fn creature_spell_victim_health_revision_like_cpp(
+    canonical_manager: &mut wow_map::MapManager,
+    map_id: u32,
+    instance_id: u32,
+    victim_guid: ObjectGuid,
+) -> Option<u64> {
+    let managed = canonical_manager.find_map_mut(map_id, instance_id)?;
+    let player = managed.map_mut().get_typed_player_mut(victim_guid)?;
+    Some(player.unit().health_state_revision_like_cpp())
 }

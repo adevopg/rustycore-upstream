@@ -92,18 +92,24 @@ impl WorldSession {
         }
         adjusted
     }
-    /// C++ `Unit::CalcAbsorbResist`'s absorb publication for one melee hit
-    /// (`Unit.cpp:1876-1889`): per shield that consumed part of the hit, send the
-    /// victim `SMSG_SPELL_ABSORB_LOG` and then remove the aura C++
-    /// left at zero.
+    /// C++ `Unit::CalcAbsorbResist`'s absorb publication for one hit
+    /// (`Unit.cpp:2166-2176`): per shield that consumed part of the hit, send the
+    /// victim `SMSG_SPELL_ABSORB_LOG` and then remove the aura C++ left at zero.
     ///
-    /// The map-owned swing already committed the absorb arithmetic and the
-    /// shield amounts; this transition reads the shield's caster and spell
-    /// before the removal and keeps C++'s per-shield order (log, then removal).
-    pub(crate) fn publish_melee_absorb_consumption_like_cpp(
+    /// The map-owned stage already committed the absorb arithmetic and the shield
+    /// amounts; this transition reads the shield's caster and spell before the
+    /// removal and keeps C++'s per-shield order (log, then removal).
+    ///
+    /// `absorbed_spell_id` is C++ `absorbLog.AbsorbedSpellID`: the spell being
+    /// absorbed, which is zero for a white swing because it has no spell of its
+    /// own, and the hit's spell for a creature spell hit. Both callers reach one
+    /// `CalcAbsorbResist` in C++, so they share one publication here.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn publish_absorb_consumption_like_cpp(
         &mut self,
         attacker_guid: ObjectGuid,
         victim_guid: ObjectGuid,
+        absorbed_spell_id: i32,
         original_damage: i32,
         mana_spent: u32,
         consumptions: &[crate::session::mailbox::CreatureMeleeAbsorbConsumptionLikeCpp],
@@ -123,12 +129,10 @@ impl WorldSession {
             if let Some((caster, absorb_spell_id)) = shield
                 && consumption.consumed > 0
             {
-                // A white melee swing carries no spell of its own, so C++
-                // publishes `AbsorbedSpellID == 0` (`Unit.cpp:1876-1882`).
                 let packet = wow_packet::packets::combat::SpellAbsorbLog {
                     attacker: attacker_guid,
                     victim: victim_guid,
-                    absorbed_spell_id: 0,
+                    absorbed_spell_id,
                     absorb_spell_id,
                     caster,
                     absorbed: consumption.consumed,

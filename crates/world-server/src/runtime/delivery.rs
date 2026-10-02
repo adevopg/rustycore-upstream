@@ -821,6 +821,9 @@ pub(crate) fn legacy_creature_aggro_config_like_cpp(
     let creature_aggro_rate = world_config_f32(configs, "RATE_CREATURE_AGGRO", 1.0);
     wow_world::session::LegacyCreatureAggroConfigLikeCpp {
         expected_stat_store: None,
+        // The app's composition root installs the real table; this config helper
+        // only reads the world config file.
+        npc_mana_cost_scaler_table: None,
         no_gray_aggro_above: world_config_u32(configs, "CONFIG_NO_GRAY_AGGRO_ABOVE", 0),
         no_gray_aggro_below: world_config_u32(configs, "CONFIG_NO_GRAY_AGGRO_BELOW", 0),
         creature_aggro_rate,
@@ -1570,26 +1573,6 @@ pub(crate) fn run_legacy_creature_melee_tick_and_deliver_once_like_cpp(
     (outcome, delivery, plan_delivery)
 }
 
-pub(crate) fn run_legacy_creature_spell_tick_and_deliver_once_like_cpp(
-    legacy_map_manager: &SharedMapManager,
-    canonical_map_manager: Option<&wow_world::session::SharedCanonicalMapManager>,
-    registry: &wow_world::session::directory::PlayerRegistry,
-    config: &wow_world::session::LegacyCreatureAggroConfigLikeCpp,
-) -> (
-    wow_world::session::LegacyCreatureSpellTickOutcomeLikeCpp,
-    RuntimeDeliverySummaryLikeCpp,
-) {
-    let outcome = wow_world::session::run_legacy_creature_spell_tick_once_like_cpp(
-        legacy_map_manager,
-        canonical_map_manager,
-        config,
-    );
-    // START and GO are committed map events and enter every eligible
-    // observer's durable FIFO in plan order.
-    let plan_delivery = deliver_runtime_plan_like_cpp(&outcome.plan, registry);
-    (outcome, plan_delivery)
-}
-
 /// Combined single-shot legacy creature runtime bridge.
 ///
 /// This is the production loop body behind the
@@ -1611,6 +1594,8 @@ pub(crate) struct LegacyCreatureRuntimeTickBridgeOutcomeLikeCpp {
     pub aggro_plan_delivery: RuntimeDeliverySummaryLikeCpp,
     pub spell: wow_world::session::LegacyCreatureSpellTickOutcomeLikeCpp,
     pub spell_plan_delivery: RuntimeDeliverySummaryLikeCpp,
+    /// The damage effects that reached their player victims this tick.
+    pub spell_damage_delivery: RuntimeCreatureMeleeDeliverySummaryLikeCpp,
     pub melee: wow_world::session::LegacyCreatureMeleeTickOutcomeLikeCpp,
     pub melee_delivery: RuntimeCreatureMeleeDeliverySummaryLikeCpp,
     pub melee_plan_delivery: RuntimeDeliverySummaryLikeCpp,
@@ -1694,12 +1679,13 @@ pub(crate) fn run_legacy_creature_runtime_tick_with_input_and_deliver_once_like_
             registry,
             aggro_config.clone(),
         );
-    let (spell, spell_plan_delivery) = run_legacy_creature_spell_tick_and_deliver_once_like_cpp(
-        legacy_map_manager,
-        canonical_map_manager,
-        registry,
-        &aggro_config,
-    );
+    let (spell, spell_plan_delivery, spell_damage_delivery) =
+        run_legacy_creature_spell_tick_and_deliver_once_like_cpp(
+            legacy_map_manager,
+            canonical_map_manager,
+            registry,
+            &aggro_config,
+        );
     let (melee, melee_delivery, melee_plan_delivery) =
         run_legacy_creature_melee_tick_and_deliver_once_like_cpp(
             legacy_map_manager,
@@ -1764,6 +1750,7 @@ pub(crate) fn run_legacy_creature_runtime_tick_with_input_and_deliver_once_like_
         aggro_plan_delivery,
         spell,
         spell_plan_delivery,
+        spell_damage_delivery,
         melee,
         melee_delivery,
         melee_plan_delivery,

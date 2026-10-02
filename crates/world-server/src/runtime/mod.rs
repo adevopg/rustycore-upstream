@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod creature_spell_delivery;
 mod deferred_visibility;
 mod delivery;
 mod game_events;
@@ -14,6 +15,7 @@ mod world_session_pass;
 #[cfg(test)]
 pub(crate) use world_session_pass::run_world_phase_session_passes_like_cpp;
 
+pub(super) use creature_spell_delivery::*;
 pub(super) use delivery::*;
 pub(crate) use game_events::{
     bootstrap::*, consume::*, grid::*, live::*, scheduler::*, spawn::*, unspawn::*,

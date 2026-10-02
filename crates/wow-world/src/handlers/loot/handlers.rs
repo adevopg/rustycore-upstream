@@ -1661,10 +1661,10 @@ impl WorldSession {
         // the lethal damage is applied, before the melee result presentation.
         self.publish_creature_melee_death_durability_loss_like_cpp(command.over_damage);
 
-        // C++ `Unit::CalcAbsorbResist`'s absorb log and shield removal (`Unit.cpp:1876-1889`).
-        self.publish_melee_absorb_consumption_like_cpp(
+        self.publish_absorb_consumption_like_cpp(
             command.attacker_guid,
             command.victim_guid,
+            0,
             command.original_damage.min(i32::MAX as u32) as i32,
             command.mana_spent,
             &command.absorb_consumptions,

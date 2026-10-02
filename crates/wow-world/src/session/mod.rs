@@ -4398,6 +4398,8 @@ pub struct LegacyCreatureAggroConfigLikeCpp {
     pub spell_linked_rejected_trigger_spell_ids_like_cpp: Option<Arc<BTreeSet<u32>>>,
     pub spell_custom_attribute_store: Option<Arc<SpellCustomAttributeStoreLikeCpp>>,
     pub difficulty_store: Option<Arc<DifficultyStore>>,
+    /// C++ `sNpcManaCostScalerGameTable`, read by `SpellEffectInfo::CalcValue`.
+    pub npc_mana_cost_scaler_table: Option<Arc<wow_data::NpcManaCostScalerGameTableLikeCpp>>,
     /// C++ `sDB2Manager`'s `ExpectedStat` table (`Player::GetBlockPercent`).
     pub expected_stat_store: Option<Arc<wow_data::ExpectedStatStore>>,
     /// C++ `sObjectMgr->GetCreatureTemplate` subset the map-owned runtime needs
@@ -4446,6 +4448,7 @@ impl Default for LegacyCreatureAggroConfigLikeCpp {
             spell_linked_rejected_trigger_spell_ids_like_cpp: None,
             spell_custom_attribute_store: None,
             difficulty_store: None,
+            npc_mana_cost_scaler_table: None,
             expected_stat_store: None,
             creature_template_lifecycle_store: None,
             chr_races_store: None,
@@ -4718,6 +4721,13 @@ pub struct LegacyCreatureSpellTickOutcomeLikeCpp {
     pub canonical_cast_missing_target: usize,
     pub canonical_cast_target_rejections: usize,
     pub canonical_cast_cooldown_rejections: usize,
+    /// Damage effects executed on a player victim.
+    pub spell_damage_effects_executed: usize,
+    /// Hits whose damage effect had no `CalcValue` metadata, no represented
+    /// player victim, or a victim already dead.
+    pub spell_damage_effects_unresolved: usize,
+    /// One committed hit per player victim, for the victim session to publish.
+    pub spell_damage_commands: Vec<crate::session::mailbox::ApplyCreatureSpellDamageLikeCppCommand>,
     pub plan: RuntimePlan,
 }
 
@@ -18014,18 +18024,6 @@ fn creature_spell_cast_log_data_like_cpp(
         armor: stats.armor,
         power_data,
     })
-}
-
-enum CreatureSpellCastValidationResultLikeCpp {
-    Ready(CreatureSpellTargetHitResultLikeCpp),
-    OutOfRange,
-    LosRejected,
-    MissingTarget,
-    TargetRejected,
-    CooldownRejected,
-    HitResultUnrepresented,
-    RuntimeRngAuthorityRejected,
-    CasterIncarnationRejected,
 }
 
 #[cfg(test)]
