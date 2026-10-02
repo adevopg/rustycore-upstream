@@ -76,6 +76,31 @@ pub fn run_legacy_creature_spell_tick_once_like_cpp(
                 continue;
             };
             outcome.creatures_seen += 1;
+            // `RUSTYCORE_CREATURE_SPELL_TRACE=1` also reports the per-creature
+            // gate, because the aggregate counters cannot: a creature rejected
+            // here increments nothing, so "entered combat but never cast" has no
+            // other witness. Only a creature that is in combat or holds a combat
+            // target is interesting, which keeps this quiet on a populated map.
+            if (creature.state() == wow_entities::CreatureAiState::InCombat
+                || creature.creature.ai_ownership().combat_target.is_some())
+                && std::env::var_os("RUSTYCORE_CREATURE_SPELL_TRACE").is_some()
+            {
+                static GATE_TICKS: std::sync::atomic::AtomicU64 =
+                    std::sync::atomic::AtomicU64::new(0);
+                if GATE_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 100 == 0 {
+                    tracing::info!(
+                        creature = ?guid,
+                        map_id,
+                        instance_id,
+                        alive = creature.is_alive(),
+                        ai_state = ?creature.state(),
+                        combat_target = ?creature.creature.ai_ownership().combat_target,
+                        ai_kind = ?legacy_creature_ai_selection_decision_like_cpp(creature, config),
+                        first_spell = creature.creature.spells()[0],
+                        "creature spell gate"
+                    );
+                }
+            }
             if !creature.is_alive() || creature.state() != wow_entities::CreatureAiState::InCombat {
                 continue;
             }

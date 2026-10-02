@@ -370,16 +370,53 @@ now located outside the spell chain.** `AIName = 'CombatAI'` on Riverpaw Scout (
 
 What the run showed, from the new `RUSTYCORE_CREATURE_SPELL_TRACE=1`: `creatures_seen=489` and
 **every gate at zero**, `schedules_initialized` included. So the spell tick refused nothing; the
-CombatAI branch was never entered for that creature. And the creature never fought back *at all* — no
-melee either, no combat entry, no damage to the player — while surviving both Fireballs (19 and 20,
-no kill) and living another nine seconds in the world.
+CombatAI branch was never entered for that creature. And the creature never fought back *at all* — no melee
+and no damage to the player — while surviving both Fireballs (19 and 20, no kill) and living another
+nine seconds in the world.
 
-So the blocker is the combat-entry path, not the chain this macro built. Fireball carries none of the
-threat-suppressing attributes (`attr1/2/4` are all zero), so
-`apply_damage_from_caster_like_cpp` should have called `enter_combat` and added threat; something
-between that call and the tick's view of the creature's AI state does not agree. Locating it needs
-per-creature tracing of the AI state inside the tick, which is the next concrete step and is a
-different responsibility from this macro.
+**Correction to that reading:** "no combat entry" was asserted from a log with `debug` filtered out,
+and `WorldCreature::enter_combat` logs at `debug` (`map_manager/combat.rs:50`). The absence of that
+line proved nothing. Whether the creature entered combat is exactly what the next run has to answer,
+with `RUST_LOG=info,wow_world::map_manager::combat=debug`.
+
+**The blocker was found on 2026-10-02 after five measurements, and it is upstream of everything this
+macro built: the runtime RNG authority.** `creature_melee_tick.rs:557` invalidates a creature's
+runtime RNG authority on **every melee swing**, deliberately — "Keep gameplay running while preventing
+a later creature spell from claiming an exact shared-RNG position". Once invalidated,
+`random_creature_spell_hit_roll_like_cpp()` returns `None`, and the cast validation reports
+`HitResultUnrepresented`. **A creature that melees can never cast**, and a creature fighting a player
+in melee range always melees.
+
+The chain of causes, each one measured and each one a correct fail-closed gate rather than a defect:
+
+1. `enter_combat` **does** run for a spell hit — the debug line proves it; the earlier "no combat
+   entry" reading came from a log with `debug` filtered out.
+2. The creature **does** pass the tick's per-creature gate and reach the CombatAI branch: `alive=true
+   ai_state=InCombat combat_target=Some(player) ai_kind=CombatAI`, with `schedules_initialized=1` on
+   the tick that first saw it.
+3. Riverpaw Scout's spell 6660 was then refused by `casting_requirements`, because
+   `SpellCastingRequirements.FacingCasterFlags = 1` and the port does not represent C++'s
+   facing check.
+4. Thistle Lasher's spell 34644 passes every requirement and every hit-profile condition
+   (`defense_type=2 mechanic=0 school=1 attr0=0x50014` with `IS_ABILITY`, `attr3=0`, `attr7=0`,
+   one `SPELL_EFFECT_SCHOOL_DAMAGE` effect at `TargetA=6` with mechanic 0) — and was still refused,
+   with `hit_results_unrepresented=1` beside `rng_authority_rejections=1`.
+5. That pair is the RNG authority: the creature had already swung.
+
+So the live proof needs one of two things, and both are separate responsibilities:
+
+* a creature that **never melees** — rooted or turret-like — carrying a fully representable spell. The
+  one `TurretAI` template in the data is the Scarlet Ballista, whose spell is a trigger missile
+  outside the admitted topology, so this needs the projectile path or a rooted creature fixture; or
+* the melee tick modelling its own draws so the shared-RNG authority survives a swing, which is the
+  #29/#31 melee-parity work the fence itself points at.
+
+The filter that finally encodes every gate the tick enforces — instant on every slot, no power cost,
+no casting requirement, no shapeshift mask, `DefenseType = MELEE`, physical school,
+`SPELL_ATTR0_IS_ABILITY`, no avoidance/always-hit/reflection attributes, no mechanic, single-target
+school damage at `TargetA = 6` — admits **10 physical spells** and **3 creatures** in the whole
+installed world: Thistle Lasher (17343, 87 spawns, map 530) and the two Frayers on map 553, all three
+carrying spell 34644. That list is the starting point for whoever takes the RNG-authority work.
 
 Two earlier candidate creatures were ruled out along the way, and the reasons are worth keeping.
 Flamescale Broodling (7049) has **two** slots and the second is non-instant, which

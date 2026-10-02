@@ -168,7 +168,37 @@ What it showed: `creatures_seen=489` and **every gate at zero**, `schedules_init
 the spell tick refused nothing — the CombatAI branch was never entered for that creature. The creature
 never fought back at all, not even with melee, while surviving both Fireballs and living another nine
 seconds. Fireball carries none of the threat-suppressing attributes, so the damage path should have
-entered combat; something between that call and the tick's view of the AI state disagrees. That is the
+entered combat; something between that call and the tick's view of the AI state disagrees.
+
+One claim in that reading was overstated and is corrected here: "no combat entry" came from grepping a
+log with `debug` filtered out, and `WorldCreature::enter_combat` logs at `debug`
+(`map_manager/combat.rs:50`), so its absence proved nothing. The run that enabled it showed
+`Creature entry:500 ... entered combat with Player ... counter:6` — the producer works.
+
+**The blocker was then found, and it is upstream of everything this macro built: the runtime RNG
+authority.** `creature_melee_tick.rs:557` invalidates it on **every melee swing**, deliberately, to
+stop a later creature spell claiming an exact shared-RNG position. Once invalidated,
+`random_creature_spell_hit_roll_like_cpp()` returns `None` and the cast validation reports
+`HitResultUnrepresented`. A creature that melees can never cast, and a creature fighting a player in
+melee range always melees.
+
+Five measurements got there, and the intermediate ones are worth keeping because each is a correct
+fail-closed gate rather than a defect: the creature does reach the CombatAI branch
+(`ai_state=InCombat combat_target=Some(player) ai_kind=CombatAI`, `schedules_initialized=1`); Riverpaw
+Scout's 6660 was refused for `SpellCastingRequirements.FacingCasterFlags = 1`, a C++ facing check this
+port does not represent; Thistle Lasher's 34644 passes every requirement and every hit-profile
+condition and was still refused, with `hit_results_unrepresented=1` beside
+`rng_authority_rejections=1` — the creature had already swung.
+
+The live proof therefore needs either a creature that never melees (rooted or turret-like) carrying a
+fully representable spell, or the melee tick modelling its own draws so the authority survives a swing,
+which is the #29/#31 melee-parity work the fence itself points at. The filter that encodes every gate
+the tick enforces admits **10 physical spells** and **3 creatures** in the whole installed world —
+Thistle Lasher (17343) and the two Frayers, all carrying 34644 — and that list is where the next
+attempt starts.
+
+All three world fixtures used along the way are reverted and verified: 7049 and 500 back to `SmartAI`,
+17343 back to an empty `AIName`, and the QA mage back to its original map and position. That is the
 next step, and it belongs to the combat-entry path rather than to this macro.
 
 Two traces came out of the attempt and both stay, because each one turned a silent branch into a

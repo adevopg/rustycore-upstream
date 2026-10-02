@@ -77,18 +77,47 @@ pub(crate) fn run_legacy_creature_spell_tick_and_deliver_once_like_cpp(
     );
     // Nothing logged the tick's own refusals, which made a creature that never
     // casts indistinguishable from one the gates rejected.
-    // `RUSTYCORE_CREATURE_SPELL_TRACE=1` turns every gate into a readable number,
-    // in the same env-var-gated, throttled shape as the melee trace beside it.
+    // `RUSTYCORE_CREATURE_SPELL_TRACE=1` turns every gate into a readable number.
     //
-    // It speaks on every tick that saw a creature, not only on one where a
-    // counter moved: "saw thirty creatures and did nothing, with every gate at
-    // zero" is the single most useful line this trace can print, and the first
-    // version of it stayed silent for exactly that case.
+    // It needs both halves, and getting that wrong twice is why this comment is
+    // long. The counters are per tick, so a one-off event — a schedule
+    // initialised, a cast made ready — lives on exactly one tick: a throttled
+    // sample almost certainly misses it. But a pure "log whenever something
+    // happened" rule stays silent on the most useful line of all, "saw 489
+    // creatures, did nothing, every gate at zero". So: anything non-zero is
+    // reported immediately, because those ticks are rare, and an all-zero tick
+    // that saw a creature reports on a throttle as a heartbeat.
     if outcome.creatures_seen > 0 && std::env::var_os("RUSTYCORE_CREATURE_SPELL_TRACE").is_some() {
+        let moved = outcome.casts_ready
+            + outcome.schedules_initialized
+            + outcome.spell_hits
+            + outcome.spell_misses
+            + outcome.spell_damage_effects_executed
+            + outcome.spell_damage_effects_unresolved
+            + outcome.spell_effects_unrepresented
+            + outcome.noninstant_casts_unrepresented
+            + outcome.spell_projectiles_unrepresented
+            + outcome.missing_spell_metadata
+            + outcome.spell_range_rejections
+            + outcome.spell_los_rejections
+            + outcome.spell_hit_results_unrepresented
+            + outcome.canonical_cast_target_rejections
+            + outcome.canonical_cast_missing_target
+            + outcome.canonical_cast_cooldown_rejections
+            + outcome.spells_disabled
+            + outcome.spell_casting_requirements_unrepresented
+            + outcome.caster_incarnation_rejections
+            + outcome.unit_state_casting_skips
+            + outcome.turret_rejected_attempt_swings
+            + outcome.runtime_rng_authority_rejections
+            + outcome.spell_visuals_unrepresented
+            + outcome.spell_disable_context_unrepresented
+            > 0;
         static TRACE_TICKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let tick = TRACE_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if tick % 100 == 0 {
+        let heartbeat = TRACE_TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 100 == 0;
+        if moved || heartbeat {
             tracing::info!(
+                moved,
                 creatures_seen = outcome.creatures_seen,
                 casts_ready = outcome.casts_ready,
                 schedules_initialized = outcome.schedules_initialized,
@@ -110,6 +139,7 @@ pub(crate) fn run_legacy_creature_spell_tick_and_deliver_once_like_cpp(
                 casting_requirements = outcome.spell_casting_requirements_unrepresented,
                 incarnation_rejections = outcome.caster_incarnation_rejections,
                 unit_state_skips = outcome.unit_state_casting_skips,
+                rng_authority_rejections = outcome.runtime_rng_authority_rejections,
                 "creature spell tick"
             );
         }

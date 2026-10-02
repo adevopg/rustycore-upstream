@@ -437,7 +437,11 @@ file would guess:
   casts is indistinguishable from one the gates refused. It reports on every tick
   with a creature on purpose: "saw thirty creatures, did nothing, every gate at
   zero" is the most useful line it can print, and the first version of this trace
-  only spoke when a counter moved, so it stayed silent for exactly that case.
+  only spoke when a counter moved, so it stayed silent for exactly that case. The
+  same flag also prints one `creature spell gate` line per in-combat creature,
+  with its AI state, combat target, resolved AI kind and first spell: a creature
+  rejected by that per-creature gate increments no counter at all, so "entered
+  combat and never cast" has no other witness.
 * `RUSTYCORE_CALCVALUE_TRACE=1` prints the inputs of every spell effect's value:
   base points, die sides, per-level term, the spell's `SpellLevels` trio, the
   caster's level and the result. It is what separated the level term from the die
