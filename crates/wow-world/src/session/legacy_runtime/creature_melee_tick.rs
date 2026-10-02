@@ -550,10 +550,15 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
             attacker.record_swing();
             continue;
         };
-        // The compatibility bridge preserves the pre-existing damage and wire
-        // behavior, but it does not model RollMeleeOutcomeAgainst or later
-        // proc/daze draws. Keep gameplay running while preventing a later
-        // creature spell from claiming an exact shared-RNG position.
+        // C++ `CalculateMeleeDamage` draws the weapon damage and then
+        // `RollMeleeOutcomeAgainst`'s one `urand(0, 9999)` (`Unit.cpp:2620`), both
+        // from the attacker's stream. `roll_damage` above is the first; this is
+        // the second, drawn here so the order is C++'s even when a branch below
+        // never consumes it.
+        let melee_outcome_roll = attacker.random_melee_outcome_roll_like_cpp();
+        // The daze draw (`Unit.cpp:1789-1810`) and the proc draws remain
+        // unrepresented, so the stream position still cannot be claimed after a
+        // swing; narrowing that is the rest of this responsibility.
         attacker.invalidate_runtime_rng_authority_like_cpp();
         let damage = damage.max(1);
 
@@ -945,8 +950,12 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
                                 &attacker_facts,
                                 &victim_facts,
                             );
-                            let rolled =
-                                crate::session_rules::rolled_melee_outcome_like_cpp(&inputs[0]);
+                            // C++ rolls the attack table from the attacker's own
+                            // stream (`Unit.cpp:2620`), after the damage roll.
+                            let rolled = crate::session_rules::melee_outcome_like_cpp(
+                                &inputs[0],
+                                melee_outcome_roll,
+                            );
                             let (damage, _blocked, original) =
                                 crate::session_rules::melee_outcome_damage_like_cpp(
                                     rolled,
@@ -1342,8 +1351,11 @@ pub fn run_legacy_creature_melee_tick_once_like_cpp(
                                 &attacker_facts,
                                 &victim_facts,
                             );
-                            let rolled =
-                                crate::session_rules::rolled_melee_outcome_like_cpp(&inputs[0]);
+                            // Same stream, same order, for a creature victim.
+                            let rolled = crate::session_rules::melee_outcome_like_cpp(
+                                &inputs[0],
+                                melee_outcome_roll,
+                            );
                             let (mut info, state) =
                                 crate::session_rules::melee_outcome_presentation_like_cpp(
                                     rolled, false,

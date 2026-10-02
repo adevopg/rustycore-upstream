@@ -1235,6 +1235,13 @@ fn legacy_creature_melee_tick_once_absorbs_player_victim_damage_like_cpp() {
         .expect("apply absorb shield");
     let (shield_slot, _) = shield_amount(&session).expect("shield applied");
 
+    const MELEE_STREAM_SEED_LIKE_CPP: u64 = 0x5EED_0001;
+    session
+        .mutate_world_creature(creature_guid, |c| {
+            c.seed_runtime_rng_like_cpp(MELEE_STREAM_SEED_LIKE_CPP)
+        })
+        .unwrap();
+
     // First swing: the 30-point shield absorbs the whole 10-point hit. C++
     // publishes the zero dealt damage with the full-absorb bit and no health
     // transition, and the shield keeps 20 points.
@@ -1256,6 +1263,32 @@ fn legacy_creature_melee_tick_once_absorbs_player_victim_damage_like_cpp() {
     );
     assert_eq!(victim_health(), 100, "a fully absorbed hit deals no damage");
     assert_eq!(shield_amount(&session).expect("shield").1, Some(20));
+
+    // Two draws from the attacker's own stream, in C++'s order: the weapon damage
+    // (a `next_u32` here, since `min_damage == max_damage`), then
+    // `RollMeleeOutcomeAgainst`'s one `urand(0, 9999)` (`Unit.cpp:2620`). Comparing
+    // the *third* draw against an independently seeded sequence proves the first
+    // two came from this creature, not from the process-wide `urand` the attack
+    // table used to read. The default test pin replaces the value, not the draw.
+    {
+        use rand::{Rng, RngCore, SeedableRng};
+        let _unpinned = crate::session_rules::draw_melee_outcome_roll_like_cpp();
+        let mut expected = rand::rngs::StdRng::seed_from_u64(MELEE_STREAM_SEED_LIKE_CPP);
+        let _damage_draw = expected.next_u32();
+        let _outcome_draw = expected.gen_range(0..=9_999_u32);
+        let expected_third = expected.gen_range(0..=9_999_u32);
+        let actual_third = session
+            .mutate_world_creature(creature_guid, |creature| {
+                creature.random_melee_outcome_roll_like_cpp()
+            })
+            .expect("the attacker is registered");
+        assert_eq!(
+            u32::try_from(actual_third).unwrap(),
+            expected_third,
+            "the swing must advance the attacker's own stream by the damage roll \
+             and the attack-table roll, in that order"
+        );
+    }
 
     // Second swing spends ten more and still publishes a full absorb.
     reset_swing(&mut session);

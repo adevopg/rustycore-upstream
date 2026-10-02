@@ -240,6 +240,16 @@ thread_local! {
         const { std::cell::Cell::new(Some(TEST_MELEE_OUTCOME_ROLL_LIKE_CPP)) };
 }
 
+/// The pinned roll, if a test set one, for an owner that draws the roll itself.
+///
+/// A creature's swing takes its roll from the creature's own runtime RNG rather
+/// than from `urand`, so it cannot go through
+/// [`rolled_melee_outcome_like_cpp`]; it still has to honour the same pin.
+#[cfg(test)]
+pub(crate) fn pinned_melee_outcome_roll_like_cpp() -> Option<i32> {
+    PINNED_MELEE_OUTCOME_ROLL_LIKE_CPP.get()
+}
+
 /// Pin the per-swing roll for the lifetime of the returned guard, so a test can
 /// exercise one exact band through a real tick.
 #[cfg(test)]

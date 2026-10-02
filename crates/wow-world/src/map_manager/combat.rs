@@ -394,6 +394,32 @@ impl WorldCreature {
         Some(self.runtime_rng_like_cpp.gen_range(minimum_ms..=maximum_ms))
     }
 
+    /// C++ `Unit::RollMeleeOutcomeAgainst`'s one `urand(0, 9999)`
+    /// (`Entities/Unit/Unit.cpp:2620`), drawn from the creature's own represented
+    /// stream.
+    ///
+    /// The attack table used to draw from the process-wide `urand`, which left
+    /// this creature's stream one draw behind C++ on every swing and is why a
+    /// swing had to invalidate the runtime RNG authority outright. Drawing it
+    /// here keeps the stream in C++'s order: the damage roll first
+    /// ([`Self::roll_damage`]), then this.
+    ///
+    /// Unlike the spell-hit roll this is not gated on the authority being
+    /// complete: C++ rolls the attack table for every swing, and whether the
+    /// stream position can be *claimed* afterwards is a separate question from
+    /// whether the roll happens.
+    pub(crate) fn random_melee_outcome_roll_like_cpp(&mut self) -> i32 {
+        let drawn = self.runtime_rng_like_cpp.gen_range(0..=9_999_u32);
+        // A pinned test roll replaces the value but not the draw, so a scenario
+        // that asserts this creature's later stream position still sees the
+        // production number of draws.
+        #[cfg(test)]
+        if let Some(pinned) = crate::session_rules::pinned_melee_outcome_roll_like_cpp() {
+            return pinned;
+        }
+        i32::try_from(drawn).unwrap_or(0)
+    }
+
     pub(crate) fn random_creature_spell_hit_roll_like_cpp(&mut self) -> Option<u32> {
         self.runtime_rng_authority_complete_like_cpp
             .then(|| self.runtime_rng_like_cpp.gen_range(0..=9_999))

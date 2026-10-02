@@ -446,12 +446,21 @@ protects against, and it is why a creature that melees can never cast.
 
 **Slices, in dependency order:**
 
-1. **The attack-table draw moves onto the creature's RNG.** Give `WorldCreature` a
-   `random_melee_outcome_roll_like_cpp()` beside `random_creature_spell_hit_roll_like_cpp`, and have the
-   player-victim branch take its roll from there, after the damage roll, in C++'s order. The pin the
-   scenarios rely on has to keep working, so either the pin moves onto the creature or the rules
-   function takes the roll as an argument its owner supplies — the second is the shape every other rule
-   in `session_rules` already uses.
+1. **The attack-table draw moves onto the creature's RNG — done 2026-10-02.**
+   `WorldCreature::random_melee_outcome_roll_like_cpp` draws `gen_range(0..=9999)` from the creature's
+   own `runtime_rng_like_cpp`, and both creature-tick branches — player victim and creature victim — now
+   call `melee_outcome_like_cpp(inputs, roll)` with it instead of `rolled_melee_outcome_like_cpp`'s
+   process-wide `urand`. The draw happens where C++ draws it, right after `roll_damage`, so the order
+   holds even on a branch that never consumes the value. The player's own swing keeps the global draw,
+   because a player has no creature stream.
+
+   Unlike the spell-hit roll it is **not** gated on the authority being complete: C++ rolls the attack
+   table for every swing, and whether the position can be *claimed* afterwards is a separate question.
+   The default test pin stays honoured and now replaces the value without skipping the draw, so a
+   scenario that asserts a later stream position sees the production number of draws. The acceptance is
+   in the player-victim absorb scenario: it seeds the attacker, takes one swing, and compares the
+   **third** draw against an independently seeded sequence, which is what proves the first two came from
+   this creature.
 2. **The daze gate becomes a decision rather than an assumption.** Represent the five conditions at
    `:1789-1791`, above all `HasInArc(M_PI)` for the victim. When the gate is false C++ makes no draw and
    the authority is intact; when it is true the swing either makes the draw from the creature's RNG or
