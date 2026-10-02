@@ -403,13 +403,22 @@ The chain of causes, each one measured and each one a correct fail-closed gate r
    with `hit_results_unrepresented=1` beside `rng_authority_rejections=1`.
 5. That pair is the RNG authority: the creature had already swung.
 
-So the live proof needs one of two things, and both are separate responsibilities:
+**The first way out was then measured shut, which makes this conclusion airtight.** A creature that
+never melees would keep its authority, so the question was whether one exists carrying a representable
+spell. It does not, for two independent reasons:
 
-* a creature that **never melees** — rooted or turret-like — carrying a fully representable spell. The
-  one `TurretAI` template in the data is the Scarlet Ballista, whose spell is a trigger missile
-  outside the admitted topology, so this needs the projectile path or a rooted creature fixture; or
-* the melee tick modelling its own draws so the shared-RNG authority survives a swing, which is the
-  #29/#31 melee-parity work the fence itself points at.
+* **no rooted candidate.** All three creatures carrying the only fully representable spell are mobile:
+  `Rooted = 0`, and in fact no `creature_template_movement` row at all, so they chase.
+* **and the spell is melee-range anyway.** Spell 34644's range index is 2 — `[0, 5]` yards — with no
+  cooldown row. A creature can only cast it from inside melee range, which is exactly where it swings.
+  There is no chase window to cast in, so even a hypothetical non-chasing creature would have to stand
+  in melee range to use it.
+
+So with the installed data the creature-cast damage chain **cannot** be proven live at all, and the
+remaining path is the one the fence itself points at: the melee tick modelling its own draws
+(`RollMeleeOutcomeAgainst` and the later proc/daze draws it skips, `creature_melee_tick.rs:552-557`) so
+the shared-RNG authority survives a swing. That is the #29/#31 melee-parity work, and it is the next
+prepared responsibility.
 
 The filter that finally encodes every gate the tick enforces — instant on every slot, no power cost,
 no casting requirement, no shapeshift mask, `DefenseType = MELEE`, physical school,

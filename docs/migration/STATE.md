@@ -190,9 +190,14 @@ port does not represent; Thistle Lasher's 34644 passes every requirement and eve
 condition and was still refused, with `hit_results_unrepresented=1` beside
 `rng_authority_rejections=1` — the creature had already swung.
 
-The live proof therefore needs either a creature that never melees (rooted or turret-like) carrying a
-fully representable spell, or the melee tick modelling its own draws so the authority survives a swing,
-which is the #29/#31 melee-parity work the fence itself points at. The filter that encodes every gate
+The first way out was then measured shut, which makes the conclusion airtight. No rooted candidate
+exists — all three creatures carrying the only fully representable spell have no movement row at all and
+so chase — and spell 34644's range is `[0, 5]` yards, melee range, so a creature can only cast it from
+exactly where it swings. There is no chase window. With the installed data the creature-cast damage
+chain **cannot** be proven live, and the remaining path is the one the fence points at: the melee tick
+modelling its own draws (`RollMeleeOutcomeAgainst` and the proc/daze draws it skips,
+`creature_melee_tick.rs:552-557`) so the shared-RNG authority survives a swing — the #29/#31
+melee-parity work, and the next prepared responsibility. The filter that encodes every gate
 the tick enforces admits **10 physical spells** and **3 creatures** in the whole installed world —
 Thistle Lasher (17343) and the two Frayers, all carrying 34644 — and that list is where the next
 attempt starts.
